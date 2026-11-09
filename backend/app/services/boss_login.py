@@ -25,8 +25,11 @@ def _running() -> bool:
 
 
 async def _follow(proc: asyncio.subprocess.Process) -> None:
+    """只有当前这一个登录进程能改 _STATE 和删二维码；取消后又开始时，旧进程残留的输出和退出都不算数。"""
     assert proc.stdout is not None
     async for raw in proc.stdout:
+        if proc is not _PROC:
+            continue
         try:
             event = json.loads(raw.decode("utf-8", "replace"))
         except ValueError:
@@ -43,6 +46,8 @@ async def _follow(proc: asyncio.subprocess.Process) -> None:
         elif kind == "error":
             _STATE.update(status="error", message=str(event.get("message") or "登录失败"))
     await proc.wait()
+    if proc is not _PROC:
+        return
     if _STATE["status"] in {"starting", "waiting", "scanned"}:
         _STATE.update(status="error", message="登录进程意外退出")
     QR_PNG.unlink(missing_ok=True)

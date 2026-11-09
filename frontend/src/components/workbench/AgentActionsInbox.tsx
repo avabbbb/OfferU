@@ -4,12 +4,11 @@
 // 不可逆的写（对外发送、清空、改投递状态、删除）先排在这里等你确认一次。
 import { useCallback, useEffect, useState } from "react";
 import { ClipboardCheck, Loader2, Undo2, X } from "lucide-react";
-import { useSWRConfig } from "swr";
 import { agentActionsApi, type AgentActionRecord } from "@/lib/api";
-import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { resetOnboardingForFreshStart } from "@/lib/useOnboarding";
 import { SHOWCASE } from "@/lib/showcase";
+import { refreshAll } from "@/lib/core";
 
 const REFRESH_INTERVAL_MS = 5000;
 const RECENT_LIMIT = 8;
@@ -19,7 +18,6 @@ export function AgentActionsInbox() {
 }
 
 function Inbox() {
-  const { mutate } = useSWRConfig();
   const [items, setItems] = useState<AgentActionRecord[]>([]);
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState("");
@@ -63,7 +61,7 @@ function Inbox() {
         : await agentActionsApi.decide(item.id, decision);
       if (!result.ok) throw new Error(result.errors?.join("；") || result.result?.errors?.join("；") || "没能完成");
       if (decision === "confirm" && item.operation === "reset_local_business_data") resetOnboardingForFreshStart();
-      await mutate((key) => typeof key === "string" && key.startsWith(resolveApiBase()));
+      await refreshAll();
     } catch (cause) {
       setError(safeClientErrorMessage(cause, "操作失败"));
     } finally {

@@ -146,7 +146,8 @@ export default function ResumePage() {
       ]);
       resume = resumeFromProfile(profile.record ?? {}, [...memories.items].sort((a, b) => a.id - b.id));
     }
-    await open({ title: docs.length ? "新简历" : "主简历", resume });
+    // 新建的简历默认用 kami；没存 style 的旧简历仍按 classic 显示，不变样。
+    await open({ title: docs.length ? "新简历" : "主简历", resume, style: { template: "kami" } });
   };
 
   const copy = (doc: Doc) => void open({ title: (doc.title || "简历") + " 副本", resume: doc.resume, style: doc.style, job_id: doc.job_id ?? null });

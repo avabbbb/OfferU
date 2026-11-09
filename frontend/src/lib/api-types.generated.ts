@@ -58,80 +58,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent/conversations/{conversation_id}/distill": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Distill Conversation Memory */
-        post: operations["distill_conversation_memory_api_agent_conversations__conversation_id__distill_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/memory/promote": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Promote Memory
-         * @description 把 harness 会话记忆快照送入职业记忆管线（提案进收件箱，需人工确认）。
-         */
-        post: operations["promote_memory_api_agent_memory_promote_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/memory/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Memory Search
-         * @description 语义检索长时记忆（已确认档案事实 + 相关历史观察）。
-         */
-        get: operations["memory_search_api_agent_memory_search_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/memory/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Export Memory */
-        get: operations["export_memory_api_agent_memory_export_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/agent/data/export": {
         parameters: {
             query?: never;
@@ -353,23 +279,6 @@ export interface paths {
         put?: never;
         /** Cancel Data Restore */
         post: operations["cancel_data_restore_api_agent_data_restore_cancel_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/memory/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Import Memory */
-        post: operations["import_memory_api_agent_memory_import_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -678,26 +587,6 @@ export interface paths {
          * @description Read the real local-agent capability matrix without starting a model turn.
          */
         get: operations["local_agent_conformance_api_agent_runtime_conformance_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/runtime/profile-evolution": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Profile Evolution Report
-         * @description Read the deterministic Profile evolution projection for the UI/report.
-         */
-        get: operations["profile_evolution_report_api_agent_runtime_profile_evolution_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1219,6 +1108,150 @@ export interface paths {
         put?: never;
         /** Resume Hosted Executor Session From Ui */
         post: operations["resume_hosted_executor_session_from_ui_api_agent_runtime_hosted_sessions__session_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Agent Attachment
+         * @description Store one image, PDF or PPTX the user attached in the composer.
+         */
+        post: operations["upload_agent_attachment_api_agent_runtime_attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Attachment
+         * @description Serve an image attachment for its thumbnail in the conversation.
+         */
+        get: operations["get_agent_attachment_api_agent_runtime_attachments__attachment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agents */
+        get: operations["list_agents_api_agent_board_get"];
+        put?: never;
+        /** Add Agent */
+        post: operations["add_agent_api_agent_board_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-board/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Agent */
+        delete: operations["remove_agent_api_agent_board__agent_id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit Agent */
+        patch: operations["edit_agent_api_agent_board__agent_id__patch"];
+        trace?: never;
+    };
+    "/api/agent-board/{agent_id}/hidden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hide Agent */
+        post: operations["hide_agent_api_agent_board__agent_id__hidden_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-board/{agent_id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect Agent */
+        post: operations["connect_agent_api_agent_board__agent_id__connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-board/{agent_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Agent */
+        post: operations["check_agent_api_agent_board__agent_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-board/{agent_id}/launch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Launch Agent */
+        post: operations["launch_agent_api_agent_board__agent_id__launch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2037,6 +2070,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/boss-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Boss Login Route */
+        get: operations["get_boss_login_route_api_applications_boss_login_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/boss-login/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Boss Login Action Route */
+        post: operations["boss_login_action_route_api_applications_boss_login__action__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/consent/platform-collect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform Collect Status */
+        get: operations["platform_collect_status_api_consent_platform_collect_get"];
+        put?: never;
+        /** Platform Collect Agree */
+        post: operations["platform_collect_agree_api_consent_platform_collect_post"];
+        /** Platform Collect Revoke */
+        delete: operations["platform_collect_revoke_api_consent_platform_collect_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/pair": {
         parameters: {
             query?: never;
@@ -2114,6 +2200,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/resume/render": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Render
+         * @description Live preview: the exact HTML the PDF is printed from. Body: {resume, style}; old clients send {body, style}.
+         */
+        post: operations["resume_render_api_resume_render_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/resume/{doc_id}/pdf": {
         parameters: {
             query?: never;
@@ -2125,6 +2231,144 @@ export interface paths {
         get: operations["resume_pdf_api_resume__doc_id__pdf_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resume/{doc_id}/png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resume Png
+         * @description 和 PDF 同一份 HTML 截成 PNG（2 倍像素，超过一页就是长图）。
+         */
+        get: operations["resume_png_api_resume__doc_id__png_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resume/assets/school-logos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * School Logo Search
+         * @description 校徽库搜索（随应用内置约 800 所学校）：返回候选，前端让用户挑一个。
+         */
+        get: operations["school_logo_search_api_resume_assets_school_logos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resume/assets/school-logos/{file_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** School Logo File */
+        get: operations["school_logo_file_api_resume_assets_school_logos__file_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resume/assets/school-logos/{file_name}/use": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * School Logo Use
+         * @description 选中的校徽抠成透明底存进数据目录 files/，返回文件名；前端写进 doc.style.logo，和自己上传的校徽走同一条路。
+         */
+        post: operations["school_logo_use_api_resume_assets_school_logos__file_name__use_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resume/{doc_id}/tailor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Tailor
+         * @description 按岗位 JD 改写简历，SSE 推进度（start / delta / done / error）。断开连接就是取消；没跑完不写库。Body: {job_id?}.
+         */
+        post: operations["resume_tailor_api_resume__doc_id__tailor_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resume/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Impact
+         * @description 追问成果：用户回答 → 记忆草稿，只出草稿不写库（工作台给用户看过、确认后逐条 save memory）。
+         *     不进工具清单：工具保持 20 个，外部 agent 自己整理回答再 save(memory)。Body: {answers: [{old, question, answer}], job_id?}.
+         */
+        post: operations["resume_impact_api_resume_impact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resume/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload School Logo
+         * @description 自己上传的校徽：抠成透明底的 PNG 存进 files/，返回文件名。
+         */
+        post: operations["upload_school_logo_api_resume_logo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2276,12 +2520,10 @@ export interface components {
              */
             action: string;
         };
-        /** AgentMemoryImportRequest */
-        AgentMemoryImportRequest: {
-            /** Content */
-            content: {
-                [key: string]: unknown;
-            } | string;
+        /** Agree */
+        Agree: {
+            /** Version */
+            version: string;
         };
         /** AuthorizedResearchActivateRequest */
         AuthorizedResearchActivateRequest: Record<string, never>;
@@ -2380,8 +2622,18 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_upload_agent_attachment_api_agent_runtime_attachments_post */
+        Body_upload_agent_attachment_api_agent_runtime_attachments_post: {
+            /** File */
+            file: string;
+        };
         /** Body_upload_file_api_files_post */
         Body_upload_file_api_files_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_upload_school_logo_api_resume_logo_post */
+        Body_upload_school_logo_api_resume_logo_post: {
             /** File */
             file: string;
         };
@@ -2538,6 +2790,47 @@ export interface components {
              * @default 60
              */
             llm_timeout: number;
+            /**
+             * Max Concurrent Agent Runs
+             * @default 3
+             */
+            max_concurrent_agent_runs: number;
+            /**
+             * Llm Fallback To Agent
+             * @default false
+             */
+            llm_fallback_to_agent: boolean;
+        };
+        /** ConnectRequest */
+        ConnectRequest: {
+            /**
+             * Action
+             * @default install
+             */
+            action: string;
+        };
+        /** CustomAgentRequest */
+        CustomAgentRequest: {
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name: string;
+            /**
+             * Executable
+             * @default
+             */
+            executable: string;
+            /**
+             * Skill Root
+             * @default
+             */
+            skill_root: string;
         };
         /** DataRestoreRequest */
         DataRestoreRequest: {
@@ -2589,6 +2882,11 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HiddenRequest */
+        HiddenRequest: {
+            /** Hidden */
+            hidden: boolean;
         };
         /** HostedSessionActionRequest */
         HostedSessionActionRequest: {
@@ -2813,6 +3111,16 @@ export interface components {
             /** Message */
             message: string;
             /**
+             * Max Steps
+             * @default 0
+             */
+            max_steps: number;
+            /**
+             * Journey Id
+             * @default
+             */
+            journey_id: string;
+            /**
              * Skill Id
              * @default auto
              */
@@ -2828,6 +3136,23 @@ export interface components {
              * @default embedded
              */
             runtime_provider: string;
+            /**
+             * Llm Config Id
+             * @default
+             */
+            llm_config_id: string;
+            /**
+             * Reasoning Effort
+             * @default
+             */
+            reasoning_effort: string;
+            /**
+             * Approval Mode
+             * @default auto
+             */
+            approval_mode: string;
+            /** Attachments */
+            attachments?: string[];
         };
         /** PreApplicationDecisionManualRequest */
         PreApplicationDecisionManualRequest: {
@@ -3185,128 +3510,6 @@ export interface operations {
             };
         };
     };
-    distill_conversation_memory_api_agent_conversations__conversation_id__distill_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    promote_memory_api_agent_memory_promote_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    memory_search_api_agent_memory_search_get: {
-        parameters: {
-            query: {
-                query: string;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    export_memory_api_agent_memory_export_get: {
-        parameters: {
-            query?: {
-                format?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     export_user_data_api_agent_data_export_get: {
         parameters: {
             query?: never;
@@ -3602,41 +3805,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-        };
-    };
-    import_memory_api_agent_memory_import_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentMemoryImportRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4162,39 +4330,6 @@ export interface operations {
                 provider?: string | null;
                 lifecycle_provider?: string | null;
                 refresh?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    profile_evolution_report_api_agent_runtime_profile_evolution_get: {
-        parameters: {
-            query?: {
-                limit?: number;
             };
             header?: never;
             path?: never;
@@ -5218,6 +5353,341 @@ export interface operations {
                 "application/json": components["schemas"]["HostedSessionActionRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_agent_attachment_api_agent_runtime_attachments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_agent_attachment_api_agent_runtime_attachments_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_attachment_api_agent_runtime_attachments__attachment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agents_api_agent_board_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    add_agent_api_agent_board_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomAgentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_agent_api_agent_board__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_agent_api_agent_board__agent_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomAgentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hide_agent_api_agent_board__agent_id__hidden_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HiddenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_agent_api_agent_board__agent_id__connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_agent_api_agent_board__agent_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    launch_agent_api_agent_board__agent_id__launch_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -6974,6 +7444,134 @@ export interface operations {
             };
         };
     };
+    get_boss_login_route_api_applications_boss_login_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    boss_login_action_route_api_applications_boss_login__action__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action: "start" | "cancel" | "logout";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    platform_collect_status_api_consent_platform_collect_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    platform_collect_agree_api_consent_platform_collect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Agree"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    platform_collect_revoke_api_consent_platform_collect_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     pair_ui_api_ui_pair_post: {
         parameters: {
             query?: never;
@@ -7095,6 +7693,26 @@ export interface operations {
             };
         };
     };
+    resume_render_api_resume_render_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     resume_pdf_api_resume__doc_id__pdf_get: {
         parameters: {
             query?: never;
@@ -7105,6 +7723,214 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_png_api_resume__doc_id__png_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    school_logo_search_api_resume_assets_school_logos_get: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    school_logo_file_api_resume_assets_school_logos__file_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    school_logo_use_api_resume_assets_school_logos__file_name__use_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_tailor_api_resume__doc_id__tailor_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_impact_api_resume_impact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    upload_school_logo_api_resume_logo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_school_logo_api_resume_logo_post"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

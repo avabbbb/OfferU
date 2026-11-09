@@ -154,6 +154,8 @@ class Trace:
     def finish(self, terminal_state: str, *, stop_reason: str = "", error: str = "") -> Path:
         if terminal_state not in TERMINAL_STATES:
             raise ValueError(f"未知终态 {terminal_state}")
+        if self.data.get("terminal_state") is not None:
+            raise ValueError(f"这次运行已经是 {self.data['terminal_state']}，不能再结束一次")
         self.data.update(terminal_state=terminal_state, stop_reason=stop_reason or None,
                          error=error or None, ended_at=_now(),
                          seconds=round(time.perf_counter() - self._t0, 3))

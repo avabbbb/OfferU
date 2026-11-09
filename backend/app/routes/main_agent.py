@@ -15,10 +15,6 @@ from app.services.harness_history import (
     get_conversation,
     list_conversations,
 )
-from app.services.harness_memory import (
-    export_agent_memory_markdown,
-    load_agent_memory,
-)
 from app.services.agent_runtime import (
     canonical_agent_run_event,
     get_agent_run_provider,
@@ -30,10 +26,6 @@ from app.services.ui_approval_capability import accepts_authorization
 router = APIRouter()
 runtime_router = APIRouter()
 from app.services.agent_runtime_tasks import BACKGROUND_RUNTIME_TASKS as _background_runtime_tasks
-
-
-class AgentMemoryImportRequest(BaseModel):
-    content: dict[str, Any] | str
 
 
 class DataRestoreRequest(BaseModel):
@@ -597,16 +589,6 @@ async def local_agent_conformance(
             "lifecycle_provider": lifecycle_provider,
             "refresh": refresh,
         },
-    )
-
-
-@runtime_router.get("/runtime/profile-evolution")
-async def profile_evolution_report(limit: int = 200) -> dict[str, Any]:
-    """Read the deterministic Profile evolution projection for the UI/report."""
-
-    return await _ui_operation_outputs(
-        "get_profile_evolution_report",
-        {"limit": limit},
     )
 
 
@@ -1208,39 +1190,6 @@ async def remove_conversation(conversation_id: str) -> dict[str, Any]:
     )
 
 
-@router.post("/conversations/{conversation_id}/distill")
-async def distill_conversation_memory(conversation_id: str) -> dict[str, Any]:
-    return await _ui_operation_outputs(
-        "distill_harness_conversation",
-        {"conversation_id": conversation_id},
-    )
-
-
-@router.post("/memory/promote")
-async def promote_memory() -> dict[str, Any]:
-    """把 harness 会话记忆快照送入职业记忆管线（提案进收件箱，需人工确认）。"""
-    return await _ui_operation_outputs("promote_harness_memory", {})
-
-
-@router.get("/memory/search")
-async def memory_search(query: str, limit: int = 8) -> dict[str, Any]:
-    """语义检索长时记忆（已确认档案事实 + 相关历史观察）。"""
-    from app.services.memory_distiller import search_memory
-
-    try:
-        return await search_memory(query=query, limit=limit)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=safe_error_message(exc))
-
-
-@router.get("/memory/export")
-async def export_memory(format: str = "json") -> dict[str, Any]:
-    memory = load_agent_memory()
-    if format.lower() in {"md", "markdown"}:
-        return {"format": "markdown", "content": export_agent_memory_markdown(memory), "memory": memory}
-    return {"format": "json", "content": memory, "memory": memory}
-
-
 @router.get("/data/export")
 async def export_user_data() -> dict[str, Any]:
     """Downloadable local core career state through the Operation Registry."""
@@ -1315,14 +1264,6 @@ async def stage_data_restore(body: DataRestoreRequest) -> dict[str, Any]:
 @router.post("/data/restore/cancel")
 async def cancel_data_restore() -> dict[str, Any]:
     return await _ui_operation_outputs("cancel_data_restore", {})
-
-
-@router.post("/memory/import")
-async def import_memory(body: AgentMemoryImportRequest) -> dict[str, Any]:
-    return await _ui_operation_outputs(
-        "import_harness_memory",
-        {"content": body.content},
-    )
 
 
 @runtime_router.post("/runtime/attachments")

@@ -9,8 +9,7 @@ import { connectionTime } from "@/lib/agentConnection";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const SKILL_TEXT: Record<string, string> = { INSTALLED: "Skill 已安装", OUTDATED: "需更新", NOT_INSTALLED: "未安装", ERROR: "异常", NOT_SUPPORTED: "不支持" };
-const MEMORY_TEXT: Record<AgentBoardRow["memory_status"], string> = { none: "未导入", exported: "已导出，等 Agent 写入", imported: "已导入" };
-const EMPTY_FORM: CustomAgentInput = { id: "", display_name: "", executable: "", skill_root: "", memory_file: "" };
+const EMPTY_FORM: CustomAgentInput = { id: "", display_name: "", executable: "", skill_root: "" };
 const INPUT_CLASS = "w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1.5 text-xs text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
 
 function connectAction(row: AgentBoardRow): "install" | "update" | "repair" {
@@ -44,7 +43,7 @@ function summaryText(rows: AgentBoardRow[]): string {
     + " · 需处理 " + count((row) => row.skill_status === "OUTDATED" || row.skill_status === "ERROR");
 }
 
-/** The single self-routing prompt: paste it into any Agent and it picks setup, reconnect or memory import. */
+/** The single self-routing prompt: paste it into any Agent and it picks setup or reconnect. */
 export function AgentConnectPrompt() {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const copy = async () => {
@@ -58,7 +57,7 @@ export function AgentConnectPrompt() {
   };
   return <div className="space-y-2 rounded-xl border border-[var(--border)] p-4" data-testid="agent-connect-prompt">
     <p className="text-sm font-semibold">一键复制接入提示词</p>
-    <p className="text-xs leading-relaxed text-[var(--foreground-muted)]">粘贴到 Claude Code、Codex、WorkBuddy 等任意 Agent。它会自己判断是首次安装、重新连接，还是把 OfferU 记忆带进新 Agent，并在写入记忆前征求你的同意。</p>
+    <p className="text-xs leading-relaxed text-[var(--foreground-muted)]">粘贴到 Claude Code、Codex、WorkBuddy 等任意 Agent。它会自己判断是首次安装还是重新连接。</p>
     <Button size="sm" onPress={() => void copy()} startContent={copyState === "copied" ? <Check size={14} /> : <Copy size={14} />}>
       {copyState === "copied" ? "已复制，去 Agent 里粘贴" : "复制提示词"}
     </Button>
@@ -89,7 +88,6 @@ function AgentForm({ initial, editing, busy, onCancel, onSave }: {
       {field("display_name", "名称", "WorkBuddy")}
       {field("skill_root", "Skill 目录（用户目录下的绝对路径）", "~/.workbuddy/skills")}
       {field("executable", "启动命令名（用于检测和打开对话）", "workbuddy")}
-      {field("memory_file", "记忆文件（可留空）", "~/.workbuddy/MEMORY.md")}
     </div>
     <div className="flex gap-2">
       <Button size="sm" type="submit" isDisabled={busy}>{editing ? "保存" : "添加"}</Button>
@@ -98,7 +96,7 @@ function AgentForm({ initial, editing, busy, onCancel, onSave }: {
   </form>;
 }
 
-/** Board of built-in and user-added Agents: live connection, opening a conversation, Skill install and memory import. */
+/** Board of built-in and user-added Agents: live connection, opening a conversation and Skill install. */
 export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnapshot) => void } = {}) {
   const [board, setBoard] = useState<AgentBoardSnapshot | null>(null);
   const [busyId, setBusyId] = useState("");
@@ -162,7 +160,6 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
           <dl className="grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1 text-[11px] text-[var(--foreground-muted)]">
             <dt>程序</dt><dd>{row.running ? "正在运行" : row.executable_found ? "本机已安装，未运行" : "未检测到"}</dd>
             <dt>Skill</dt><dd className="break-all">{row.skill_path}</dd>
-            <dt>记忆</dt><dd className="break-all">{MEMORY_TEXT[row.memory_status]}{row.memory.target ? " · " + row.memory.target : ""}</dd>
             <dt>最后检查</dt><dd>{connectionTime(row.last_check.at)}</dd>
             <dt>最近调用</dt><dd className="break-all" data-testid={"agent-board-call-" + row.id}>{lastCallText(row)}</dd>
           </dl>
@@ -176,7 +173,7 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
             <Button size="sm" variant="light" isDisabled={Boolean(busyId)} startContent={<RefreshCw size={12} />}
               onPress={() => void run(row.id, () => agentBoardApi.check(row.id))}>检查</Button>
             {row.custom && <Button size="sm" variant="light" isDisabled={Boolean(busyId)} startContent={<Pencil size={12} />}
-              onPress={() => setForm({ editing: row.id, initial: { id: row.id, display_name: row.display_name, executable: row.executable, skill_root: row.skill_path.replace(/[\\/]offeru$/, ""), memory_file: row.memory_file } })}>编辑</Button>}
+              onPress={() => setForm({ editing: row.id, initial: { id: row.id, display_name: row.display_name, executable: row.executable, skill_root: row.skill_path.replace(/[\\/]offeru$/, "") } })}>编辑</Button>}
             <Button size="sm" variant="light" isDisabled={Boolean(busyId)} startContent={row.hidden ? <Eye size={12} /> : <EyeOff size={12} />}
               onPress={() => void run(row.id, () => agentBoardApi.setHidden(row.id, !row.hidden))}>{row.hidden ? "显示" : "隐藏"}</Button>
             {row.custom && <Button size="sm" variant="light" color="danger" isDisabled={Boolean(busyId)} startContent={<Trash2 size={12} />}
@@ -195,6 +192,6 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
           {showHidden ? "收起已隐藏" : "显示已隐藏（" + hiddenCount + "）"}
         </Button>}
       </div>}
-    <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">在线表示 Agent 正在运行，而且它的对话最近 {Math.round((board?.live_window_seconds || 600) / 60)} 分钟内调用过 OfferU。看板可以安装、更新或修复 OfferU Skill，并在你点「打开对话」时在新终端窗口里启动 Agent；不会改它的设置或记忆文件。</p>
+    <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">在线表示 Agent 正在运行，而且它的对话最近 {Math.round((board?.live_window_seconds || 600) / 60)} 分钟内调用过 OfferU。看板可以安装、更新或修复 OfferU Skill，并在你点「打开对话」时在新终端窗口里启动 Agent；不会改它的设置。</p>
   </div>;
 }

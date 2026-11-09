@@ -1,16 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { EVENT_KIND, type Event, type EventKind, when, write } from "@/lib/core";
 
 export function EventRow({ event, showJob = true }: { event: Event; showJob?: boolean }) {
+  // 勾选先在本地生效；服务器一变（撤销、Agent 改了）就跟着变，写失败就退回去。
   const [done, setDone] = useState(Boolean(event.done));
+  useEffect(() => setDone(Boolean(event.done)), [event.done]);
+  const toggle = async (next: boolean) => {
+    setDone(next);
+    try {
+      await write("save", { type: "event", id: event.id, data: { done: next } });
+    } catch {
+      setDone(!next);
+    }
+  };
   return (
     <li className="flex items-baseline gap-3 py-2 text-[13.5px]">
-      <input type="checkbox" checked={done} aria-label={`完成 ${event.title}`} className="translate-y-[2px]"
-        onChange={async (e) => { setDone(e.target.checked); await write("save", { type: "event", id: event.id, data: { done: e.target.checked } }); }} />
+      <input type="checkbox" checked={done} aria-label={"完成 " + event.title} className="translate-y-[2px]"
+        onChange={(e) => void toggle(e.target.checked)} />
       <span className={`min-w-0 flex-1 ${done ? "text-[var(--foreground-muted)] line-through" : "text-[var(--foreground)]"}`}>
         {event.title}
         {showJob && event.job_id && event.job_label && (

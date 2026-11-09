@@ -18,7 +18,6 @@ import {
   ClipboardCheck,
   ChevronDown,
   ChevronUp,
-  Download,
   Loader2,
   Plus,
   RefreshCw,
@@ -26,7 +25,6 @@ import {
   Sparkles,
   Square,
   Trash2,
-  Upload,
   Wrench,
 } from "lucide-react";
 import {
@@ -89,12 +87,6 @@ interface ParkedRun {
 const PARKED_RUN_LABELS: Record<string, string> = {
   waiting_input: "等你回答",
   interrupted: "已中断，可恢复",
-};
-
-const STAGE_LABELS: Record<string, string> = {
-  campus: "校招",
-  experienced: "社招",
-  unknown: "待确认",
 };
 
 const RESUMABLE_RUN_STATUSES = new Set([
@@ -253,7 +245,6 @@ export function AgentPanel() {
   const [toolStream, setToolStream] = useState(createInitialAgentStreamState);
   const [progressText, setProgressText] = useState("");
   const [error, setError] = useState("");
-  const [importedStage, setImportedStage] = useState<string>("unknown");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState("新对话");
   const [resumeCandidate, setResumeCandidate] = useState<ResumeCandidate | null>(null);
@@ -271,7 +262,6 @@ export function AgentPanel() {
   const [hostedAction, setHostedAction] = useState<"cancel" | "resume" | null>(null);
   const [hostedError, setHostedError] = useState("");
   const [hostedRefreshKey, setHostedRefreshKey] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   // 输入框附件：拖入、粘贴或点 + 号添加，选中即上传
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepthRef = useRef(0);
@@ -298,7 +288,7 @@ export function AgentPanel() {
   }, [messages]);
 
   const latestMode = latestResponse?.mode || "ready";
-  const latestStage = latestResponse?.user_stage || importedStage || "unknown";
+  const latestStage = latestResponse?.user_stage || "unknown";
 
 
   const refreshConversations = async () => {
@@ -333,7 +323,6 @@ export function AgentPanel() {
       setConversationTitle("新对话");
       setResumeCandidate(null);
       setConversations([]);
-      setImportedStage("unknown");
       setHostedSessions([]);
       setHostedDetail(null);
       setSelectedHostedSessionId(null);
@@ -874,45 +863,6 @@ export function AgentPanel() {
     }
   };
 
-  const exportMemory = async () => {
-    setError("");
-    try {
-      const result = await agentSupportApi.exportMemory("markdown");
-      await navigator.clipboard.writeText(String(result.content || ""));
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `memory-export-${Date.now()}`,
-          role: "assistant",
-          content: "已把当前 Agent 记忆导出为 Markdown，并放到剪贴板。",
-        },
-      ]);
-    } catch (err: any) {
-      setError(safeClientErrorMessage(err, "导出记忆失败"));
-    }
-  };
-
-  const importMemoryFile = async (file: File) => {
-    setError("");
-    try {
-      const text = await file.text();
-      const result = await agentSupportApi.importMemory(text);
-      setImportedStage(result.memory.user_stage);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `memory-import-${Date.now()}`,
-          role: "assistant",
-          content: `已导入本地记忆。当前识别为：${STAGE_LABELS[result.memory.user_stage] || result.memory.user_stage}。`,
-        },
-      ]);
-    } catch (err: any) {
-      setError(safeClientErrorMessage(err, "导入记忆失败"));
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
 
   // 提醒和「接下来可以」每轮都会重算，只跟在最新一条回复下面，旧回复不重复贴。
   const guidanceMessageId = messages.reduce<string | undefined>((last, item) => (item.response ? item.id : last), undefined);
@@ -963,34 +913,6 @@ export function AgentPanel() {
           <div className="mb-2 flex items-center justify-between">
             <p className="px-1 text-[length:var(--agent-fs-xs)] font-medium text-[var(--foreground-muted)]">历史对话</p>
             <div className="flex items-center gap-0.5">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".md,.markdown,.json,.txt"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) importMemoryFile(file);
-                }}
-              />
-              <button
-                type="button"
-                aria-label="导入本地记忆"
-                title="导入外部 Harness / 本地 Markdown 或 JSON 记忆"
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-md p-1.5 text-[var(--foreground-muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-              >
-                <Upload size={13} />
-              </button>
-              <button
-                type="button"
-                aria-label="导出助手记忆"
-                title="导出记忆为 Markdown"
-                onClick={exportMemory}
-                className="rounded-md p-1.5 text-[var(--foreground-muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-              >
-                <Download size={13} />
-              </button>
               <button
                 type="button"
                 onClick={startNewConversation}

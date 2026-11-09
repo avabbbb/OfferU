@@ -126,6 +126,8 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
     if (SHOWCASE || /^\/resume\/print\//.test(pathname)) {
       queued.current = null;
       sequence.current += 1;
+      // 排队中的同步被丢掉了，别让状态停在 syncing。
+      setSync((previous) => (previous.status === "syncing" ? { ...previous, status: "idle" } : previous));
       return;
     }
     const body = { ...payload, context: { ...payload.context, reported_at: new Date().toISOString() } };

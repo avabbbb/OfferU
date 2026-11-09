@@ -154,7 +154,6 @@ def _environment(database_url: str, *, signal_path: Path | None = None, failure_
         {
             "DATABASE_URL": database_url,
             "OFFERU_ENABLE_MCP": "false",
-            "MEMORY_DISTILL_INTERVAL_SECONDS": "0",
             "WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS": "0",
             "OFFERU_FAILURE_MODE": failure_mode,
         }

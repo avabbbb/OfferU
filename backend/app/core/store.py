@@ -179,6 +179,10 @@ def undo(change_id: int, *, actor: str) -> dict[str, Any]:
         if row["undone_at"]:
             raise ValueError("这条改动已经撤销过了")
         before = json.loads(row["before"]) if row["before"] else None
+        after = json.loads(row["after"]) if row["after"] else None
+        current = get(row["type"], row["record_id"])
+        if (None if current is None else _plain(current)) != after:
+            raise ValueError("这条记录在这次改动之后又被改过，撤销会盖掉后面的改动；请先撤销更新的那条")
         c.execute("BEGIN")
         if before is None:
             c.execute("DELETE FROM records WHERE id=?", (row["record_id"],))

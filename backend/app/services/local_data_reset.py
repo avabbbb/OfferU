@@ -25,7 +25,6 @@ from app.models.models import (
 from app.runtime_paths import runtime_data_dir
 from app.services.agent_files import atomic_write_json
 from app.services.data_safety import DataSafetyError, _assert_managed_tree
-from app.services.harness_memory import empty_agent_memory
 from app.services.reset_inventory import (
     RESET_DATA_DIRECTORIES,
     RESET_DATA_FILE_DEFAULTS,
@@ -53,7 +52,6 @@ _DATA_DIRECTORIES = RESET_DATA_DIRECTORIES
 
 _HARNESS_FILES = {
     **RESET_DATA_FILE_DEFAULTS,
-    "harness_agent_memory.json": empty_agent_memory(),
 }
 _RESET_EPHEMERAL_FILES = {"agent_integration_challenges.json": {}}
 
@@ -282,9 +280,6 @@ async def _quiesce_active_work(*, current_run_id: str, current_task_id: str) -> 
     from app.services.career_tasks import _LIVE_TASKS, cancel_career_task
     from app.services.embedded_agent_worker import active_embedded_agent_runs, find_embedded_agent_worker
     from app.services.job_research import cancel_job_research
-    from app.services.memory_distiller import stop_memory_distill_service
-
-    await stop_memory_distill_service()
 
     async with async_session() as db:
         active_task_ids = [

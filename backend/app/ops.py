@@ -42,12 +42,8 @@ from app.services.application_actions import list_application_action_connectors,
 from app.services.scraper_operations import finalize_scraper_batch, start_scraper_batch
 from app.services.harness_operations import (
     delete_harness_conversation,
-    distill_harness_conversation,
-    import_harness_memory,
-    promote_harness_memory,
     save_harness_conversation,
 )
-from app.services.memory_import import MemoryImportInput, import_memory_candidates
 from app.services.interview_reviews import (
     ExtractReviewQuestionsInput,
     ReviewIdInput,
@@ -67,7 +63,6 @@ from app.services.boss_import import FillBossJobDetailInput, ImportBossExportInp
 from app.services.boss_blast import BossBlastSearchInput, BossBlastStartInput, get_boss_greet, search_boss_jobs, start_boss_greet
 from app.services.boss_sync import BossSyncSettingsInput, get_boss_sync, run_boss_sync, set_boss_sync
 from app.services.boss_login import cancel_boss_login, get_boss_login, logout_boss, start_boss_login
-from app.services.local_memory import LocalMemoryPreviewInput, list_local_memory_sources, preview_local_memory_source
 from app.services.agent_operations import (
     activate_authorized_research_read_only,
     add_profile_evidence,
@@ -90,7 +85,6 @@ from app.services.agent_operations import (
     capture_authorized_research_page,
     classify_progress_signal,
     consolidate_memory_observations,
-    distill_memory,
     draft_interview_scoring_skill,
     export_resume_pdf,
     get_application_workspace,
@@ -121,7 +115,6 @@ from app.services.agent_operations import (
     get_interview_scoring_skill,
     get_interview_career_context,
     get_profile,
-    get_profile_evolution_report,
     get_resume,
     get_resume_optimization,
     get_work_source,
@@ -174,7 +167,6 @@ from app.services.agent_operations import (
     prepare_pre_application_decision,
     prepare_role_interview_focus,
     prepare_resume_optimization,
-    promote_session_memory,
     register_work_source,
     refresh_job_research_report,
     refresh_role_benchmark,
@@ -193,7 +185,6 @@ from app.services.agent_operations import (
     submit_manual_pre_application_decision,
     resolve_automation_inbox_item,
     save_career_artifact,
-    search_memory,
     start_batch_job_evaluation,
     start_authorized_research_session,
     resume_batch_job_evaluation,
@@ -1025,10 +1016,6 @@ class HarnessConversationIdInput(_StrictOperationInput):
     conversation_id: str = Field(min_length=1, max_length=120)
 
 
-class HarnessMemoryImportInput(_StrictOperationInput):
-    content: dict[str, Any] | str
-
-
 class ProfileChatSessionIdInput(_StrictOperationInput):
     session_id: int = Field(gt=0)
 
@@ -1327,10 +1314,6 @@ class ListCareerLedgerInput(_StrictOperationInput):
         pattern="^(pending|deferred|applying|accepted|rejected|revoked|invalidated|all)$",
     )
     limit: int = Field(default=100, ge=1, le=500)
-
-
-class ProfileEvolutionReportInput(_StrictOperationInput):
-    limit: int = Field(default=200, ge=1, le=500)
 
 
 class SaveCareerArtifactInput(_StrictOperationInput):
@@ -2464,15 +2447,6 @@ OPERATIONS: dict[str, Operation] = {
         parameters={},
         group="memory",
         input_model=DeriveCareerModelInput,
-    ),
-    "get_profile_evolution_report": Operation(
-        name="get_profile_evolution_report",
-        fn=get_profile_evolution_report,
-        description="读取 Profile 当前快照、记忆账本、来源覆盖、拒绝观察、冲突和潜力假设；只读且不重写历史。",
-        parameters={"limit": "int=200"},
-        group="memory",
-        input_model=ProfileEvolutionReportInput,
-        version="2026-09-09",
     ),
     "list_career_ledger": Operation(
         name="list_career_ledger",
@@ -5169,29 +5143,6 @@ OPERATIONS.update(
             group="context",
             side_effects=("write",),
         ),
-        "distill_memory": Operation(
-            name="distill_memory",
-            fn=distill_memory,
-            description="确认后用 LLM 提炼未处理的职业观察为记忆候选并巩固为收件箱提案；不直接改写 Profile。",
-            parameters={"observation_ids": "list[int]?", "limit": "int=20"},
-            group="memory",
-            side_effects=("llm", "write"),
-        ),
-        "promote_session_memory": Operation(
-            name="promote_session_memory",
-            fn=promote_session_memory,
-            description="确认后把外部 Agent 会话记忆(facts/preferences/goals)打包为一条观察并提炼为收件箱提案；单向 session→career。",
-            group="memory",
-            side_effects=("llm", "write"),
-        ),
-        "search_memory": Operation(
-            name="search_memory",
-            fn=search_memory,
-            description="按语义检索历史职业观察（向量召回），用于注入 LLM 提炼与 Agent 上下文。",
-            parameters={"query": "str", "limit": "int=8"},
-            group="memory",
-            side_effects=("llm",),
-        ),
         "refresh_job_research_report": Operation(
             name="refresh_job_research_report",
             fn=refresh_job_research_report,
@@ -5620,59 +5571,6 @@ OPERATIONS.update(
             side_effects=("write",),
             input_model=HarnessConversationIdInput,
             version="2026-08-28",
-        ),
-        "distill_harness_conversation": Operation(
-            name="distill_harness_conversation",
-            fn=distill_harness_conversation,
-            description="把 Harness 会话中的可验证用户摘录送入现有学习观察管线。",
-            group="agent_runtime",
-            side_effects=("llm", "write"),
-            input_model=HarnessConversationIdInput,
-            version="2026-08-28",
-        ),
-        "promote_harness_memory": Operation(
-            name="promote_harness_memory",
-            fn=promote_harness_memory,
-            description="把 Harness 会话记忆快照送入现有职业记忆候选管线。",
-            group="agent_runtime",
-            side_effects=("llm", "write"),
-            input_model=_StrictOperationInput,
-            version="2026-08-28",
-        ),
-        "import_harness_memory": Operation(
-            name="import_harness_memory",
-            fn=import_harness_memory,
-            description="导入并保存本地 Harness 记忆快照。",
-            group="agent_runtime",
-            side_effects=("write",),
-            input_model=HarnessMemoryImportInput,
-            version="2026-08-28",
-        ),
-        "import_memory_candidates": Operation(
-            name="import_memory_candidates",
-            fn=import_memory_candidates,
-            description="把使用者显式选择的 AI 记忆摘录送入记忆收件箱，始终作为待核实线索。",
-            group="memory",
-            side_effects=("write",),
-            input_model=MemoryImportInput,
-            audit_redacted_parameters=("excerpts",),
-            audit_redacted_output_parameters=("items",),
-        ),
-        "list_local_memory_sources": Operation(
-            name="list_local_memory_sources",
-            fn=list_local_memory_sources,
-            description="仅检查受支持的本地 AI 记忆摘要是否存在，不读取内容或扫描聊天历史。",
-            group="memory",
-        ),
-        "preview_local_memory_source": Operation(
-            name="preview_local_memory_source",
-            fn=preview_local_memory_source,
-            description="经使用者允许后预览一个受支持的本地 AI 记忆摘要；不会自动保存到档案。",
-            group="memory",
-            side_effects=("read", "external"),
-            permissions=("local_memory:read",),
-            input_model=LocalMemoryPreviewInput,
-            audit_redacted_output_parameters=("text",),
         ),
     }
 )

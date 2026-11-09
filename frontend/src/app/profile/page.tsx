@@ -45,11 +45,62 @@ function MemoryItem({ memory }: { memory: Memory }) {
         <Field value={memory.start} placeholder="开始" aria-label="开始时间" className="!w-20 text-right text-[12.5px] text-[var(--foreground-muted)]" onSave={(start) => save({ start })} />
         <span className="text-[var(--foreground-muted)]">–</span>
         <Field value={memory.end} placeholder="结束" aria-label="结束时间" className="!w-20 text-[12.5px] text-[var(--foreground-muted)]" onSave={(end) => save({ end })} />
+        {memory.confirmed === false && (
+          <>
+            <span className="shrink-0 text-[12px] text-amber-600" title="确认前不会写进定制简历">
+              待确认{memory.source === "agent" ? " · 来源：Agent 推断" : ""}
+            </span>
+            <button type="button" onClick={() => save({ confirmed: true })}
+              className="shrink-0 rounded-md border border-[var(--border-strong)] px-2 py-0.5 text-[12px] text-[var(--foreground)] hover:bg-[var(--surface-muted)]">确认</button>
+          </>
+        )}
         <button type="button" onClick={() => void write("delete", { type: "memory", id: memory.id })}
           className="shrink-0 text-[12px] text-[var(--foreground-muted)] opacity-0 hover:text-[var(--foreground)] group-hover:opacity-100 focus:opacity-100">删除</button>
       </div>
       <Body value={memory.body} onSave={(body) => save({ body })} />
     </li>
+  );
+}
+
+type Finding = {
+  kind: "conflict" | "status_drift" | "duplicate" | "stale_gap"; key: string; memory_ids: number[]; suggestion: string;
+  evidence: Array<{ source: string; field?: string; text: string }>;
+  proposed: { type: "memory"; id: number; data: Record<string, unknown> } | null;
+};
+const FINDING_KIND: Record<Finding["kind"], string> = { conflict: "说法冲突", status_drift: "进度对不上", duplicate: "可能重复", stale_gap: "待补太久" };
+const small = "shrink-0 rounded-md border border-[var(--border-strong)] px-2 py-0.5 text-[12px] text-[var(--foreground)] hover:bg-[var(--surface-muted)]";
+
+/** 待核对：reconcile_memory 找出的前后对不上的地方。采纳走 save（进最近改动，可撤销）；忽略只在本页隐藏。 */
+function Reconcile() {
+  const { data } = useTool<{ items: Finding[] }>("reconcile_memory", {}, 30000);
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const dismiss = (key: string) => setDismissed((d) => [...d, key]);
+  const items = (data?.items ?? []).filter((f) => !dismissed.includes(f.key));
+  if (!items.length) return null;
+  return (
+    <section>
+      <div className="border-b border-[var(--border)] pb-1.5"><h2 className="text-[13px] font-medium text-[var(--foreground)]">待核对</h2></div>
+      <ul className="divide-y divide-[var(--border)]">
+        {items.map((f) => (
+          <li key={f.key} className="space-y-1 py-2">
+            <div className="flex items-center gap-2 text-[13px]">
+              <span className="shrink-0 text-[12px] text-amber-600">{FINDING_KIND[f.kind]}</span>
+              <span className="flex-1 text-[var(--foreground)]">{f.suggestion}</span>
+              {f.proposed && (
+                <button type="button" className={small} title={String(f.proposed.data.body ?? "")}
+                  onClick={() => { if (f.proposed) void write("save", f.proposed).then(() => dismiss(f.key)); }}>采纳</button>
+              )}
+              <button type="button" className={small} onClick={() => dismiss(f.key)}>忽略</button>
+            </div>
+            <ul className="space-y-0.5 text-[12.5px] text-[var(--foreground-muted)]">
+              {f.evidence.map((e, i) => (
+                <li key={i}><span className="mr-2 text-[12px]">{e.source === "profile" ? "档案" : e.source}{e.field === "quote" ? " 原话" : ""}</span>{e.text}</li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -119,6 +170,8 @@ export default function ProfilePage() {
         <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" hidden
           onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) saveProfile({ photo: (await upload(f)).name }); }} />
       </section>
+
+      <Reconcile />
 
       {(Object.keys(MEMORY_KIND) as MemoryKind[]).map((kind) => {
         const items = memories.filter((m) => m.kind === kind);

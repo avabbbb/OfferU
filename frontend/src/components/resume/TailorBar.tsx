@@ -190,7 +190,7 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
           ))}
         </ul>
       )}
-      {checks && (checks.block.length > 0 || checks.warn.length > 0 || checks.unchecked) && (
+      {checks && (checks.block.length > 0 || checks.warn.length > 0 || checks.unchecked || (checks.dropped?.length ?? 0) > 0) && (
         <ul className={muted + " basis-full text-left"} aria-label="改写结果核对">
           <li>程序把改好的简历逐行对了一遍档案和原简历，只提醒，简历没动：</li>
           {checks.unchecked && <li>{checks.unchecked}</li>}
@@ -199,6 +199,9 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
           ))}
           {checks.warn.map((check, i) => (
             <li key={"w" + i} className="text-amber-600">留意：「{check.line}」{check.detail}</li>
+          ))}
+          {(checks.dropped ?? []).map((item) => (
+            <li key={"d" + item.memory_id} className="text-amber-600">「{item.title}」留在简历里，但档案里的 {item.missing.join("、")} 没写进去，确认是有意删的再投</li>
           ))}
         </ul>
       )}

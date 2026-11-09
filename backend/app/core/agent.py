@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from datetime import date
 from typing import Any, Optional
 
 from app.agent.loop import LoopTool
 from app.agent.types import TextContent, ToolResultMessage
-from app.core import tools
+from app.core import store, tailor, tools
 
 ACTOR = "助手"
 MAX_STEPS = 6  # 工具调用轮数上限；之后还有一轮写回复
+INDEX_LINES = 60  # 记忆索引最多列几条（新的在前）；再多让模型自己 search
+INDEX_CHARS = 3000
+MEMORY_ARMS = ("none", "index", "full")  # 评测用：OFFERU_MEMORY_ARM 选系统提示里放多少记忆，默认 index
 
 
 def step_budget() -> int:
@@ -44,6 +48,46 @@ def loop_tools(actor: str = ACTOR) -> list[LoopTool]:
                      execute=bind(t.name), execution_mode="sequential") for t in tools.TOOLS.values()]
 
 
+def _head(memory: dict[str, Any]) -> str:
+    """一条记忆的标题行「#id [类别] 标题」，待确认的加「· 待确认」。"""
+    title = " ".join(str(memory.get("title") or "").split()) or "（无标题）"
+    line = f"#{memory['id']} [{tools.MEMORY_KIND.get(memory.get('kind') or '', '其他')}] {title}"
+    return line + " · 待确认" if memory.get("confirmed") is False else line
+
+
+def memory_index() -> str:
+    """每条记忆一行「#id [类别] 标题」，待确认的标「· 待确认」；不带正文，要细节让模型 get。新的在前，超出上限就说还有几条。"""
+    memories = sorted(store.all_of("memory"), key=lambda record: record["id"], reverse=True)
+    lines: list[str] = []
+    size = 0
+    for memory in memories:
+        line = _head(memory)
+        if len(lines) >= INDEX_LINES or size + len(line) + 1 > INDEX_CHARS:
+            break
+        lines.append(line)
+        size += len(line) + 1
+    if len(memories) > len(lines):
+        lines.append(f"……还有 {len(memories) - len(lines)} 条更早的没列出，要找就 search")
+    return "\n".join(lines) or "（还没有记忆）"
+
+
+def memory_full() -> str:
+    """full 档（评测用）：每条记忆全文（标题、正文、用户原话），待确认的照样标出来；新的在前，不设上限。"""
+    blocks: list[str] = []
+    for memory in sorted(store.all_of("memory"), key=lambda record: record["id"], reverse=True):
+        quote = f"（用户原话：{memory['quote']}）" if memory.get("quote") else ""
+        blocks.append("\n".join(filter(None, [_head(memory), str(memory.get("body") or "").strip(), quote])))
+    return "\n\n".join(blocks) or "（还没有记忆）"
+
+
+def memory_arm() -> str:
+    """none 不放任何记忆；index（默认）短索引 + 已确认口径；full 每条全文。只管 Agent 系统提示，不管改简历。"""
+    arm = os.environ.get("OFFERU_MEMORY_ARM", "").strip() or "index"
+    if arm not in MEMORY_ARMS:
+        raise ValueError(f"OFFERU_MEMORY_ARM 只能是 {' / '.join(MEMORY_ARMS)}，现在是「{arm}」")
+    return arm
+
+
 def system_prompt(today: Optional[date] = None) -> str:
     view = tools.overview(today=today)
     summary = {
@@ -54,14 +98,26 @@ def system_prompt(today: Optional[date] = None) -> str:
     }
     if view.get("mail"):
         summary["mail"] = view["mail"]
+    arm, memory = memory_arm(), ""
+    if arm == "index":
+        ruled = tailor.rules()
+        memory = (f"用户的记忆索引（只有标题，新的在前）：\n{memory_index()}\n"
+                  + (f"用户的口径和偏好（必须遵守，不当作事实）：\n{ruled}\n" if ruled else ""))
+    elif arm == "full":
+        memory = f"用户的记忆（全文，新的在前；标「待确认」的还不能当事实）：\n{memory_full()}\n"
     return (
         f"你是 OfferU 里的求职助手。今天是 {view['today']}。\n"
         f"用户现在的情况（overview 摘要）：{json.dumps(summary, ensure_ascii=False)}\n"
+        f"{memory}"
         "规则：\n"
         "- 只用工具查到的记录和用户说的话，不编造经历、数字、公司、技能。\n"
         "- 对外的事（发邮件、回复 HR、提交网申）只写草稿存成 doc，不替用户发出。\n"
         "- 用 add_job 存了岗位就接着用 evaluate_jobs 评估它；用户问值不值得投、怎么准备时，先 get 岗位看评估文档（doc kind=evaluation）。\n"
         "- save / delete 直接生效，用户能在「最近改动」里撤销；做完告诉用户改了什么。\n"
+        "- 你 save 的记忆（memory）会自动记成 source=agent、待确认，待确认的不会写进定制简历。不要自己设 confirmed，也不要把 source 改成 user；"
+        "存完告诉用户去档案页点「确认」。评估分数、自评这类你自己的产出不是用户的经历，不存成记忆。\n"
+        "- 要某条记忆的细节（正文、数字、用户原话）就 get(type=memory, id=…) 或 search，不要凭标题猜内容。\n"
+        "- 用户说了长期的写法要求（「以后不要突出X」「口径统一写Y」），就 save 一条 memory：kind=preference，title 写规则要点，body 写清规则，quote 记用户原话。\n"
         "- 模拟面试时像真面试官，一次只问一个问题，每道新题用「第 N 题：」开头。用户回答含糊（没说具体做了什么、怎么做、结果如何）时，"
         "这条回复只用一个问题追问他具体做了什么或结果，然后停下；不点评、不给框架或示范、不出下一题。"
         "追问后仍答不清，可以简短点评、给答题框架，结尾让他按框架重答同一题，同一条里不出下一题。"

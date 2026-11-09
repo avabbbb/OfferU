@@ -23,20 +23,14 @@ def _workbuddy(home: Path) -> dict:
     return {"id": "workbuddy", "display_name": "WorkBuddy", "executable": "workbuddy", "skill_root": str(home / ".workbuddy" / "skills")}
 
 
-def test_custom_agent_connects_and_tracks_memory(board_home):
+def test_custom_agent_connects(board_home):
     added = agent_board.add_custom_agent(_workbuddy(board_home))
     assert added["custom"] is True
     assert added["skill_status"] == "NOT_INSTALLED"
-    assert added["memory_status"] == "none"
 
     connected = agent_board.connect_agent("workbuddy")
     assert connected["skill_status"] == "INSTALLED"
     assert (board_home / ".workbuddy" / "skills" / "offeru" / "SKILL.md").is_file()
-
-    exported = agent_board.export_memory_for_agent("workbuddy")
-    assert exported["content"].startswith("# OfferU Agent Memory")
-    assert agent_board.check_agent("workbuddy")["memory_status"] == "exported"
-    assert agent_board.mark_memory_imported("workbuddy", "~/.workbuddy/MEMORY.md")["memory_status"] == "imported"
 
     board = agent_board.list_board()
     ids = [row["id"] for row in board["agents"]]

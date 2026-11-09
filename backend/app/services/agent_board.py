@@ -1,11 +1,10 @@
-"""Agent board: built-in Skill hosts plus user-added Agents, with connect, check, launch and memory state.
+"""Agent board: built-in Skill hosts plus user-added Agents, with connect, check and launch.
 
 The board runs OfferU's own fixed actions: install, update or repair the OfferU Skill, look
-for an Agent's executable on PATH, export OfferU memory, and, only when the user asks for it
-(打开对话), open the Agent's interactive CLI in a new terminal window. The launched command
-comes only from the built-in ``_HOST_COMMANDS`` table or the bare command name saved for a
-custom Agent, never from the request. The board never edits an Agent's settings or memory
-files; the Agent writes its memory itself and reports back with ``mark_memory_imported``.
+for an Agent's executable on PATH, and, only when the user asks for it (打开对话), open the
+Agent's interactive CLI in a new terminal window. The launched command comes only from the
+built-in `_HOST_COMMANDS` table or the bare command name saved for a custom Agent, never
+from the request. The board never edits an Agent's settings.
 
 已连接 is live: the Agent process is running right now and one of its conversations called
 OfferU within ``LIVE_WINDOW_SECONDS``. An installed Skill file is not a connection.
@@ -90,7 +89,6 @@ def _load() -> dict[str, Any]:
     return {
         "custom": [item for item in raw.get("custom") or [] if isinstance(item, dict) and item.get("id")],
         "hidden": [str(item) for item in raw.get("hidden") or []],
-        "memory": {key: value for key, value in (raw.get("memory") or {}).items() if isinstance(value, dict)},
         "checks": {key: value for key, value in (raw.get("checks") or {}).items() if isinstance(value, dict)},
         "calls": {key: value for key, value in (raw.get("calls") or {}).items() if isinstance(value, dict)},
     }
@@ -125,16 +123,11 @@ def _validate_custom(raw: dict[str, Any], *, creating: bool) -> dict[str, Any]:
     root = Path(root_text).expanduser()
     if not root_text or not root.is_absolute() or not root.resolve().is_relative_to(Path.home().resolve()):
         raise ValueError("Skill 目录要填你用户目录下的绝对路径，例如 ~/.workbuddy/skills")
-    memory_text = str(raw.get("memory_file") or "").strip()
-    memory_file = Path(memory_text).expanduser() if memory_text else None
-    if memory_file is not None and not memory_file.is_absolute():
-        raise ValueError("记忆文件要填绝对路径，不知道可以留空")
     return {
         "id": agent_id,
         "display_name": name,
         "executable": executable,
         "skill_root": str(root),
-        "memory_file": str(memory_file) if memory_file else "",
     }
 
 
@@ -225,12 +218,6 @@ def _is_live(at: Any) -> bool:
     return (datetime.now(timezone.utc) - when).total_seconds() <= LIVE_WINDOW_SECONDS
 
 
-def _memory_state(record: dict[str, Any]) -> str:
-    if record.get("imported_at"):
-        return "imported"
-    return "exported" if record.get("exported_at") else "none"
-
-
 def _row(data: dict[str, Any], agent_id: str, process_tokens: frozenset[str] | None = None) -> dict[str, Any]:
     adapter = _adapter(data, agent_id)
     custom = _custom(data, agent_id)
@@ -241,7 +228,6 @@ def _row(data: dict[str, Any], agent_id: str, process_tokens: frozenset[str] | N
     tokens = _process_tokens() if process_tokens is None else process_tokens
     running = any(name in tokens for name in _match_names(data, agent_id))
     last_call = data["calls"].get(agent_id, {})
-    memory = data["memory"].get(agent_id, {})
     host = get_host(agent_id)
     return {
         "id": agent_id,
@@ -255,11 +241,8 @@ def _row(data: dict[str, Any], agent_id: str, process_tokens: frozenset[str] | N
         "connected": running and _is_live(last_call.get("at")),
         "skill_path": str(adapter.skill_path()),
         "error": skill.get("error", ""),
-        "memory_status": _memory_state(memory),
-        "memory": memory,
         "last_check": data["checks"].get(agent_id, {}),
         "executable": custom.get("executable", "") if custom else "",
-        "memory_file": custom.get("memory_file", "") if custom else "",
         "docs_url": host.docs_url if host else "",
     }
 
@@ -305,7 +288,6 @@ def remove_custom_agent(agent_id: str) -> dict[str, Any]:
             raise ValueError("只有你自己添加的 Agent 可以删除；内置 Agent 只能隐藏")
         data["custom"] = [item for item in data["custom"] if item["id"] != agent_id]
         data["hidden"] = [item for item in data["hidden"] if item != agent_id]
-        data["memory"].pop(agent_id, None)
         data["checks"].pop(agent_id, None)
         data["calls"].pop(agent_id, None)
         _save(data)
@@ -440,38 +422,3 @@ def launch_agent(agent_id: str) -> dict[str, Any]:
             raise ValueError(f"本机没找到 {command} 命令。先安装这个 Agent，再点「打开对话」")
     _open_terminal(executable)
     return {"launched": True, "executable": executable}
-
-
-def export_memory_for_agent(agent_id: str) -> dict[str, Any]:
-    from app.services.harness_memory import export_agent_memory_markdown, load_agent_memory
-
-    with _LOCK:
-        data = _load()
-        row = _row(data, agent_id)
-        content = export_agent_memory_markdown(load_agent_memory())
-        data["memory"][agent_id] = {**data["memory"].get(agent_id, {}), "exported_at": _now()}
-        _save(data)
-    return {
-        "agent_id": agent_id,
-        "format": "markdown",
-        "content": content,
-        "memory_file": row["memory_file"],
-        "next": (
-            "把这份 OfferU 记忆摘要给使用者看，经同意后写进你自己的记忆，"
-            f"然后运行 offeru agent memory-done {agent_id} --target <写入位置>。"
-            "不要改动 OfferU 以外的设置。"
-        ),
-    }
-
-
-def mark_memory_imported(agent_id: str, target: str = "") -> dict[str, Any]:
-    with _LOCK:
-        data = _load()
-        _adapter(data, agent_id)
-        data["memory"][agent_id] = {
-            **data["memory"].get(agent_id, {}),
-            "imported_at": _now(),
-            "target": str(target or "")[:300],
-        }
-        _save(data)
-        return _row(data, agent_id)

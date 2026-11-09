@@ -16,7 +16,7 @@ const launch = vi.mocked(agentBoardApi.launch);
 const row = (id: string, extra: Partial<AgentBoardRow>): AgentBoardRow => ({
   id, display_name: id, custom: false, hidden: false, executable_found: true, skill_status: "INSTALLED",
   running: false, connected: false, last_call: {}, skill_path: "/home/u/." + id + "/skills/offeru", error: "",
-  memory_status: "none", memory: {}, last_check: {}, executable: "", memory_file: "", docs_url: "", ...extra,
+  last_check: {}, executable: "", docs_url: "", ...extra,
 });
 
 const SNAPSHOT: AgentBoardSnapshot = {

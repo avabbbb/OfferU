@@ -99,7 +99,6 @@ def _environment(database_url: str) -> dict[str, str]:
         {
             "DATABASE_URL": database_url,
             "OFFERU_ENABLE_MCP": "false",
-            "MEMORY_DISTILL_INTERVAL_SECONDS": "0",
             "WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS": "0",
         }
     )

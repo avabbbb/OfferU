@@ -424,14 +424,6 @@ async def derive_career_model() -> dict:
     return await _derive()
 
 
-async def get_profile_evolution_report(limit: int = 200) -> dict:
-    from app.services.career_evolution import (
-        get_profile_evolution_report as _report,
-    )
-
-    return await _report(limit=limit)
-
-
 async def build_job_projection(job_id: int) -> dict:
     from app.services.job_projection import build_job_projection as _build
 
@@ -696,28 +688,6 @@ async def consolidate_memory_observations(
     )
 
     return await _consolidate(observation_ids=observation_ids, limit=limit)
-
-
-async def distill_memory(
-    observation_ids: Optional[list[int]] = None,
-    limit: int = 20,
-) -> dict:
-    from app.services.memory_distiller import distill_observations as _distill
-
-    return await _distill(observation_ids=observation_ids, limit=limit)
-
-
-async def promote_session_memory() -> dict:
-    from app.services.memory_distiller import promote_session_memory as _promote
-
-    return await _promote()
-
-
-async def search_memory(query: str, limit: int = 8) -> dict:
-    from app.services.semantic_search import get_semantic_search
-
-    hits = await get_semantic_search().search_observations(query=query, limit=limit)
-    return {"count": len(hits), "hits": hits}
 
 
 async def refresh_job_research_report(job_id: int) -> dict:

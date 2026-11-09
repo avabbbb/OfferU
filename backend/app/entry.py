@@ -126,7 +126,7 @@ def connect() -> int:
     return 0
 
 
-AGENT_ACTIONS = ("list", "add", "edit", "remove", "hide", "show", "connect", "check", "launch", "memory-export", "memory-done")
+AGENT_ACTIONS = ("list", "add", "edit", "remove", "hide", "show", "connect", "check", "launch")
 
 
 def agent(args: argparse.Namespace) -> int:
@@ -140,7 +140,6 @@ def agent(args: argparse.Namespace) -> int:
             ("display_name", args.name),
             ("executable", args.executable),
             ("skill_root", args.skill_root),
-            ("memory_file", args.memory_file),
         )
         if value is not None
     }
@@ -154,8 +153,6 @@ def agent(args: argparse.Namespace) -> int:
         "connect": lambda agent_id: board.connect_agent(agent_id, args.mode),
         "check": board.check_agent,
         "launch": board.launch_agent,
-        "memory-export": board.export_memory_for_agent,
-        "memory-done": lambda agent_id: board.mark_memory_imported(agent_id, args.target or ""),
     }
     try:
         if args.action != "list" and not args.agent_id:
@@ -206,15 +203,13 @@ def main(argv: list[str] | None = None) -> int:
     start_parser = sub.add_parser("start", help="启动 OfferU 并在浏览器打开工作台")
     start_parser.add_argument("--no-browser", action="store_true", help="只启动，不打开浏览器")
     sub.add_parser("connect", help="把 OfferU Skill 装进本机的 Agent（Codex、Claude Code、DSH 等）")
-    agent_parser = sub.add_parser("agent", help="管理接入 OfferU 的 Agent：list / add / edit / remove / hide / show / connect / check / launch / memory-export / memory-done")
+    agent_parser = sub.add_parser("agent", help="管理接入 OfferU 的 Agent：list / add / edit / remove / hide / show / connect / check / launch")
     agent_parser.add_argument("action", choices=AGENT_ACTIONS)
     agent_parser.add_argument("agent_id", nargs="?", default="")
     agent_parser.add_argument("--name", help="显示名称（add / edit）")
     agent_parser.add_argument("--executable", help="启动命令名，用于检测是否安装和打开对话（add / edit）")
     agent_parser.add_argument("--skill-root", help="Agent 的 Skill 目录，需在用户目录下（add / edit）")
-    agent_parser.add_argument("--memory-file", help="Agent 的记忆文件，可选（add / edit）")
     agent_parser.add_argument("--mode", choices=("install", "update", "repair"), default="install", help="connect 的方式")
-    agent_parser.add_argument("--target", help="memory-done：记忆写到了哪里")
     tool_parser = sub.add_parser("tool", help="调用一个 OfferU 工具：offeru tool overview / offeru tool save '{\"type\":\"job\",...}'")
     tool_parser.add_argument("name", nargs="?")
     tool_parser.add_argument("args", nargs="?", default="{}", help="JSON 参数；也可以是 @文件路径（UTF-8）或 -（读标准输入）")

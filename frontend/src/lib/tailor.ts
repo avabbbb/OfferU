@@ -10,7 +10,9 @@ export type TailorRound = { round: number; pages: number | null; applied: Tailor
 export type TailorAsk = { old: string; why: string; question: string };
 // 改写结果核对：终稿逐行对照档案和原简历。block 是数字找不到出处，warn 是说法可能拔高；只提醒，简历没改。
 export type TailorCheck = { line: string; kind: string; detail: string };
-export type TailorChecks = { block: TailorCheck[]; warn: TailorCheck[]; unchecked: string };
+// dropped：终稿留了某条确认过的经历，它的数字或强动词却不见了；omitted：整条没写进去的经历标题（按相关性取舍，不提醒）。
+export type TailorDropped = { memory_id: number; title: string; missing: string[] };
+export type TailorChecks = { block: TailorCheck[]; warn: TailorCheck[]; unchecked: string; dropped?: TailorDropped[]; omitted?: string[] };
 
 export type TailorEvent =
   | { type: "start"; job: string }

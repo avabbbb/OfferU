@@ -80,9 +80,6 @@ class Settings(BaseSettings):
     # 默认关闭：内容会经外置 CLI 发到它自己的云端；用户连接本机 Agent 时会被问是否开启。
     llm_fallback_to_agent: bool = False
 
-    # ---- 长时记忆 ----
-    # memory distiller 后台循环间隔（秒），0 = 关闭
-    memory_distill_interval_seconds: int = 1800
     # 工作源自动同步间隔（秒），0 = 关闭（同步会把内容送给 coding agent，默认需手动触发）
     work_source_auto_sync_interval_seconds: int = 0
 

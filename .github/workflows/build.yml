@@ -268,7 +268,6 @@ jobs:
           OFFERU_PORT: '8766'
           OFFERU_ENABLE_MCP: 'false'
           OFFERU_INTERVIEW_RUNTIME: replay
-          MEMORY_DISTILL_INTERVAL_SECONDS: '0'
           WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS: '0'
         run: |
           nohup python backend/run_server.py > "$RUNNER_TEMP/offeru-backend.log" 2>&1 &
@@ -476,7 +475,6 @@ jobs:
           CORS_ORIGINS: http://127.0.0.1:7410,http://localhost:7410
           OFFERU_ENABLE_MCP: 'false'
           OFFERU_INTERVIEW_RUNTIME: replay
-          MEMORY_DISTILL_INTERVAL_SECONDS: '0'
           WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS: '0'
         run: |
           nohup python backend/run_server.py > "$RUNNER_TEMP/offeru-repeat-backend.log" 2>&1 &

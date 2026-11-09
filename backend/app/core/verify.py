@@ -5,6 +5,7 @@
 - warn：动词越级（来源只说参与/协助，终稿写成负责/主导）、来源带「约/大概」的数字终稿把约数词删了、
   来源里没有的普及度或拔高说法（全网、行业领先、首个……）。
 - unchecked：来源是空的就整份没法核对，明说「没检查」，不报错。
+- dropped / omitted（retained、omitted）：终稿留下了某条确认过的经历（标题出现了），它的数字或「主导」一类说法却不见了，列进 dropped 提醒；整条都没出现算按相关度删掉，只把标题列进 omitted。
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ CLAIMS = ("全网", "行业领先", "业内领先", "国内领先", "全国首�
 HEDGES = ("约", "大概", "大约", "左右", "将近", "差不多", "余", "上下")
 _UNIT = {"万": 10_000, "千": 1_000, "百": 100, "亿": 100_000_000}
 _NUM_RE = re.compile(r"(\d+(?:\.\d+)?)\s*([万千百亿]?)")
-_LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d+[.、)])\s*")
+_LIST_MARK = re.compile(r"^\s{0,}(?:[-+\x2a]|\d+[、)]|\d+\.(?!\d))\s{0,}")  # 「2023.06」开头的行是日期，不是序号
 
 
 def _plain(text: str) -> str:
@@ -104,3 +105,37 @@ def check(body: str, sources: str) -> dict[str, Any]:
         if claims:
             warn.append({"line": line, "kind": "claim", "detail": "来源里没有这个说法：" + "、".join(claims)})
     return {"block": block, "warn": warn, "unchecked": ""}
+
+
+def _kept(memories: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """要核对保留情况的记忆：用户确认过（老记录没 confirmed 算确认过）、不是口径（preference）、有标题。"""
+    return [m for m in memories
+            if m.get("confirmed") is not False and m.get("kind") != "preference" and str(m.get("title") or "").strip()]
+
+
+def _named(title: str, body: str) -> bool:
+    """终稿有没有提到这条记忆：整个标题出现，或标题第一段（通常是公司 / 项目名）出现。"""
+    head = re.split(r"[\s·|｜/,，（(]+", title, maxsplit=1)[0]
+    return title in body or (len(head) >= 2 and head in body)
+
+
+def retained(body: str, memories: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """终稿留下的经历有没有悄悄丢事实：返回 [{memory_id, title, missing}]，missing 是记忆正文 / 原话里有、终稿里对不上的数字
+    （2万 和 20000、2023.06 和 2023.6 算同一个）和强动词（主导、负责……）。只提示，不拦保存。"""
+    known = known_numbers(body)
+    out: list[dict[str, Any]] = []
+    for memory in _kept(memories):
+        title = str(memory["title"]).strip()
+        if not _named(title, body):
+            continue
+        source = "\n".join(filter(None, [str(memory.get("body") or ""), str(memory.get("quote") or "")]))
+        missing = [n for line in source.splitlines() for n in _missing(line, known)]
+        missing += [v for v in STRONG_VERBS if v in source and v not in body]
+        if missing:
+            out.append({"memory_id": memory.get("id"), "title": title, "missing": list(dict.fromkeys(missing))})
+    return out
+
+
+def omitted(body: str, memories: list[dict[str, Any]]) -> list[str]:
+    """终稿里整条没出现的确认经历，只给标题：按相关度删掉是正常的，列出来让用户心里有数。"""
+    return [str(m["title"]).strip() for m in _kept(memories) if not _named(str(m["title"]).strip(), body)]

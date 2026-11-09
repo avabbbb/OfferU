@@ -36,10 +36,12 @@ MEMORY_KIND = {"experience": "实习 / 工作", "project": "项目", "education"
 MEMORY_MODE = {"experience": ("全职", "实习", "兼职"), "education": ("全日制", "非全日制")}
 TYPE_LABEL = {"profile": "档案", "memory": "记忆", "job": "岗位", "event": "事项", "doc": "文档"}
 MAIL_ACTOR = "邮箱"
+USER_ACTOR = "你"  # 工作台调 /api/tools 不带 x-offeru-actor 时就是用户本人；只有它能确认记忆
+MEMORY_SOURCE = {"user": "用户说的", "resume": "用户简历原文", "agent": "Agent 推断"}
 
 FIELDS = {
     "profile": "唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about, photo（证件照文件名）",
-    "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; mode（性质：experience 填 全职/实习/兼职，education 填 全日制/非全日制；不确定就问用户，别猜）; tags; quote（用户原话，原样）, said_at（用户说这话的日期 YYYY-MM-DD）",
+    "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; mode（性质：experience 填 全职/实习/兼职，education 填 全日制/非全日制；不确定就问用户，别猜）; tags; quote（用户原话，原样）, said_at（用户说这话的日期 YYYY-MM-DD）; source（来源：user 用户说的 / resume 用户简历原文 / agent Agent 推断或总结的；新建时系统按调用者自动填，Agent 存的一律是 agent）, confirmed（用户是否确认过；Agent 存的记忆是待确认，不进定制简历；Agent 不能把 confirmed 设成 true，也不能把 source 改成 user，要请用户在档案页点「确认」）",
     "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at; source（来源站点：xhs / boss / feishu / moka / beisen / 域名）, images（页面图片链接，JD 可能在图里）；tags（标签，短词数组，整体替换；建岗和补 JD 时 Agent 会自动打招聘类型、城市、方向、公司属性，记在 auto_tags；用户删掉的 Agent 标签记在 tags_muted，以后不再自动加回；用户口头要加或去标签就直接改 tags）；截止日期存 event kind=deadline",
     "event": f"待办和日程。title, kind: {'/'.join(EVENT_KIND)}; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes",
     "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template classic 经典（默认）/ clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{{basics: {{name, target, contacts: [{{label（电话 / 邮箱 / 城市 / 微信…，可空）, value}}]}}, sections: [{{id, type, title, hidden, items: [{{id, title, subtitle, date, location, bullets: [文字], text}}]}}]}}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume",
@@ -179,6 +181,8 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
             raise ValueError("事项要有 title")
         if data.get("at"):
             datetime.fromisoformat(str(data["at"]))
+        if data.get("done") is not None and not isinstance(data["done"], bool):
+            raise ValueError("event.done 只能是 true 或 false")
     elif type_ == "doc":
         one_of("kind", DOC_KIND)
         one_of("template", LEGACY_TEMPLATE)
@@ -196,6 +200,9 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
             raise ValueError("记忆要有 title 或 body")
         if data.get("said_at") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(data["said_at"])):
             raise ValueError("memory.said_at 是 YYYY-MM-DD")
+        one_of("source", MEMORY_SOURCE)
+        if data.get("confirmed") is not None and not isinstance(data["confirmed"], bool):
+            raise ValueError("memory.confirmed 只能是 true 或 false")
         if data.get("mode") is not None:
             allowed = MEMORY_MODE.get(str(data.get("kind") or ""), tuple(m for modes in MEMORY_MODE.values() for m in modes))
             if data["mode"] not in allowed:
@@ -283,7 +290,45 @@ class SaveIn(_In):
     id: Optional[int] = Field(None, description="不传就新建；profile 不用传")
 
 
-def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: str) -> dict[str, Any]:
+def _provenance(data: dict[str, Any], actor: str, creating: bool, from_resume: bool) -> dict[str, Any]:
+    """记忆的来源和确认：只有用户本人能确认、能记成用户说的；Agent 存的默认待确认，不进定制简历。"""
+    if from_resume:  # 用户自己的简历原文
+        return dict(data, source="resume", confirmed=True)
+    if actor != USER_ACTOR:
+        if data.get("confirmed") is True:
+            raise ValueError("只有用户能确认记忆：Agent 存的记忆是待确认，请用户在档案页点「确认」")
+        if data.get("source") == "user":
+            raise ValueError("memory.source 不能由 Agent 记成 user：只有用户本人说的才是 user")
+    if not creating:
+        return data
+    mine = actor == USER_ACTOR
+    return {"source": "user" if mine else "agent", "confirmed": mine} | data
+
+
+# 岗位前进顺序；rejected / closed 不在序里，随时可进。邮件同步和非用户写入共用这一条规则（mail.py 只引用）。
+JOB_ORDER = ("saved", "applied", "test", "interview", "offer")
+JOB_FROZEN = ("offer", "rejected", "closed")
+
+
+def status_move_error(current: Optional[str], new: str) -> Optional[str]:
+    """非用户（Agent、邮件、脚本）改岗位状态的规则：offer / rejected / closed 冻结，rejected / closed 随时可进，其余只按 JOB_ORDER 前进。返回不允许的原因，允许返回 None。"""
+    if new == current:
+        return None
+    if current in JOB_FROZEN:
+        return f"岗位已是 {current}，只有用户能改回其他状态；请让用户在岗位页手动改"
+    if new in ("rejected", "closed") or current not in JOB_ORDER or new not in JOB_ORDER:
+        return None
+    if JOB_ORDER.index(new) < JOB_ORDER.index(current):
+        return f"岗位状态不能从 {current} 回退到 {new}；回退只有用户能做"
+    return None
+
+
+def _check_status_forward(current: Optional[str], new: str) -> None:
+    if (error := status_move_error(current, new)) is not None:
+        raise ValueError(error)
+
+
+def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: str, from_resume: bool = False) -> dict[str, Any]:
     if type == "profile" and id is None and (existing := store.first("profile")):
         id = existing["id"]
     existed = False
@@ -293,6 +338,8 @@ def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: st
         if not data:
             return {"record": prev, "change_id": None, "existed": True}
     _check(type, data, creating=id is None)
+    if type == "memory":
+        data = _provenance(data, actor, creating=id is None, from_resume=from_resume)
     if type == "doc":
         data = _with_resume(data, id)
     if type == "event" and data.get("done") is True and id is not None:
@@ -302,8 +349,11 @@ def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: st
     status_note = ""
     if type == "job" and id is not None and data.get("status"):
         status_note = f"：{JOB_STATUS[data['status']]}"
-        if data["status"] == "applied" and not data.get("applied_at"):
-            data = {**data, "applied_at": date.today().isoformat()}
+    if (type == "job" and data.get("status") == "applied" and not data.get("applied_at")
+            and not (id is not None and (store.get("job", id) or {}).get("applied_at"))):
+        data = dict(data, applied_at=date.today().isoformat())
+    if type == "job" and id is not None and data.get("status") and actor != USER_ACTOR:
+        _check_status_forward((store.get("job", id) or {}).get("status"), data["status"])
     if type == "job" and id is None:
         data = {"status": "saved", **data}
     preview = {**(store.get(type, id) or {} if id else {}), **data, "type": type, "id": id or 0}
@@ -656,7 +706,14 @@ def _await(factory: Callable[[], Any]) -> Any:
         raise RuntimeError("事件循环线程里不能同步等异步任务，用 asyncio.to_thread(tools.call, ...)")
     loop = MAIN_LOOP
     if loop is not None and loop.is_running():
-        return asyncio.run_coroutine_threadsafe(factory(), loop).result(timeout=600)
+        from concurrent.futures import TimeoutError as FutureTimeout
+
+        future = asyncio.run_coroutine_threadsafe(factory(), loop)
+        try:
+            return future.result(timeout=600)
+        except FutureTimeout:
+            future.cancel()
+            raise ValueError("后台任务超过 10 分钟没完成，已取消；可以在「最近改动」里看已经写入的部分") from None
     return asyncio.run(factory())
 
 
@@ -739,7 +796,7 @@ def split_resume(text: Optional[str] = None, path: Optional[str] = None, *, acto
     items = _await(lambda: resume_split.extract(text or ""))
     if not items:
         raise ValueError("没从原文里拆出经历，档案没动")
-    saved = [save("memory", item, actor=actor) for item in items]
+    saved = [save("memory", item, actor=actor, from_resume=True) for item in items]
     return {
         "count": len(saved),
         "change_ids": [s["change_id"] for s in saved],
@@ -1148,6 +1205,17 @@ def draft_email(job_id: int, resume_id: Optional[int] = None, *, actor: str) -> 
             "rules": rules, "doc_id": saved["record"]["id"], "change_id": saved["change_id"]}
 
 
+class ReconcileIn(_In):
+    pass
+
+
+def reconcile_memory(*, actor: str = "") -> dict[str, Any]:
+    """做梦：核对记忆前后说法，只出建议不写库。采纳由用户在档案页点，走 save（进最近改动，可撤销）。"""
+    from app.core import reconcile
+
+    return {"items": reconcile.scan()}
+
+
 # ---------- registry ----------
 
 class Tool(BaseModel):
@@ -1204,6 +1272,10 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="draft_email", input=DraftEmailIn, fn=draft_email,
          description="写邮件投递草稿：从岗位 JD / 备注里拆出投递邮箱和标题、附件要求，按档案写标题和正文，导出简历 PDF，存成岗位下的 email 文档（可撤销）。"
                      "不会发送：把草稿给用户看，用户在邮件客户端里确认后自己发。标题格式和 JD 要求不一致时提醒用户改。"),
+    Tool(name="reconcile_memory", input=ReconcileIn, fn=reconcile_memory,
+         description="只读核对职业记忆（不改任何记录）：同一个数或时间前后写法不一样（记忆之间、记忆和原话 quote、主简历、档案）、"
+                     "一处写已完成一处写计划中、重复记了两次、待补 / 记不清放太久。每条给证据、一句建议，能直接改的给 proposed（一次 save 的参数）。"
+                     "别自己拿 proposed 去 save：告诉用户去档案页「待核对」点采纳。"),
 ]}
 
 

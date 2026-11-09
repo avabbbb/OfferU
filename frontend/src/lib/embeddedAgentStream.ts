@@ -25,13 +25,14 @@ interface AgentStreamEvent {
 export function createInitialAgentStreamState(): AgentStreamState { return { toolExecutions: {} }; }
 export function agentStreamReducer(state: AgentStreamState, event: AgentStreamEvent): AgentStreamState {
   switch (event.type) {
-    case "tool_execution_start":
+    case "tool_execution_start": {
+      const id = event.tool_call_id || event.toolCallId || nextId("tool");
       return {
         ...state,
         toolExecutions: {
           ...state.toolExecutions,
-          [event.tool_call_id || event.toolCallId || nextId("tool")]: {
-            id: event.tool_call_id || event.toolCallId || nextId("tool"),
+          [id]: {
+            id,
             toolName: event.tool_name || event.toolName || "tool",
             args: event.args,
             status: "running",
@@ -39,6 +40,7 @@ export function agentStreamReducer(state: AgentStreamState, event: AgentStreamEv
           },
         },
       };
+    }
     case "tool_execution_update":
       // Tool payloads are LLM-facing; never surface raw serialized results in the UI.
       return updateTool(state, event.tool_call_id || event.toolCallId, {

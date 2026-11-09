@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Button, Input } from "@heroui/react";
-import { useSWRConfig } from "swr";
 import { dataSafetyApi } from "@/lib/api";
-import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { freshResetApi } from "@/lib/freshResetApi";
 import { getRuntimeIdentity, type RuntimeIdentity } from "@/lib/runtimeIdentityApi";
 import { resetOnboardingForFreshStart } from "@/lib/useOnboarding";
 import { SHOWCASE } from "@/lib/showcase";
+import { refreshAll } from "@/lib/core";
 
 const CONFIRMATION_TEXT = "全清并重新开始";
 
@@ -18,7 +17,6 @@ export function FreshResetPanel() {
 }
 
 function FreshResetPanelContent() {
-  const { mutate } = useSWRConfig();
   const [identity, setIdentity] = useState<RuntimeIdentity | null>(null);
   const [status, setStatus] = useState<Awaited<ReturnType<typeof dataSafetyApi.status>> | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
@@ -56,7 +54,7 @@ function FreshResetPanelContent() {
       setBackupId(nextBackupId);
       let cacheWarning = "";
       try {
-        await mutate((key) => typeof key === "string" && key.startsWith(resolveApiBase()));
+        await refreshAll();
       } catch {
         cacheWarning = "部分页面缓存未能立即刷新。";
       }

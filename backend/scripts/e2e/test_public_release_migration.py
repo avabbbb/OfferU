@@ -334,7 +334,6 @@ def _start_backend(
             "OFFERU_RUNTIME_MODE": "local",
             "OFFERU_ENABLE_MCP": "false",
             "OFFERU_INTERVIEW_RUNTIME": "replay",
-            "MEMORY_DISTILL_INTERVAL_SECONDS": "0",
             "WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS": "0",
             "CORS_ORIGINS": "http://127.0.0.1:7410,http://localhost:7410",
             "PYTHONUNBUFFERED": "1",

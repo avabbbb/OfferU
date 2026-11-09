@@ -618,18 +618,6 @@ export interface GuardianSuggestion {
   prompt: string;
 }
 
-export interface AgentMemorySnapshot {
-  schema_version: string;
-  user_stage: "unknown" | "campus" | "experienced" | string;
-  confidence: number;
-  facts: string[];
-  preferences: string[];
-  goals: string[];
-  risks: string[];
-  events: string[];
-  updated_at: string;
-}
-
 export interface AgentConversationSummary {
   id: string;
   title: string;
@@ -663,7 +651,6 @@ export interface AgentResponse {
   user_stage?: "unknown" | "campus" | "experienced" | string;
   stage_confidence?: number;
   stage_signals?: string[];
-  memory_snapshot?: AgentMemorySnapshot;
   alerts?: GuardianAlert[];
   proactive_suggestions?: GuardianSuggestion[];
   conversation_id?: string;
@@ -1392,11 +1379,8 @@ export interface AgentBoardRow {
   last_call: { at?: string; client?: string; session_hint?: string; thread_id?: string };
   skill_path: string;
   error: string;
-  memory_status: "none" | "exported" | "imported";
-  memory: { exported_at?: string; imported_at?: string; target?: string };
   last_check: { at?: string; action?: string; skill_status?: string; executable_found?: boolean };
   executable: string;
-  memory_file: string;
   docs_url: string;
 }
 
@@ -1415,7 +1399,6 @@ export interface CustomAgentInput {
   display_name: string;
   executable?: string;
   skill_root: string;
-  memory_file?: string;
 }
 
 const agentBoardPath = (agentId: string, suffix = "") => "/api/agent-board/" + encodeURIComponent(agentId) + suffix;
@@ -1555,15 +1538,6 @@ export const agentSupportApi = {
   deleteConversation: (id: string) =>
     request<{ ok: boolean }>(`/api/agent/conversations/${encodeURIComponent(id)}`, {
       method: "DELETE",
-    }),
-  exportMemory: (format: "json" | "markdown" = "json") =>
-    request<{ format: string; content: any; memory: AgentMemorySnapshot }>(
-      `/api/agent/memory/export?${buildQuery({ format })}`
-    ),
-  importMemory: (content: Record<string, any> | string) =>
-    request<{ ok: boolean; memory: AgentMemorySnapshot }>("/api/agent/memory/import", {
-      method: "POST",
-      body: JSON.stringify({ content }),
     }),
 };
 
@@ -1922,152 +1896,6 @@ export const profileApi = {
     request("/api/profile/agent/apply-patch", {
       method: "POST",
       body: JSON.stringify(data),
-    }),
-};
-
-// ---- Career Model & Memory Ledger API（ADR-0048）----
-export interface CareerModelEntry {
-  id: number;
-  section_type: string;
-  title: string;
-  content_json: Record<string, any>;
-  tier: string | null;
-  sort_order: number;
-  status: string;
-  invalidated_at: string | null;
-  superseded_by_id: number | null;
-  source_status: string;
-  source_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface MemoryInboxItem {
-  id: number;
-  proposal_key: string;
-  target_tier: string;
-  section_type: string;
-  title: string;
-  before: Record<string, any>;
-  after: Record<string, any>;
-  reason: string;
-  impact: string[];
-  status: string;
-  applied_profile_section_id: number | null;
-  supersedes_proposal_id: number | null;
-  applied_at: string | null;
-  review_note: string;
-  evidence: Array<{
-    link_id: number;
-    active: boolean;
-    observation: {
-      id: number;
-      observation_type: string;
-      content: Record<string, any>;
-      status: string;
-      source: { id: number; source_type: string; title: string; status: string; locator: string };
-    };
-  }>;
-  created_at: string;
-  updated_at: string;
-  reviewed_at: string | null;
-  invalidated_at: string | null;
-}
-
-export interface CareerLedgerEntry extends MemoryInboxItem {
-  applied_section: {
-    id: number;
-    section_type: string;
-    title: string;
-    tier: string | null;
-    status: string;
-    invalidated_at: string | null;
-    superseded_by_id: number | null;
-  } | null;
-}
-
-export interface ProfileEvolutionReport {
-  schema: string;
-  generated_at: string;
-  ledger: {
-    total: number;
-    pending: number;
-    accepted: number;
-    rejected: number;
-  };
-  new_facts: MemoryInboxItem[];
-  strengthened_facts: MemoryInboxItem[];
-  conflicts: MemoryInboxItem[];
-  replaced_facts: MemoryInboxItem[];
-  rejected_observations: MemoryInboxItem[];
-  potential_hypotheses: MemoryInboxItem[];
-  application_status_changes: Array<{
-    observation_id: number;
-    source_type: string;
-    stage: string;
-    previous_stage: string | null;
-    observation_type: string;
-    confirmed: boolean;
-    candidate_id: string | number | null;
-    observed_at: string;
-  }>;
-  timeline: Array<{
-    period: string;
-    first_observed_at: string;
-    last_observed_at: string;
-    observation_count: number;
-    proposal_count: number;
-    accepted_count: number;
-    rejected_count: number;
-    source_types: string[];
-    observation_types: string[];
-  }>;
-  evidence_coverage: {
-    active_profile_entries: number;
-    entries_with_sources: number;
-    source_traceability_ratio: number;
-  };
-}
-
-export const memoryApi = {
-  localSources: () => request<{ items: Array<{ id: string; name: string; bytes: number; can_preview: boolean }>; message?: string }>("/api/memory/local-sources"),
-  previewLocalSource: (sourceId: string) => request<{ source_id: string; source_name: string; text: string }>("/api/memory/local-sources/preview", {
-    method: "POST", body: JSON.stringify({ source_id: sourceId, consent: true }),
-  }),
-  importCandidates: (sourceName: string, excerpts: string[]) =>
-    request<{ items: MemoryInboxItem[]; duplicates: number; imported: number }>("/api/memory/import", {
-      method: "POST",
-      body: JSON.stringify({ source_name: sourceName, excerpts, consent: true }),
-    }),
-
-  inbox: (params?: { status?: string; limit?: number }) =>
-    request<{ items: MemoryInboxItem[] }>(
-      `/api/memory/inbox?${buildQuery(params)}`
-    ),
-
-  ledger: (params?: { status?: string; limit?: number }) =>
-    request<{ entries: CareerLedgerEntry[] }>(
-      `/api/memory/ledger?${buildQuery(params)}`
-    ),
-
-  careerModel: () =>
-    request<{
-      profile_id: number | null;
-      derived_at: string;
-      entries: CareerModelEntry[];
-      by_tier: Record<string, CareerModelEntry[]>;
-      invalidated_entries: CareerModelEntry[];
-    }>("/api/memory/career-model"),
-
-  evolutionReport: (limit = 200) =>
-    request<ProfileEvolutionReport>(
-      `/api/agent/runtime/profile-evolution?limit=${Math.max(1, Math.min(500, Math.round(limit)))}`
-    ),
-
-  reviewProposal: (proposalId: number, action: string, note = "") =>
-    request<MemoryInboxItem>(`/api/memory/proposals/${proposalId}/review`, {
-      method: "POST",
-      body: JSON.stringify({ action, note }),
     }),
 };
 

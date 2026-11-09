@@ -22,7 +22,6 @@ RESET_DATA_DIRECTORIES = (
 
 RESET_DATA_FILES = (
     "harness_agent_conversations.json",
-    "harness_agent_memory.json",
     "harness_agent_runs.json",
 )
 
@@ -34,15 +33,5 @@ RESET_DATA_FILE_DEFAULTS = {
     "harness_agent_runs.json": {
         "schema_version": "offeru.agent_runs.v2",
         "runs": [],
-    },
-    "harness_agent_memory.json": {
-        "schema_version": "offeru.agent_memory.v1",
-        "user_stage": "unknown",
-        "confidence": 0.0,
-        "facts": [],
-        "preferences": [],
-        "goals": [],
-        "risks": [],
-        "events": [],
     },
 }

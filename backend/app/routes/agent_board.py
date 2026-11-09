@@ -19,7 +19,6 @@ class CustomAgentRequest(BaseModel):
     display_name: str = Field(default="", max_length=60)
     executable: str = Field(default="", max_length=80)
     skill_root: str = Field(default="", max_length=500)
-    memory_file: str = Field(default="", max_length=500)
 
 
 class ConnectRequest(BaseModel):
@@ -78,8 +77,3 @@ async def launch_agent(agent_id: str, authorization: str = Header(...)) -> dict[
     if not accepts_authorization(authorization):
         raise HTTPException(status_code=403, detail="只能在 OfferU 工作台里打开对话")
     return await _call(agent_board.launch_agent, agent_id)
-
-
-@router.post("/{agent_id}/memory-export")
-async def export_agent_memory(agent_id: str) -> dict[str, Any]:
-    return await _call(agent_board.export_memory_for_agent, agent_id)

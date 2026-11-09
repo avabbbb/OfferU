@@ -44,7 +44,6 @@ _BUSINESS_TO_OPERATIONS = {
     "offeru_list_application_progress_candidates": "list_application_progress_candidates",
     "offeru_list_learning_observations": "list_learning_observations",
     "offeru_list_memory_inbox": "list_memory_inbox",
-    "offeru_get_profile_evolution_report": "get_profile_evolution_report",
     "offeru_list_email_accounts": "list_email_accounts",
     "offeru_list_email_sync_runs": "list_email_sync_runs",
 }
@@ -60,7 +59,6 @@ _REQUIRED_CONTEXT_READS = frozenset(
         "list_jobs",
         "list_learning_observations",
         "list_memory_inbox",
-        "get_profile_evolution_report",
         "list_email_accounts",
         "list_email_sync_runs",
     }
@@ -76,7 +74,6 @@ _CONFORMANCE_READ_LIMITS = {
     "list_profile_evidence": 50,
     "list_learning_observations": 25,
     "list_memory_inbox": 25,
-    "get_profile_evolution_report": 25,
     "list_email_accounts": 25,
     "list_email_sync_runs": 25,
 }
@@ -123,7 +120,6 @@ def _tool_descriptions() -> list[str]:
         "offeru_list_application_progress_candidates() — read pending email progress candidates",
         "offeru_list_learning_observations() — read career observations",
         "offeru_list_memory_inbox() — read pending profile candidates",
-        "offeru_get_profile_evolution_report() — read the deterministic Profile evolution report",
         "offeru_list_email_accounts() — read connected email account metadata",
         "offeru_list_email_sync_runs() — read email sync status",
     ]

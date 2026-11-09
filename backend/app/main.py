@@ -111,10 +111,6 @@ async def lifespan(app: FastAPI):
         recover_authorized_research_sessions,
         stop_authorized_research_service,
     )
-    from app.services.memory_distiller import (
-        start_memory_distill_service,
-        stop_memory_distill_service,
-    )
     from app.services.work_sources import (
         start_work_source_auto_sync,
         stop_work_source_auto_sync,
@@ -125,9 +121,6 @@ async def lifespan(app: FastAPI):
         recover_authorized_research_sessions,
     )
 
-    async def _start_memory_distill() -> None:
-        start_memory_distill_service()
-
     async def _start_work_source_auto_sync() -> None:
         start_work_source_auto_sync()
 
@@ -135,7 +128,6 @@ async def lifespan(app: FastAPI):
     from app.services.boss_sync import start_boss_sync_service, stop_boss_sync_service
 
     await run_startup_recovery("boss_sync", start_boss_sync_service)
-    await run_startup_recovery("memory_distill", _start_memory_distill)
     await run_startup_recovery(
         "work_source_auto_sync",
         _start_work_source_auto_sync,
@@ -156,7 +148,6 @@ async def lifespan(app: FastAPI):
         await stop_authorized_research_service()
         await stop_email_sync_service()
         await stop_boss_sync_service()
-        await stop_memory_distill_service()
         await stop_work_source_auto_sync()
 
 

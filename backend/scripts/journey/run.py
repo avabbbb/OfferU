@@ -83,13 +83,16 @@ def main() -> None:
     parser.add_argument("--mode", choices=["real"], default="real",
                         help="real：用真实数据目录 config.json 里激活的模型（只读复制）")
     parser.add_argument("--seed-only", action="store_true", help="只建隔离目录并写种子数据，不跑回合（人工测试用）")
+    parser.add_argument("--memory-arm", choices=["none", "index", "full"], default="index",
+                        help="记忆注入对照组：none 不注入 / index 短索引（默认）/ full 全文")
     args = parser.parse_args()
-    tag = f"{args.scenario}-a{args.attempt}-{datetime.now():%Y%m%d-%H%M%S}"
+    tag = f"{args.scenario}-{args.memory_arm}-a{args.attempt}-{datetime.now():%Y%m%d-%H%M%S}"
     root = isolated_root(Path(args.out), tag)
     if (REAL_DATA / "config.json").exists():
         shutil.copyfile(REAL_DATA / "config.json", root / "data" / "config.json")
     os.environ["OFFERU_DATA_DIR"] = str(root / "data")
     os.environ["OFFERU_TRACE_DIR"] = str(root / "traces")
+    os.environ["OFFERU_MEMORY_ARM"] = args.memory_arm
     os.environ.pop("DATABASE_URL", None)
     sys.path[:0] = [str(BACKEND), str(HERE)]
 
@@ -104,9 +107,10 @@ def main() -> None:
     if runtime_data_dir() != (root / "data").resolve():
         raise SystemExit("数据目录没有隔离，停止")
     meta = {"journey_id": tag, "scenario": args.scenario, "attempt": args.attempt, "mode": args.mode,
+            "memory_arm": args.memory_arm,
             "started_at": datetime.now().isoformat(), "data_dir": str(root / "data")}
     with TestClient(app, base_url=BASE_URL) as client:
-        meta["seed_ids"] = seed.seed(tools)
+        meta["seed_ids"] = seed.seed(tools, args.scenario)
         if args.seed_only:
             meta["mode"] = "manual"
             (root / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -63,7 +63,6 @@ def _run_worker(database_url: str, task_key: str) -> subprocess.Popen[str]:
         {
             "DATABASE_URL": database_url,
             "OFFERU_ENABLE_MCP": "false",
-            "MEMORY_DISTILL_INTERVAL_SECONDS": "0",
             "WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS": "0",
         }
     )
@@ -104,7 +103,6 @@ async def _read_result(database_url: str, task_id: str) -> tuple[dict[str, Any],
     environment = os.environ.copy()
     environment["DATABASE_URL"] = database_url
     environment["OFFERU_ENABLE_MCP"] = "false"
-    environment["MEMORY_DISTILL_INTERVAL_SECONDS"] = "0"
     environment["WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS"] = "0"
     script = r'''
 import asyncio
@@ -149,7 +147,6 @@ def main() -> None:
         environment = os.environ.copy()
         environment["DATABASE_URL"] = database_url
         environment["OFFERU_ENABLE_MCP"] = "false"
-        environment["MEMORY_DISTILL_INTERVAL_SECONDS"] = "0"
         environment["WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS"] = "0"
         init_process = subprocess.run(
             [

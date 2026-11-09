@@ -29,7 +29,8 @@ export const MEMORY_KIND: Record<MemoryKind, string> = {
 export type Profile = Partial<Record<"name" | "school" | "major" | "degree" | "grad_year" | "phone" | "email" | "city" | "target" | "about" | "photo", string>> & { id?: number };
 // 经历性质：和后端 tools.MEMORY_MODE 一致
 export const MEMORY_MODE: Partial<Record<MemoryKind, string[]>> = { experience: ["全职", "实习", "兼职"], education: ["全日制", "非全日制"] };
-export type Memory = Base & { kind: MemoryKind; title?: string; body?: string; start?: string; end?: string; mode?: string };
+// source / confirmed 和后端 tools._provenance 一致；老记录没有 confirmed 算确认过
+export type Memory = Base & { kind: MemoryKind; title?: string; body?: string; start?: string; end?: string; mode?: string; source?: "user" | "resume" | "agent"; confirmed?: boolean };
 export type Doc = Base & { kind: string; title?: string; body?: string; resume?: unknown; template?: string; style?: import("@/lib/resumeStyle").StyleInput };
 export type Change = { id: number; at: string; actor: string; summary: string; undone_at: string | null };
 export type Overview = {
@@ -54,6 +55,12 @@ export async function write<T = unknown>(name: string, args: Record<string, unkn
   const result = await tool<T>(name, args);
   await globalMutate((key) => Array.isArray(key) && key[0] === "tool");
   return result;
+}
+
+// 全局刷新两种缓存键：工具的 ["tool", ...] 和旧接口的 URL 字符串。重置数据、确认 Agent 动作这类绕过 write() 的写入用它。
+export async function refreshAll(): Promise<void> {
+  const base = resolveApiBase();
+  await globalMutate((key) => (Array.isArray(key) && key[0] === "tool") || (typeof key === "string" && key.startsWith(base)));
 }
 
 export function when(at?: string): string {

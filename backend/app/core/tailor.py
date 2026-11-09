@@ -38,6 +38,7 @@ PROMPT = (
     "简历要经得起面试追问：技术类经历每段写出关键做法（方案选型和原因、难点怎么解决、性能或质量的量化结果），用档案里出现过的技术名词，不写空泛的「负责」「参与」；"
     "档案里没有的做法和数字不要补，JD 要求但档案里没有的技能不要硬塞。\n"
     "如果给了「岗位评估」，按里面的逐条匹配和简历怎么改来取舍；评估里写成差距或「待补充」的内容不要写进简历。\n"
+    "如果给了「用户的口径和偏好」，那是用户定的写法规则，必须遵守；它不是事实，不要当成经历写进简历。\n"
     "只输出完整的 Markdown 简历本身，不要解释，不要代码块。写法："
     + FIELDS["doc"].split("也可以只传 body，写法：", 1)[1].split("，保存时转成", 1)[0]
 )
@@ -57,6 +58,7 @@ REVIEW_PROMPT = (
     "5. 不改第一行「# 名字」和联系方式那一行，不改 ## / ### 的格式结构。\n"
     "6. old 从待审简历原样复制，带够上下文保证只出现一次；一条 edit 只改一处。没有问题就返回空的 edits，notes 里没意见的项写「无」。\n"
     "7. asks：挑出和 JD 最相关、只写了动作没写结果、事实来源里也找不到结果的句子，最多 3 句；没有就返回空数组。question 要具体好答，比如「你接手前后，粉丝或阅读量大概变了多少？」「这件事帮团队省了时间或钱吗？」「有没有被表扬、被推广到别的组、拿奖？」，不要问「请量化你的成果」。不要替用户编结果。"
+    "\n8. 「用户的口径和偏好」是用户定的写法规则，必须遵守：待审简历违反了就给 edit 改过来（category 写 tone）；它不是事实来源，不能当出处。"
 )
 
 # 内置 tw93/Kami 的简历写作规范（app/assets/kami，MIT）。只取内容策略，版式由 doc.style 管。
@@ -78,11 +80,25 @@ _running: set[int] = set()
 FENCE = chr(96) * 3  # 三个反引号
 
 
+def _usable() -> list[dict[str, Any]]:
+    """用户确认过的记忆，按 id 排；Agent 推断、还没确认的不算，老记录没 confirmed 字段算确认过。"""
+    return [m for m in sorted(store.all_of("memory"), key=lambda record: record["id"]) if m.get("confirmed") is not False]
+
+
+def rules() -> str:
+    """口径：kind=preference 的记忆是用户定的写法规则（「以后不要突出X」），单列出来让模型遵守，不当事实。没有就是空串。"""
+    lines = ["：".join(filter(None, [str(m.get("title") or "").strip(), str(m.get("body") or "").strip()]))
+             for m in _usable() if m.get("kind") == "preference"]
+    return "\n".join(f"- {line}" for line in lines if line)
+
+
 def _facts() -> str:
     profile = store.first("profile") or {}
     keys = ("name", "school", "major", "degree", "grad_year", "phone", "email", "city", "target", "about")
     lines = [f"{key}: {profile[key]}" for key in keys if profile.get(key)]
-    for memory in sorted(store.all_of("memory"), key=lambda record: record["id"]):
+    for memory in _usable():
+        if memory.get("kind") == "preference":  # 口径是规则不是事实，走 rules()
+            continue
         span = " – ".join(filter(None, [memory.get("start"), memory.get("end")]))
         head = " ".join(filter(None, [f"[{MEMORY_KIND.get(memory.get('kind') or '', '其他')}]", memory.get("title"), memory.get("mode"), span]))
         body = str(memory.get("body") or "")
@@ -118,9 +134,10 @@ def _jd(job: dict[str, Any]) -> str:
 
 
 def messages(doc: dict[str, Any], job: dict[str, Any]) -> list[dict[str, str]]:
-    notes = evaluation_notes(job["id"])
+    notes, ruled = evaluation_notes(job["id"]), rules()
     user = (_jd(job) + "\n\n"
             + (f"## 岗位评估（参考，事实仍以档案为准）\n{notes}\n\n" if notes else "")
+            + (f"## 用户的口径和偏好（必须遵守）\n{ruled}\n\n" if ruled else "")
             + f"## 档案和经历（唯一的事实来源）\n{_facts()}\n\n"
             f"## 现在的简历\n{doc.get('body') or '（空）'}")
     return [{"role": "system", "content": PROMPT + kami_rules()}, {"role": "user", "content": user}]
@@ -128,8 +145,10 @@ def messages(doc: dict[str, Any], job: dict[str, Any]) -> list[dict[str, str]]:
 
 def review_messages(doc: dict[str, Any], job: dict[str, Any], body: str, pages: Optional[float]) -> list[dict[str, str]]:
     measured = f"按导出 PDF 的版式量，预计 {pages:.2f} 页" if pages else "量不了（本机没有可用的 Chromium），篇幅只按内容判断"
+    ruled = rules()
     user = (_jd(job) + "\n\n"
-            f"## 档案和经历（事实来源）\n{_facts()}\n\n"
+            + (f"## 用户的口径和偏好（必须遵守）\n{ruled}\n\n" if ruled else "")
+            + f"## 档案和经历（事实来源）\n{_facts()}\n\n"
             f"## 原简历（事实来源）\n{doc.get('body') or '（空）'}\n\n"
             f"## 页数\n{measured}\n\n"
             f"## 待审简历\n{body}")
@@ -374,9 +393,11 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
         asks = pick_asks(asks, body)
         mark = time.perf_counter()
         checks = verify.check(body, (_facts() + "\n\n" + origin).strip())
+        memories = store.all_of("memory")  # 留下的经历有没有丢数字 / 强动词；整条没出现的只列标题
+        checks.update(dropped=verify.retained(body, memories), omitted=verify.omitted(body, memories))
         timings["verify"], mark = _since(mark), time.perf_counter()
         target_id, extra = _target(doc, job)
-        result = await asyncio.to_thread(save, "doc", {**extra, "body": body, "pending_asks": asks}, target_id, actor=actor)
+        result = await asyncio.to_thread(save, "doc", {**extra, "body": body, "pending_asks": None if review_only else asks}, target_id, actor=actor)
         record = result["record"]
         timings["save"], mark = _since(mark), time.perf_counter()
         pages = await asyncio.to_thread(measure, record["body"], record)

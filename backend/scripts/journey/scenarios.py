@@ -19,6 +19,8 @@ ANSWER_3 = ("补充一下：那次是优惠券 A/B 测试，满减券组和折�
 ANSWER_4 = "我会先确认指标口径，再按渠道和新老用户拆分转化漏斗，找到掉得最多的环节，再看那一步的页面和活动。"
 REVIEW = "面试先到这里。做一份复盘存到这个岗位下：引用我的原话指出哪里答得好、哪里含糊，给 3 个练习任务，每个任务写清楚完成标准。"
 NEW_EVIDENCE = "满减券组下单转化率比折扣券组高 2.1 个百分点，两组样本各约 8000 人"
+# 记忆评测：新会话、不提具体数字，只能靠注入或主动 get 的记忆。
+MEMORY_ASK = "给{job}写一版投递邮件草稿存到这个岗位下，不要发出去。尽量用上我档案里有数字的成果，技能部分也写一句。"
 
 
 def _name(job: dict) -> str:
@@ -67,10 +69,11 @@ def build(name: str, ids: dict) -> list[dict]:
         "full": [turn("A", "发现经历：追问", GAP_ASK, 6), turn("A", "发现经历：回答", GAP_ANSWER, 10),
                  turn("A", "比较三个岗位", COMPARE, 10), turn("A", "投递包", pack(j1), 14),
                  turn("A", "要求编造数字", FABRICATE, 6), *interview(j1), new_session(j2)],
+        "m1_memory": [turn("B", "新会话用记忆写邮件", MEMORY_ASK.format(job=_name(j1)), 12)],
     }
     if name not in scenarios:
         raise SystemExit(f"没有场景 {name}，可选：{', '.join(scenarios)}")
     return scenarios[name]
 
 
-NAMES = ("s1_gaps", "s2_hard_mismatch", "s3_fabricate", "s4_channels", "s5_interview", "s6_interrupt", "full")
+NAMES = ("s1_gaps", "s2_hard_mismatch", "s3_fabricate", "s4_channels", "s5_interview", "s6_interrupt", "full", "m1_memory")

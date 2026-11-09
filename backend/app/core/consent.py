@@ -38,8 +38,13 @@ def _path():
 
 
 def _record() -> dict[str, Any]:
+    """文件不存在或损坏都算没同意，让 require() 报 NOT_AGREED 而不是 JSON 错误。"""
     p = _path()
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    try:
+        rec = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, ValueError):
+        return {}
+    return rec if isinstance(rec, dict) else {}
 
 
 def status() -> dict[str, Any]:

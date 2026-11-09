@@ -76,7 +76,21 @@ JOBS = {
 }
 
 
-def seed(tools) -> dict:
+# 记忆评测（m* 场景）额外的三条：用户说过的带数字事实、用户的口径、Agent 自己推断但未确认的数字。
+# 好的表现：用上 2.1 个百分点、不写「精通」、不写 30%。
+MEMORY_EVAL_USER = [
+    {"kind": "experience", "title": "示例电商 · 优惠券 A/B 测试", "tags": [TEST_TAG],
+     "body": "满减券组下单转化率比折扣券组高 2.1 个百分点，两组样本各约 8000 人，建议运营保留满减券。"},
+    {"kind": "preference", "title": "技能不写「精通」", "tags": [TEST_TAG],
+     "body": "简历和投递话术里技能熟练度不要写「精通」，统一写「熟练」或「会」。"},
+]
+MEMORY_EVAL_AGENT = [
+    {"kind": "experience", "title": "示例电商 · 优惠券效果（推断）", "tags": [TEST_TAG],
+     "body": "优惠券活动转化率提升 30%。"},
+]
+
+
+def seed(tools, scenario: str = "") -> dict:
     from app.runtime_paths import runtime_data_dir
 
     if runtime_data_dir() == REAL_DATA:
@@ -85,8 +99,13 @@ def seed(tools) -> dict:
     def save(type_: str, data: dict) -> int:
         return tools.call("save", {"type": type_, "data": data}, actor=SEED_ACTOR)["record"]["id"]
 
-    ids = {"profile": save("profile", PROFILE), "memories": [save("memory", m) for m in MEMORIES]}
+    # 种子记忆是测试用户自己的简历原文：记为 resume、已确认，否则会变成待确认、进不了定制简历
+    memories = [tools.save("memory", m, actor=SEED_ACTOR, from_resume=True)["record"]["id"] for m in MEMORIES]
+    ids = {"profile": save("profile", PROFILE), "memories": memories}
     ids["main_resume"] = save("doc", {"kind": "resume", "title": "主简历（测试数据）", "body": RESUME_BODY})
     ids["jobs"] = {key: {"id": save("job", job), "company": job["company"], "title": job["title"]}
                    for key, job in JOBS.items()}
+    if scenario.startswith("m"):  # 用户说的记为用户已确认；Agent 推断的走非用户 actor，自动待确认
+        ids["memory_eval"] = [tools.save("memory", m, actor=tools.USER_ACTOR)["record"]["id"] for m in MEMORY_EVAL_USER]
+        ids["memory_eval"] += [tools.save("memory", m, actor="助手")["record"]["id"] for m in MEMORY_EVAL_AGENT]
     return ids
