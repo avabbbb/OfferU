@@ -609,7 +609,7 @@ async def resume_tailor(doc_id: int, request: Request):
 @app.post("/api/resume/impact")
 async def resume_impact(request: Request):
     """追问成果：用户回答 → 记忆草稿，只出草稿不写库（工作台给用户看过、确认后逐条 save memory）。
-    不进工具清单：工具保持 20 个，外部 agent 自己整理回答再 save(memory)。Body: {answers: [{old, question, answer}], job_id?}."""
+    不进工具清单：外部 agent 自己整理回答再 save(memory)。Body: {answers: [{old, question, answer}], job_id?}."""
     from pydantic import ValidationError
 
     from app.core import impact, store
