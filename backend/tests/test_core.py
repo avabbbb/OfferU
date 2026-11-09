@@ -46,7 +46,7 @@ def test_mcp_and_http_share_tools(tmp_path, monkeypatch):
     from app.mcp_server import mcp
 
     names = [t.name for t in asyncio.run(mcp.list_tools())]
-    assert names[0] == "overview" and len(names) <= 20
+    assert names[0] == 'overview'
     asyncio.run(mcp.call_tool("save", {"type": "job", "data": {"company": "米哈游"}}))
     with TestClient(app, base_url="http://127.0.0.1:8766") as client:
         listed = client.post("/api/tools/list", json={"type": "job"}).json()

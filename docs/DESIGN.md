@@ -76,7 +76,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ## 5. 工具清单
 
-现在 20 个（`GET /api/tools` 可查）。✓ 表示已实现。
+现在 21 个（`GET /api/tools` 可查）。✓ 表示已实现。
 
 | 工具 | 作用 | 状态 |
 | --- | --- | --- |
@@ -94,7 +94,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | handoff | 把长任务交给后台 Codex，返回任务 id | PR5 |
 | handoff_status | 看后台任务进度 | PR5 |
 | email_sync | 邮箱状态 / 同步：拉新邮件，识别回执和邀约，直接回写岗位状态和事项（可撤销） | ✓ |
-| tailor_resume | 按岗位 JD 改写简历（参考岗位评估）：岗位简历原地改；主简历写进该岗位的定制简历（没有就新建），主简历不动（一条 change，可撤销）。流程：起草（流式，JD 原文进 prompt，噪声由模型忽略）→ 审稿（独立一次模型调用，只读 JD、档案、原简历、初稿和 Playwright 按导出 HTML 量的页数，输出 {old, new, reason, category} 修改和四类意见）→ 按 old 精确替换（找不到 / 不唯一就跳过，改坏格式整轮作废），审 1 轮（2026-11-05 由 2 轮砍到 1 轮，省一次模型调用），最后写一次库。判断都交给模型，代码只量页数、做替换。返回 pages、rounds、notes、grounding（因找不到出处被改掉的内容，前端可一键存进档案）、asks（第 1 轮审稿挑出只写了动作、没写结果的句子，最多 3 条，存进 doc.pending_asks；先出一版再问用户）。review_only=true 不起草，只对已有定制简历跑审稿（档案补了新成果后再改一下）。用户的回答整理成记忆草稿走工作台专用路由 POST /api/resume/impact（只出草稿不写库；不是工具，工具仍是 20 个；外部 agent 自己整理后 save memory，带 quote 和 said_at），用户点「存进档案」才写入 | ✓ |
+| tailor_resume | 按岗位 JD 改写简历（参考岗位评估）：岗位简历原地改；主简历写进该岗位的定制简历（没有就新建），主简历不动（一条 change，可撤销）。流程：起草（流式，JD 原文进 prompt，噪声由模型忽略）→ 审稿（独立一次模型调用，只读 JD、档案、原简历、初稿和 Playwright 按导出 HTML 量的页数，输出 {old, new, reason, category} 修改和四类意见）→ 按 old 精确替换（找不到 / 不唯一就跳过，改坏格式整轮作废），审 1 轮（2026-11-05 由 2 轮砍到 1 轮，省一次模型调用），最后写一次库。判断都交给模型，代码只量页数、做替换。返回 pages、rounds、notes、grounding（因找不到出处被改掉的内容，前端可一键存进档案）、asks（第 1 轮审稿挑出只写了动作、没写结果的句子，最多 3 条，存进 doc.pending_asks；先出一版再问用户）。review_only=true 不起草，只对已有定制简历跑审稿（档案补了新成果后再改一下）。用户的回答整理成记忆草稿走工作台专用路由 POST /api/resume/impact（只出草稿不写库；不是工具；外部 agent 自己整理后 save memory，带 quote 和 said_at），用户点「存进档案」才写入 | ✓ |
 | split_resume | 把旧简历原文拆成一条条 memory 写进档案（可整次撤销） | ✓ |
 | add_job | 贴岗位链接或 JD：抓正文、拆公司 / 岗位 / 城市 / JD，截止日另存 deadline 事项；抓不到正文就报错不存 | ✓ |
 | evaluate_jobs | 评估岗位：每个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖），0–100 分和三句理由写回 job.score / reasons（每步一条 change） | ✓ |
