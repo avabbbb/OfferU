@@ -15,10 +15,34 @@ from app.core.resume_split import available  # noqa: F401  同一套「配了模
 
 SECTIONS = ("岗位摘要", "逐条匹配", "来源与真假", "职级与薪资", "简历怎么改", "面试准备", "反问")
 
-PROMPT = """你是求职顾问。根据候选人的档案和职业记忆，评估一个岗位，只输出严格 JSON：
-{"score": 0, "reasons": ["", "", ""], "greeting": "", "markdown": ""}
+# 评分口径 v2：模型按固定分项打分，总分由代码相加。v1（2026-11 前）是模型直接给总分，两种分数不能直接比，旧分数保留不重评。
+RUBRIC_VERSION = "v2"
+RUBRIC = (("hard", "硬门槛", 25), ("core", "核心职责", 30), ("evidence", "证据强度", 20),
+          ("industry", "行业认知", 15), ("expression", "表达", 10))
 
-score：0–100 的整数。80 以上值得优先投，60–79 可以投，60 以下不建议。JD 信息太少或档案是空的就给保守分并在理由里说明。
+
+def _breakdown(raw: Any) -> Optional[dict[str, int]]:
+    """分项分数按各自上限截断；缺项或不是数字就当没给，调用方退回模型自报的总分。"""
+    if not isinstance(raw, dict):
+        return None
+    parts: dict[str, int] = {}
+    for key, _, cap in RUBRIC:
+        try:
+            parts[key] = max(0, min(cap, int(round(float(raw[key])))))
+        except (KeyError, TypeError, ValueError):
+            return None
+    return parts
+
+
+def rubric_section(parts: dict[str, int]) -> str:
+    items = "、".join(f"{name} {parts[key]}/{cap}" for key, name, cap in RUBRIC)
+    return f"## 评分口径\n口径 {RUBRIC_VERSION}：{items}，合计 {sum(parts.values())}。"
+
+
+PROMPT = """你是求职顾问。根据候选人的档案和职业记忆，评估一个岗位，只输出严格 JSON：
+{"breakdown": {"hard": 0, "core": 0, "evidence": 0, "industry": 0, "expression": 0}, "reasons": ["", "", ""], "greeting": "", "markdown": ""}
+
+breakdown：按固定口径分项打整数分，总分由系统相加，不要自己写 score。hard 硬门槛 0–25（学历、年限、必备技能、到岗时间这些硬性要求满足多少，有一条明确不满足最多给 10）；core 核心职责 0–30（JD 主要职责里有多少件档案里做过同类的事）；evidence 证据强度 0–20（对口经历有没有具体做法和量化结果，只写了「参与」、没有结果的算弱）；industry 行业认知 0–15（做过或接触过同行业、同类产品或业务）；expression 表达 0–10（档案里的经历能不能直接改写成 JD 的语言：信息完整、有数字）。JD 信息太少或档案是空的，各项都从低给，并在理由里说明。总分 80 以上值得优先投，60–79 可以投，60 以下不建议。
 reasons：恰好三句，每句不超过 40 字：最匹配的点 / 最大的差距或风险 / 和偏好（城市、方向、公司类型）是否相符。
 greeting：投递时发给 HR 的打招呼语（BOSS 直聘、内推私信这类），第一人称，80–150 字：一句我是谁（学校专业或当前身份）+ 2 条和这个岗位最对口的经历（用档案里的数字，用 JD 的词）+ 一句希望进一步沟通。只用档案和记忆里的事实，不编数字，不写「待补充」，不带口径标签和联系方式，语气得体不夸张。档案是空的就留空。
 markdown：评估报告，严格按这个结构：
@@ -36,7 +60,7 @@ markdown：评估报告，严格按这个结构：
 每个板块第一段是一句摘要，下面每条要点一行「- …」，尽量落到「对你意味着什么」。
 各板块写什么：
 - 岗位摘要：做什么、核心指标、硬性要求（年限、学历、技能）。
-- 逐条匹配：JD 每条要求一行，写「要求 → 命中 / 部分命中 / 差距」，命中就点名档案里哪段经历，差距就写怎么补或面试怎么讲。
+- 逐条匹配：JD 每条要求一行，写「要求 → 强 / 中 / 弱 / 无」。强＝档案里有同类经历且有结果；中＝做过相近的事，或做过但缺结果；弱＝只有可迁移的能力；无＝档案里找不到。强和中点名档案里哪段经历，弱和无写怎么补或面试怎么讲。
 - 来源与真假：照输入里的「来源可信度」和备注写；年限、薪资、编号前后不一致要点出来；官网查不到就建议投前向 HR 确认。
 - 职级与薪资：只用 JD 和备注里写了的；没有就写 [gap]，不估薪资数字。
 - 简历怎么改：哪段经历放前面、用 JD 的哪些词、哪些数字要突出；只用档案里的事实，没有的写「（待补充：…）」。
@@ -136,12 +160,18 @@ def normalize(parsed: Any, job: dict[str, Any], where: str) -> Optional[dict[str
     markdown = str(parsed.get("markdown") or "").strip()
     if "# 结论" not in markdown:
         return None
-    try:
-        score = int(round(float(parsed.get("score"))))
-    except (TypeError, ValueError):
-        return None
+    parts = _breakdown(parsed.get("breakdown"))
+    if parts is not None:
+        score = sum(parts.values())
+    else:
+        try:
+            score = int(round(float(parsed.get("score"))))
+        except (TypeError, ValueError):
+            return None
     # 模型自己写的来源不采用，由 sources() 重写。
     markdown = re.split(r"(?m)^##\s*(?:来源|sources?)\s*$", markdown, flags=re.IGNORECASE)[0].rstrip()
+    if parts is not None:
+        markdown = f"{markdown}\n\n{rubric_section(parts)}"
     reasons = [str(r).strip()[:80] for r in parsed.get("reasons") or [] if str(r).strip()][:3]
     greeting = str(parsed.get("greeting") or "").strip()[:300]
     return {"score": max(0, min(100, score)), "reasons": reasons, "greeting": greeting,
