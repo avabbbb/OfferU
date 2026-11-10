@@ -54,7 +54,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | profile | 基本信息，只有一条 | name, school, major, degree, grad_year, phone, email, city, target, stage, about |
 | memory | 职业记忆，一条一件事 | kind（experience / project / education / skill / award / preference / note）, title, body, start, end, tags |
 | job | 岗位和投递状态 | company, title, status（saved / applied / test / interview / offer / rejected / closed）, url, city, jd, notes, applied_at, source（来源站点）, images（页面图片链接）, tags（最多 12 个，每个 1–20 字，不重复；list 可用 tag 参数筛）, auto_tags（tags 里 Agent 自动打的：招聘类型、城市由代码定，方向和公司属性是模型推断；重拆 JD 只换这部分）, tags_muted（用户删掉的 Agent 标签，重拆不再加回）；截止日期不放这里，存 event kind=deadline |
-| event | 待办和日程 | title, kind（todo / deadline / test / interview）, at, done, job_id, notes |
+| event | 待办和日程 | title, kind（todo / deadline / test / interview）, at, done, job_id, notes, mail_stage（邮件同步写的同一阶段事项，用来把改期信并到原事项）。岗位进 rejected / closed 后，它未完成的事项不再进今天页 |
 | doc | 长文本 | kind（resume / apply_chat / review / research / note）, title, body（Markdown）, job_id, template；kind=review 另有 questions 数组 |
 
 为什么这样设计：
@@ -153,19 +153,19 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 - 工具只加一个 email_sync(action: status | sync, account?)。status 返回已连账号、上次同步时间和结果，不含凭据；sync 拉新邮件并回写，返回处理了哪几封、各写了哪些 change。
 - 凭据和模型设置一样存在本机配置文件（Gmail 存 refresh token，IMAP 存 host / user / 授权码），不进 offeru.db、不进 changes、不出现在任何工具返回里。连接和断开在设置页完成。
-- 拉取（现在仍在 services/email_sync.py，PR5 移进 core/mail.py）：IMAP 用标准库 imaplib，只用 BODY.PEEK，不改已读状态；Gmail 用 REST，只申请 gmail.readonly。每个账号记 last_uid / history_id，增量拉取。
-- 识别：classify(msg) -> {kind: receipt / test / interview / result, company, title, at, link, outcome}。规则优先（发件域名表 + 主题关键词 + 时间正则）；规则返回空且配了模型时调一次内置模型，只给发件人、主题和正文前 2000 字。
-- 回写在 core/mail.py 的 apply()，全部走 save()，actor=邮箱，直接写入、不进待确认，误判靠撤销：岗位按公司 + 岗位名匹配，匹配不到新建 status=applied；status 只前进不后退；时间写成 event（kind=test / interview / deadline，job_id 指向岗位），notes 存发件人、主题、链接。每条写入的 data 带 mail_id（Message-ID）。
+- 拉取仍在 services/email_sync.py（账号、凭据、游标）；每封新信交给 core/mail.classify 和 core/mail.apply。不再写 application_progress 的候选进展和阶段事件，旧表只作历史数据保留。
+- 识别：core/mail.classify 先跑关键词规则（rejected / offer / interview_hr / interview_2 / interview_1 / written_test / assessment / applied），配了模型时再调一次只给发件人、主题和正文前 6000 字的模型抽取机构和岗位；模型置信度 ≥0.7 时阶段以模型为准，规则永远保底。模型失败只降级为规则，不阻断同步。
+- 回写在 core/mail.py 的 apply()，全部走 save()，actor=邮箱，直接写入、不进待确认，误判靠撤销：岗位按公司 + 岗位名匹配（没抽出公司时按唯一的同名岗位兜底），匹配不到新建并带上阶段；status 只前进不后退；时间写成 event（kind=test / interview / deadline，job_id 指向岗位，带 mail_stage），同一岗位同一阶段还没到的事项再来一封信就改期而不是重复新建。notes 存发件人、主题、链接。每条写入的 data 带 mail_id（Message-ID）。
 - 去重：同步前查 records 和 changes（before / after）里出现过的 mail_id，处理过的跳过，所以撤销后下次同步不会写回来。
 - 不做：发信、标已读、删信、保存原始邮件。
-- services/email_sync.py 只管账号、凭据和游标，每封新信交给 core/mail.apply 写入。旧 Operation Registry 里的邮箱操作（email_connection_status 等）随 PR5 删除。邮箱同步已不再调用 ingest_application_signal；旧候选表 application_progress_candidates 只剩旧 Operation 能读写，前端不展示，随 PR5 连表删除，不做数据迁移。
+- services/email_sync.py 只管账号、凭据和游标，每封新信交给 core/mail.classify / apply 写入。旧 Operation Registry 里的候选进展操作（ingest_application_signal、list / review_application_progress 等）已下线，不再暴露给外置 Agent；旧候选表 application_progress_candidates 只剩历史数据，没有写入方，前端不展示，随 legacy 清理一起删表。邮箱同步已不再调用 ingest_application_signal。
 
 ## 11. 前端
 
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
 - 共用组件：EventList、RecentChanges、JobBoard（今天页投递看板，前端直接 list job 和未完成 event）、TagInput、ChatDoc（PR3）、CommandK（PR3）。简历编辑器：顶栏一行（简历名下拉切换 / 新建 / 改名 / 复制 / 删除 | 排版工具栏，数值是「输入 + 下拉常用值」 | 下载 PDF）；左侧结构化表单，正文是所见即所得编辑框（存轻量标记）；右侧中性浅灰画布上的 A4 预览（只用一层浅阴影托出纸面），悬停模块显示蓝色虚线框，点击定位左侧；第一页分页线是中性灰虚线。简历编辑器配色和岗位页同一套 Notion 式中性色：底色、文字、细线继承全局，卡片纯白、输入框浅灰、标题无衬线、卡片圆角 10px（--radius-card）；彩色只留给蓝色主操作（下载 PDF，和「添加岗位」同色 #2383e2）、聚焦和链接，报错统一用 --primary-red。对齐：顶栏和左栏内边距都是 0.75rem，左栏卡片左缘对齐顶栏内容，卡片顶对齐右侧画布顶部。
-- 岗位页 /jobs 是多维表格（参考飞书多维表格，调研见 docs/design/jobs-table-research.md）：视图 tab 表格 / 看板 / 甘特；顶栏有搜索、筛选、分组、排序、字段显隐、行高、重置和添加岗位。表格用 @tanstack/react-table，冻结公司列，悬停行出勾选框和「打开」，勾选后出批量栏，单元格直接改；「打开」进右侧详情抽屉（∧∨ 按当前顺序切换，Esc 关闭，失焦即存）。看板 tab 复用 JobBoard（embedded，不显示标题）。筛选 / 分组 / 排序是 lib/jobView.ts 里的纯函数；视图配置存 localStorage，自动保存。list 结果保留 created_at，给甘特当起点。甘特视图（components/jobs/JobsGantt.tsx，时间计算在 lib/jobGantt.ts，有单测）：左侧冻结岗位列（« / » 可折叠成窄边）、右侧时间轴，周 / 月两档缩放和「今天」按钮，竖红线标今天；条从收藏日画到最后一件事项（进行中的画到今天），颜色跟状态，已结束的变淡；条上菱形是截止 / 笔试 / 面试 / 待办，悬停出事项卡片（标题、类型、时间、备注），拖动按整天改 event.at（保留时刻），工具栏出「撤销」；条是推算的，不能拖。点行内空白处弹小表单，在那天给该岗位加事项（类型 + 标题，回车存、Esc 或失焦取消，表单夹在可视区内）。条整个在可视区外时行内贴边出 ← / →，点了滚到条起点。短条的文字画在条右边；网格按可视宽度往右补满；点条或岗位名打开详情抽屉；筛选 / 分组 / 排序用甘特视图自己的配置。看板列固定 260px，放不下时横向滚动。
+- 岗位页 /jobs 是多维表格（参考飞书多维表格，调研见 docs/design/jobs-table-research.md）：视图 tab 表格 / 看板 / 甘特；顶栏有搜索、筛选、分组、排序、字段显隐、行高、重置和添加岗位。评估未评估的岗位时走 `POST /api/jobs/evaluate`（SSE：start → job_start / job … → done），按钮显示「正在评估 3/7」；工具 evaluate_jobs 仍是同步调用，供 Agent 和 MCP 用。表格用 @tanstack/react-table，冻结公司列，悬停行出勾选框和「打开」，勾选后出批量栏，单元格直接改；「打开」进右侧详情抽屉（∧∨ 按当前顺序切换，Esc 关闭，失焦即存）。看板 tab 复用 JobBoard（embedded，不显示标题）。筛选 / 分组 / 排序是 lib/jobView.ts 里的纯函数；视图配置存 localStorage，自动保存。list 结果保留 created_at，给甘特当起点。甘特视图（components/jobs/JobsGantt.tsx，时间计算在 lib/jobGantt.ts，有单测）：左侧冻结岗位列（« / » 可折叠成窄边）、右侧时间轴，周 / 月两档缩放和「今天」按钮，竖红线标今天；条从收藏日画到最后一件事项（进行中的画到今天），颜色跟状态，已结束的变淡；条上菱形是截止 / 笔试 / 面试 / 待办，悬停出事项卡片（标题、类型、时间、备注），拖动按整天改 event.at（保留时刻），工具栏出「撤销」；条是推算的，不能拖。点行内空白处弹小表单，在那天给该岗位加事项（类型 + 标题，回车存、Esc 或失焦取消，表单夹在可视区内）。条整个在可视区外时行内贴边出 ← / →，点了滚到条起点。短条的文字画在条右边；网格按可视宽度往右补满；点条或岗位名打开详情抽屉；筛选 / 分组 / 排序用甘特视图自己的配置。看板列固定 260px，放不下时横向滚动。
 - 岗位页视觉照 Notion 数据库：表格白底、无外框、无竖线、无行号，只留淡横线；组头「▸ 状态胶囊 数量」，组末「+ 新建」。状态和单选 / 标签都是 Notion 深色系胶囊：深底 + 浅字 + 左侧亮色小圆点；状态下拉照 Notion 按 待办 / 进行中 / 已完成 分组。顶栏是一排灰色图标（生效的变深并带计数），视图 tab 是浅灰圆角底，搜索点了才展开，最右蓝色「添加岗位」。看板列底统一中性浅灰，颜色只留给列头胶囊；卡片白底 + 浅灰细边 + 小阴影，列底「+ 新建」是灰字，直接在该阶段新建。甘特左列无竖线、网格更淡，条是低饱和圆角色块（不加左边框），今天是细红线加表头小圆点。
 - 视觉：黑白灰；字号和间距弹性适配不同设备（字号走 CSS 变量 + clamp()，正文约 13–15px，间距用 em / rem）；不用徽章、统计卡、彩色按钮、网格背景（例外：岗位页照 Notion 用深色胶囊区分状态和标签。状态六色：灰（想投、不投了）、蓝（已投递）、黄（笔试 / 测评）、橙（面试中）、绿（offer）、红（未通过）；单选 / 标签按文字哈希取九色之一（灰、棕、橙、黄、绿、蓝、紫、粉、红），同一个值永远同一色。大面积底色不用彩色：看板列底中性浅灰，甘特条用状态色的低饱和版；蓝色另用于「添加岗位」，红色另用于截止和今天线）。
 

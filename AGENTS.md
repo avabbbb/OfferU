@@ -32,6 +32,7 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
 ## 提交和合并
 
 - `main`：review之后可以提交
+- required checks 在 `.github/workflows/build.yml`：`backend-tests`（pytest 全量）、`frontend-quality`（typecheck + vitest + build）。不要绕过 required checks 直接 push `main`；红了先修。
 - `test`：没有保护，不用等 CI，可以直接合进去试。
 - 用户在对话里同意合并后再合；合完同步本地 `main`。
 - 不要碰用户自己没提交的改动；需要干净工作区时用 `git worktree`。
