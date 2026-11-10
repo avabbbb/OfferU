@@ -71,7 +71,11 @@ def agree(version: str) -> dict[str, Any]:
 
 
 def revoke() -> dict[str, Any]:
+    """撤回同意：删同意记录，并清掉授权浏览用的 Chrome 资料目录（里面有平台的登录态）。"""
+    import shutil
+
     _path().unlink(missing_ok=True)
+    shutil.rmtree(data_dir() / "chrome-profile", ignore_errors=True)
     return status()
 
 

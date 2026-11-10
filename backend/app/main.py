@@ -606,6 +606,27 @@ async def resume_tailor(doc_id: int, request: Request):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.post("/api/jobs/evaluate")
+async def jobs_evaluate(request: Request):
+    """评估岗位，SSE 推进度（start / job_start / job / done）。断开连接就是取消；工具调用仍走 evaluate_jobs。
+    Body: {ids?: int[], redo?: bool}。"""
+    import json
+
+    from fastapi.responses import StreamingResponse
+
+    from app.core import tools
+
+    payload = (await request.json()) if await request.body() else {}
+
+    async def events():
+        async for event in tools.evaluate_stream(payload.get("ids"), bool(payload.get("redo")),
+                                                 actor=tools.USER_ACTOR):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/api/resume/impact")
 async def resume_impact(request: Request):
     """追问成果：用户回答 → 记忆草稿，只出草稿不写库（工作台给用户看过、确认后逐条 save memory）。

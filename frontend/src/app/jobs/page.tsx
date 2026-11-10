@@ -7,7 +7,8 @@ import { JobsTable } from "@/components/jobs/JobsTable";
 import { RecordDrawer } from "@/components/jobs/RecordDrawer";
 import { ViewBar } from "@/components/jobs/ViewBar";
 import { JobBoard } from "@/components/today/JobBoard";
-import { type Event, JOB_STATUS, type Job, useTool, write } from "@/lib/core";
+import { type Event, JOB_STATUS, type Job, refreshAll, useTool, write } from "@/lib/core";
+import { evaluateJobs } from "@/lib/evaluate";
 import { applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
 
 const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
@@ -87,6 +88,7 @@ export default function JobsPage() {
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
   const [ranking, setRanking] = useState(false);
+  const [rankProgress, setRankProgress] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => { setState(loadViews()); setLoaded(true); }, []);
@@ -108,13 +110,17 @@ export default function JobsPage() {
 
   // 给没评过的岗位逐个出评估报告（存在岗位下），分数写回岗位。
   const rank = async () => {
-    setRanking(true); setError("");
+    setRanking(true); setError(""); setRankProgress("");
     try {
-      await write("evaluate_jobs", {});
+      await evaluateJobs(null, new AbortController().signal, (event) => {
+        if (event.type === "start") setRankProgress(`0/${event.total}`);
+        if (event.type === "job_start") setRankProgress(`${event.index}/${event.total}`);
+        if (event.type === "done") void refreshAll();
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setRanking(false);
+      setRanking(false); setRankProgress("");
     }
   };
 
@@ -125,7 +131,7 @@ export default function JobsPage() {
         {unscored > 0 && (
           <span className="flex items-center gap-2 text-[13px] text-[var(--foreground-muted)]">
             {unscored} 个岗位还没评估
-            <button type="button" onClick={() => void rank()} disabled={ranking} className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">{ranking ? "正在评估…" : "评估未评估的"}</button>
+            <button type="button" onClick={() => void rank()} disabled={ranking} className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">{ranking ? (rankProgress ? `正在评估 ${rankProgress}…` : "正在评估…") : "评估未评估的"}</button>
           </span>
         )}
         {error && <span role="alert" className="text-[12.5px] text-[var(--foreground)]">{error}</span>}

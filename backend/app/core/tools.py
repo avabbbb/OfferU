@@ -13,7 +13,7 @@ import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional
+from typing import Any, AsyncIterator, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -357,8 +357,16 @@ def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: st
     if type == "job" and id is None:
         data = {"status": "saved", **data}
     preview = {**(store.get(type, id) or {} if id else {}), **data, "type": type, "id": id or 0}
-    record, change = store.save(type, data, id_=id, actor=actor, summary=f"{verb}{TYPE_LABEL[type]}「{label(preview)}」{status_note}")
-    return {"record": record, "change_id": change, "existed": existed}
+    open_events = 0
+    if type == "job" and id is not None and data.get("status") in ("rejected", "closed"):
+        open_events = sum(1 for event in store.all_of("event", job_id=id) if not event.get("done"))
+    note = f"，还有 {open_events} 件未完成事项" if open_events else ""
+    record, change = store.save(type, data, id_=id, actor=actor,
+                                summary=f"{verb}{TYPE_LABEL[type]}「{label(preview)}」{status_note}{note}")
+    out: dict[str, Any] = {"record": record, "change_id": change, "existed": existed}
+    if open_events:
+        out["open_events"] = open_events
+    return out
 
 
 class GetIn(_In):
@@ -496,8 +504,10 @@ def overview(*, actor: str = "", today: Optional[date] = None) -> dict[str, Any]
     """现在在哪个阶段、下一步做什么、待办（逾期 / 今天 / 7 天内 / 以后 / 没定时间）、最近改动。"""
     today = today or date.today()
     jobs = store.all_of("job")
-    events = [e for e in store.all_of("event") if not e.get("done")]
     jobs_by_id = {j["id"]: j for j in jobs}
+    # 岗位已结束（未通过 / 不投了）就不再催它的事项；offer 可能还有截止，保留。
+    events = [e for e in store.all_of("event") if not e.get("done")
+              and jobs_by_id.get(e.get("job_id"), {}).get("status") not in ("rejected", "closed")]
     for event in events:
         if event.get("job_id") in jobs_by_id:
             event["job_label"] = label(jobs_by_id[event["job_id"]])
@@ -987,12 +997,8 @@ class EvaluateJobsIn(_In):
     redo: bool = Field(False, description="不传 ids 时，true 表示评过的也重评")
 
 
-def evaluate_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor: str) -> dict[str, Any]:
-    """逐个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖同一份），0–100 分和三句理由写回 job.score / reasons。"""
-    from app.core import job_eval
-
-    if not job_eval.available():
-        raise ValueError("没配模型，没法自动评估。你自己评就用 save 给 job 写 score（0–100）和 reasons（三句）")
+def _targets(ids: Optional[list[int]], redo: bool) -> list[dict[str, Any]]:
+    """选出这次要评的岗位，并做前置校验（id 存在、有 JD）。"""
     if ids:
         jobs = []
         for id_ in ids:
@@ -1002,42 +1008,72 @@ def evaluate_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor:
             if not str(job.get("jd") or "").strip():
                 raise ValueError(f"「{label(job)}」还没有 JD，先贴 JD 再评估")
             jobs.append(job)
-    else:
-        jobs = [j for j in store.all_of("job") if j.get("status") not in ("rejected", "closed")
-                and str(j.get("jd") or "").strip() and (redo or j.get("score") is None)]
+        return jobs
+    return [j for j in store.all_of("job") if j.get("status") not in ("rejected", "closed")
+            and str(j.get("jd") or "").strip() and (redo or j.get("score") is None)]
+
+
+async def evaluate_stream(ids: Optional[list[int]] = None, redo: bool = False,
+                          *, actor: str = "") -> AsyncIterator[dict[str, Any]]:
+    """逐个岗位评估并推进度：start → job_start / job … → done。网页走 SSE；工具调用用 evaluate_jobs 收集结果。"""
+    from app.core import job_eval
+
+    if not job_eval.available():
+        raise ValueError("没配模型，没法自动评估。你自己评就用 save 给 job 写 score（0–100）和 reasons（三句）")
+    jobs = _targets(ids, redo)
     if not jobs:
-        return {"count": 0, "change_ids": [], "items": [], "failed": []}
+        yield {"type": "done", "count": 0, "change_ids": [], "items": [], "failed": []}
+        return
     text = job_eval.candidate(store.first("profile"), store.all_of("memory"))
+    total = len(jobs)
     change_ids: list[int] = []
     items: list[dict[str, Any]] = []
     failed: list[str] = []
+    yield {"type": "start", "total": total}
     # 插件存的和旧岗位没有 posting：评估前顺手补上（尽力而为，拆不出来不影响评估）。
     from app.core import job_intake
 
     bare = [j["id"] for j in jobs if not j.get("posting")]
     if bare and job_intake.available():
         try:
-            change_ids += [c for c in enrich_jobs(bare, actor=actor)["change_ids"] if c]
+            enriched = await asyncio.to_thread(enrich_jobs, bare, actor=actor)
+            change_ids += [c for c in enriched["change_ids"] if c]
             jobs = [store.get("job", j["id"]) or j for j in jobs]
         except Exception:  # noqa: BLE001  补 posting 失败只跳过，评估照跑
             pass
-    for job in jobs:
-        result = _await(lambda j=job: job_eval.evaluate(text, j))
+    for index, job in enumerate(jobs, 1):
+        yield {"type": "job_start", "id": job["id"], "label": label(job), "index": index, "total": total}
+        result = await job_eval.evaluate(text, job)
         if not result:
             failed.append(label(job))
             continue
         old = next((d for d in store.all_of("doc", job_id=job["id"]) if d.get("kind") == "evaluation"), None)
-        doc = save("doc", {"kind": "evaluation", "job_id": job["id"], "title": f"岗位评估 · {label(job)}",
-                           "body": result["markdown"]}, id=old["id"] if old else None, actor=actor)
-        scored = save("job", {"score": result["score"], "reasons": result["reasons"],
-                              **({"greeting": result["greeting"]} if result.get("greeting") else {})}, id=job["id"], actor=actor)
+        doc = await asyncio.to_thread(save, "doc", {
+            "kind": "evaluation", "job_id": job["id"], "title": f"岗位评估 · {label(job)}",
+            "body": result["markdown"]}, id=old["id"] if old else None, actor=actor)
+        scored = await asyncio.to_thread(save, "job", {
+            "score": result["score"], "reasons": result["reasons"],
+            **({"greeting": result["greeting"]} if result.get("greeting") else {})}, id=job["id"], actor=actor)
         change_ids += [doc["change_id"], scored["change_id"]]
         items.append({"id": job["id"], "label": label(job), "score": result["score"],
                       "reasons": result["reasons"], "greeting": result.get("greeting") or "", "doc_id": doc["record"]["id"]})
+        yield {"type": "job", "index": index, "total": total, **items[-1]}
     if not items:
         raise ValueError("模型没返回可用的评估，岗位没动：" + "、".join(failed))
     items.sort(key=lambda i: -i["score"])
-    return {"count": len(items), "change_ids": change_ids, "items": items, "failed": failed}
+    yield {"type": "done", "count": len(items), "change_ids": change_ids, "items": items, "failed": failed}
+
+
+def evaluate_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor: str) -> dict[str, Any]:
+    """逐个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖同一份），0–100 分和三句理由写回 job.score / reasons。"""
+
+    async def collect() -> dict[str, Any]:
+        async for event in evaluate_stream(ids, redo, actor=actor):
+            if event["type"] == "done":
+                return {key: event[key] for key in ("count", "change_ids", "items", "failed")}
+        raise ValueError("评估没完成")
+
+    return _await(collect)
 
 
 APPLY_PROMPT = """你在帮候选人填招聘官网的网申问题。只用给出的档案、职业记忆、岗位 JD 和这个岗位的定制简历里的事实作答，不编造经历和数字。

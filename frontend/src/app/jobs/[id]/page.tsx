@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AddEvent, EventRow } from "@/components/core/EventList";
-import { type Doc, type Event, type Job, tool, useTool, write } from "@/lib/core";
+import { type Doc, type Event, type Job, refreshAll, tool, useTool, write } from "@/lib/core";
+import { evaluateJobs } from "@/lib/evaluate";
 import { ResearchCard } from "@/components/core/ResearchCard";
 
 import { StatusSelect } from "../page";
@@ -102,18 +103,22 @@ function EmailDraft({ job }: { job: Job }) {
 // 岗位评估：有报告就分层展示，没有就给按钮；重评覆盖同一份报告（可撤销）。
 function Evaluation({ job, docs }: { job: Job; docs: Doc[] }) {
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState(false);
   const doc = docs.find((d) => d.kind === "evaluation");
   const hasJd = Boolean(job.jd?.trim());
   const run = async () => {
-    setBusy(true); setErr("");
+    setBusy(true); setErr(""); setProgress("");
     try {
-      await write("evaluate_jobs", { ids: [job.id] });
+      await evaluateJobs([job.id], new AbortController().signal, (event) => {
+        if (event.type === "job_start") setProgress(event.total > 1 ? `${event.index}/${event.total}` : "");
+        if (event.type === "done") void refreshAll();
+      });
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      setBusy(false); setProgress("");
     }
   };
   return (
@@ -122,7 +127,7 @@ function Evaluation({ job, docs }: { job: Job; docs: Doc[] }) {
       <div className="flex flex-wrap items-center gap-3 text-[12.5px] text-[var(--foreground-muted)]">
         {job.score != null && <span>匹配 {job.score} 分</span>}
         <button type="button" disabled={busy || !hasJd} onClick={() => void run()} className="hover:text-[var(--foreground)] disabled:opacity-60">
-          {busy ? "正在评估，要几十秒…" : doc ? "重新评估" : hasJd ? "评估这个岗位" : "贴了 JD 才能评估"}
+          {busy ? (progress ? `正在评估 ${progress}…` : "正在评估，要几十秒…") : doc ? "重新评估" : hasJd ? "评估这个岗位" : "贴了 JD 才能评估"}
         </button>
         {err && <span className="text-red-700">{err}</span>}
       </div>
