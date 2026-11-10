@@ -995,6 +995,8 @@ def enrich_jobs(ids: Optional[list[int]] = None, redo: bool = False, actor: str 
 class EvaluateJobsIn(_In):
     ids: Optional[list[int]] = Field(None, description="只评这些岗位；不传就评所有没评过、没结束、有 JD 的岗位")
     redo: bool = Field(False, description="不传 ids 时，true 表示评过的也重评")
+    limit: int = Field(3, ge=1, le=20,
+                       description="本次最多评几个，默认 3；返回的 remaining 大于 0 就再调一次（同一个岗位几十秒，别超过工具超时）")
 
 
 def _targets(ids: Optional[list[int]], redo: bool) -> list[dict[str, Any]]:
@@ -1013,16 +1015,18 @@ def _targets(ids: Optional[list[int]], redo: bool) -> list[dict[str, Any]]:
             and str(j.get("jd") or "").strip() and (redo or j.get("score") is None)]
 
 
-async def evaluate_stream(ids: Optional[list[int]] = None, redo: bool = False,
+async def evaluate_stream(ids: Optional[list[int]] = None, redo: bool = False, limit: Optional[int] = None,
                           *, actor: str = "") -> AsyncIterator[dict[str, Any]]:
-    """逐个岗位评估并推进度：start → job_start / job … → done。网页走 SSE；工具调用用 evaluate_jobs 收集结果。"""
+    """逐个岗位评估并推进度：start → job_start / job … → done。网页走 SSE（limit 不传就全评）；工具调用用 evaluate_jobs 分块。"""
     from app.core import job_eval
 
     if not job_eval.available():
         raise ValueError("没配模型，没法自动评估。你自己评就用 save 给 job 写 score（0–100）和 reasons（三句）")
-    jobs = _targets(ids, redo)
+    eligible = _targets(ids, redo)
+    remaining = max(0, len(eligible) - limit) if limit else 0
+    jobs = eligible[:limit] if limit else eligible
     if not jobs:
-        yield {"type": "done", "count": 0, "change_ids": [], "items": [], "failed": []}
+        yield {"type": "done", "count": 0, "change_ids": [], "items": [], "failed": [], "remaining": remaining}
         return
     text = job_eval.candidate(store.first("profile"), store.all_of("memory"))
     total = len(jobs)
@@ -1061,16 +1065,19 @@ async def evaluate_stream(ids: Optional[list[int]] = None, redo: bool = False,
     if not items:
         raise ValueError("模型没返回可用的评估，岗位没动：" + "、".join(failed))
     items.sort(key=lambda i: -i["score"])
-    yield {"type": "done", "count": len(items), "change_ids": change_ids, "items": items, "failed": failed}
+    yield {"type": "done", "count": len(items), "change_ids": change_ids, "items": items, "failed": failed,
+           "remaining": remaining}
 
 
-def evaluate_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor: str) -> dict[str, Any]:
-    """逐个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖同一份），0–100 分和三句理由写回 job.score / reasons。"""
+def evaluate_jobs(ids: Optional[list[int]] = None, redo: bool = False, limit: int = 3, *,
+                  actor: str) -> dict[str, Any]:
+    """逐个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖同一份），0–100 分和三句理由写回 job.score / reasons。
+    一次最多评 limit 个（默认 3，控制在 10 分钟工具超时内）；返回的 remaining 还有就再调一次。"""
 
     async def collect() -> dict[str, Any]:
-        async for event in evaluate_stream(ids, redo, actor=actor):
+        async for event in evaluate_stream(ids, redo, limit, actor=actor):
             if event["type"] == "done":
-                return {key: event[key] for key in ("count", "change_ids", "items", "failed")}
+                return {key: event[key] for key in ("count", "change_ids", "items", "failed", "remaining")}
         raise ValueError("评估没完成")
 
     return _await(collect)
@@ -1302,7 +1309,8 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="evaluate_jobs", input=EvaluateJobsIn, fn=evaluate_jobs,
          description="评估岗位值不值得投：每个岗位出一份评估报告（结论、JD 逐条要求对档案的命中和差距、来源真假、职级薪资、简历怎么改、面试准备、反问），"
                      "存成岗位下的 evaluation 文档（重评覆盖同一份），0–100 分和三句理由写回 job.score / reasons，每步一条改动可撤销。"
-                     "不联网：公司、竞品、面经调研另存 research。add_job 存完就传 ids 评这一个；不传 ids 评所有没评过的。会调模型，每个岗位几十秒。"),
+                     "不联网：公司、竞品、面经调研另存 research。add_job 存完就传 ids 评这一个；不传 ids 按顺序评没评过的，一次最多 limit 个（默认 3）。"
+                     "返回的 remaining 大于 0 就再调一次。会调模型，每个岗位几十秒。"),
     Tool(name="apply_answer", input=ApplyAnswerIn, fn=apply_answer,
          description="回答招聘官网的网申问题：用岗位 JD、这个岗位的定制简历、档案和记忆作答，问答追加到岗位下的 apply_chat 文档（一条改动，可撤销），返回回答。会调模型。"),
     Tool(name="draft_email", input=DraftEmailIn, fn=draft_email,

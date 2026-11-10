@@ -29,4 +29,23 @@ def test_evaluate_stream_order_and_persist(tmp_path, monkeypatch):
     assert store.get("job", first["id"])["score"] == 70
     assert store.get("job", second["id"])["score"] == 70
     again = asyncio.run(collect())
-    assert again == [{"type": "done", "count": 0, "change_ids": [], "items": [], "failed": []}]  # 评过的不再评
+    assert again == [{"type": "done", "count": 0, "change_ids": [], "items": [], "failed": [], "remaining": 0}]
+
+
+def test_evaluate_tool_is_chunked(tmp_path, monkeypatch):
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(job_eval, "available", lambda: True)
+
+    async def fake(text, job):
+        return {"score": 60, "reasons": ["a", "b", "c"], "greeting": "", "markdown": "# 结论\nx"}
+
+    monkeypatch.setattr(job_eval, "evaluate", fake)
+    for index in range(3):
+        tools.save("job", {"company": f"公司{index}", "title": "后端", "jd": "Go"}, actor=USER_ACTOR)
+    first = tools.evaluate_jobs(limit=1, actor=USER_ACTOR)
+    assert first["count"] == 1 and first["remaining"] == 2
+    second = tools.evaluate_jobs(limit=1, actor=USER_ACTOR)
+    assert second["count"] == 1 and second["remaining"] == 1
+    third = tools.evaluate_jobs(limit=1, actor=USER_ACTOR)
+    assert third["count"] == 1 and third["remaining"] == 0
+    assert tools.evaluate_jobs(limit=1, actor=USER_ACTOR)["count"] == 0
