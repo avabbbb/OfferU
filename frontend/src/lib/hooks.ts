@@ -91,19 +91,7 @@ export interface Job {
   company_industry: string;
   company_logo: string;
   is_campus: boolean;
-  triage_status: "inbox" | "picked" | "ignored" | "applied";
-  pool_id: number | null;
-  batch_id: string;
   created_at: string;
-}
-
-export interface Pool {
-  id: number;
-  name: string;
-  scope: "inbox" | "picked" | "ignored";
-  job_count: number;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface BatchSummary {
@@ -116,13 +104,6 @@ export interface BatchSummary {
   picked_count: number;
   ignored_count: number;
   latest_created_at: string | null;
-}
-
-export interface JobsListResponse {
-  total: number;
-  page: number;
-  page_size: number;
-  items: Job[];
 }
 
 export interface JobStats {
@@ -158,18 +139,6 @@ export interface Notification {
 }
 
 export type JobPreparationMode = "local" | "live";
-
-export interface JobIngestResult {
-  created: number;
-  skipped: number;
-  created_job_ids: number[];
-  resolved_job_ids: number[];
-  failed: Array<{ title: string; error: string }>;
-  automation?: {
-    events: unknown[];
-    errors: string[];
-  };
-}
 
 export interface AutomationInboxItem {
   item_id: string;
@@ -289,52 +258,6 @@ export async function dismissAutomationInboxItem(itemId: string): Promise<Record
 
 // ---- Hooks ----
 
-/**
- * 获取岗位列表
- * @param page 页码
- * @param period 时间范围: today / week / month
- * @param source 数据源筛选
- */
-export interface JobFilters {
-  page?: number;
-  page_size?: number;
-  period?: string;
-  source?: string;
-  keyword?: string;
-  job_type?: string;
-  education?: string;
-  is_campus?: boolean;
-  triage_status?: "inbox" | "picked" | "ignored";
-  pool_id?: string;
-  batch_id?: string;
-}
-
-export function useJobs(filters: JobFilters = {}) {
-  const params = new URLSearchParams();
-  params.set("page", String(filters.page ?? 1));
-  if (filters.page_size) params.set("page_size", String(filters.page_size));
-  if (filters.period) params.set("period", filters.period);
-  if (filters.source) params.set("source", filters.source);
-  if (filters.keyword) params.set("keyword", filters.keyword);
-  if (filters.job_type) params.set("job_type", filters.job_type);
-  if (filters.education) params.set("education", filters.education);
-  if (filters.is_campus !== undefined) params.set("is_campus", String(filters.is_campus));
-  if (filters.triage_status) params.set("triage_status", filters.triage_status);
-  if (filters.pool_id !== undefined) params.set("pool_id", String(filters.pool_id));
-  if (filters.batch_id) params.set("batch_id", filters.batch_id);
-  return useSWR<JobsListResponse>(
-    `${API_BASE}/api/jobs/?${params}`,
-    fetcher
-  );
-}
-
-
-/** 获取岗位池列表 */
-export function usePools(scope?: "all" | "inbox" | "picked" | "ignored") {
-  const query = scope && scope !== "all" ? `?scope=${scope}` : "";
-  return useSWR<Pool[]>(`${API_BASE}/api/pools/${query}`, fetcher);
-}
-
 /** 获取单个岗位详情 */
 export function useJob(id: number | null) {
   return useSWR<Job>(
@@ -440,102 +363,6 @@ export function useConfig() {
     `${API_BASE}/api/config/`,
     fetcher
   );
-}
-
-/** 更新单个岗位分拣状态/池归属 */
-export async function patchJob(
-  id: number,
-  data: {
-    triage_status?: "inbox" | "picked" | "ignored";
-    pool_id?: number;
-    clear_pool?: boolean;
-  }
-) {
-  const res = await showcaseFetch(`/api/jobs/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `更新岗位失败 (${res.status})`));
-  }
-  return res.json();
-}
-
-/** 批量更新岗位分拣状态/池归属 */
-export async function patchJobsBatch(data: {
-  job_ids: number[];
-  triage_status?: "inbox" | "picked" | "ignored";
-  pool_id?: number;
-  clear_pool?: boolean;
-}) {
-  const res = await showcaseFetch(`/api/jobs/batch-update`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `批量更新失败 (${res.status})`));
-  }
-  return res.json();
-}
-
-/** 批量彻底删除岗位（仅回收站内） */
-export async function deleteJobsBatch(data: { job_ids: number[] }) {
-  const res = await showcaseFetch(`/api/jobs/batch-delete`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `批量删除失败 (${res.status})`));
-  }
-  return res.json();
-}
-
-/** 创建岗位池 */
-export async function createPool(name: string, scope: "inbox" | "picked" | "ignored" = "picked") {
-  const res = await showcaseFetch(`/api/pools/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, scope }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `创建池失败 (${res.status})`));
-  }
-  return res.json();
-}
-
-/** 重命名岗位池 */
-export async function updatePoolName(poolId: number, name: string, scope?: "inbox" | "picked" | "ignored") {
-  const query = scope ? `?scope=${scope}` : "";
-  const res = await showcaseFetch(`/api/pools/${poolId}${query}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `重命名池失败 (${res.status})`));
-  }
-  return res.json();
-}
-
-/** 删除岗位池（池内岗位转为未分组） */
-export async function deletePoolById(poolId: number, scope?: "inbox" | "picked" | "ignored") {
-  const query = scope ? `?scope=${scope}` : "";
-  const res = await showcaseFetch(`/api/pools/${poolId}${query}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `删除池失败 (${res.status})`));
-  }
-  return res.json();
 }
 
 // ---- 写操作（非 SWR，直接 fetch） ----
@@ -1708,65 +1535,6 @@ export interface InterviewFocusEvidenceRef {
   evidence_text?: string;
   excerpt?: string;
   confidence?: number;
-}
-
-async function hashJobInput(value: string): Promise<string> {
-  const encoded = new TextEncoder().encode(value);
-  if (typeof crypto !== "undefined" && crypto.subtle) {
-    const digest = await crypto.subtle.digest("SHA-256", encoded);
-    return Array.from(new Uint8Array(digest))
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-  }
-  return value
-    .split("")
-    .reduce((hash, char) => ((hash * 31 + char.charCodeAt(0)) >>> 0), 2166136261)
-    .toString(16);
-}
-
-export async function ingestJob(data: {
-  title: string;
-  company: string;
-  location?: string;
-  url?: string;
-  raw_description: string;
-  source?: string;
-  runtime_provider?: string;
-}): Promise<JobIngestResult> {
-  const normalized = [data.title, data.company, data.location, data.url, data.raw_description]
-    .map((value) => String(value || "").trim().toLowerCase())
-    .join("\n");
-  const hashKey = `manual:${await hashJobInput(normalized)}`;
-  const res = await showcaseFetch(`/api/jobs/ingest`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source: data.source || "manual",
-      runtime_provider: data.runtime_provider || "replay",
-      jobs: [
-        {
-          title: data.title.trim(),
-          company: data.company.trim(),
-          location: data.location?.trim() || "",
-          url: data.url?.trim() || "",
-          apply_url: data.url?.trim() || "",
-          source: data.source || "manual",
-          raw_description: data.raw_description.trim(),
-          summary: data.raw_description.trim().slice(0, 500),
-          hash_key: hashKey,
-        },
-      ],
-    }),
-  });
-  const payload = (await res.json().catch(() => ({}))) as Partial<JobIngestResult> & {
-    detail?: string;
-    error?: string;
-    ok?: boolean;
-  };
-  if (!res.ok || payload.ok === false || payload.error || payload.detail) {
-    throw new Error(safeClientErrorMessage(payload.detail || payload.error, `保存岗位失败 (${res.status})`));
-  }
-  return payload as JobIngestResult;
 }
 
 export interface InterviewFocus {

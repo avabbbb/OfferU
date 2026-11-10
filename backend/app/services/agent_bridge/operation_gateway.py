@@ -23,7 +23,6 @@ GRANTED_READ_OPERATIONS: frozenset[str] = frozenset(
         "get_profile",
         "list_resumes",
         "list_profile_evidence",
-        "list_application_progress_candidates",
         "list_learning_observations",
         "list_memory_inbox",
         "get_current_view",

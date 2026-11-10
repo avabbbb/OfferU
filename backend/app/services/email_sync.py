@@ -30,7 +30,6 @@ from app.models.models import (
     ExternalProgressSignal,
     InterviewNotification,
 )
-from app.services.application_progress import ingest_application_signal
 from app.services.credential_store import delete_secret, load_secret, store_secret
 from app.services.security_redaction import redact_sensitive_text
 
@@ -1073,7 +1072,6 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
 
             synced = 0
             duplicates = 0
-            candidate_ids: list[str] = []
             observation_ids: list[int] = []
             observation_duplicates = 0
             core_change_ids: list[int] = []
@@ -1085,33 +1083,24 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                     message.get("message_id"),
                     fallback=str(message.get("provider_id") or ""),
                 )
-                result = await ingest_application_signal(
-                    channel="email",
-                    account_ref=account.signal_account_ref,
-                    external_message_id=message_ref,
-                    external_thread_id=_bounded_identifier(
-                        message.get("thread_id"),
-                    ),
-                    sender=str(message.get("from") or "")[:500],
-                    received_at=message.get("received_at"),
-                    subject=str(message.get("subject") or "")[:500],
-                    body=body,
-                )
-                if result.get("duplicate"):
+                duplicate = core_mail.seen(message_ref)
+                if duplicate:
                     duplicates += 1
                 else:
                     synced += 1
-                if result.get("candidate_id"):
-                    candidate_ids.append(str(result["candidate_id"]))
-                if not result.get("duplicate"):
-                    application = result.get("application") or {}
-                    extracted = result.get("llm_extracted") or {}
+                classification = await core_mail.classify(
+                    subject=str(message.get("subject") or ""),
+                    body=body,
+                    sender=str(message.get("from") or ""),
+                    received_at=message.get("received_at"),
+                )
+                if not duplicate:
                     written = await asyncio.to_thread(core_mail.apply, {
                         "mail_id": message_ref,
-                        "stage": result.get("suggested_stage"),
-                        "company": extracted.get("company") or application.get("company"),
-                        "title": extracted.get("job_title") or application.get("job_title"),
-                        "at": extracted.get("interview_time"),
+                        "stage": classification["stage"],
+                        "company": classification["company"],
+                        "title": classification["title"],
+                        "at": classification["at"],
                         "sender": message.get("from"),
                         "subject": message.get("subject"),
                     })
@@ -1121,12 +1110,6 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                 # ledger as Resume, interview and conversation evidence.  This
                 # is deliberately read-only: the observation is a candidate
                 # source and never advances an application by itself.
-                signal = result.get("signal") if isinstance(result, dict) else {}
-                signal = signal if isinstance(signal, dict) else {}
-                classification = signal.get("classification")
-                classification = (
-                    classification if isinstance(classification, dict) else {}
-                )
                 message_hash = hashlib.sha256(
                     f"{account.signal_account_ref}:{message_ref}".encode("utf-8")
                 ).hexdigest()
@@ -1135,7 +1118,7 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                 observation = await record_learning_observation(
                     source_type="email",
                     source_external_id=message_hash,
-                    source_title=str(signal.get("subject") or message.get("subject") or "求职邮件")[:300],
+                    source_title=str(message.get("subject") or "求职邮件")[:300],
                     source_locator=f"email:message:{message_hash}",
                     source_metadata={
                         "provider": account.provider,
@@ -1147,21 +1130,14 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                     },
                     observation_type="email_career_observation",
                     content={
-                        "classification": str(
-                            classification.get("suggested_stage") or "unknown"
-                        )[:40],
+                        "classification": str(classification.get("stage") or "unknown")[:40],
                         "rule_stage": str(classification.get("rule_stage") or "")[:40],
-                        "candidate_id": str(result.get("candidate_id") or "")[:80],
-                        "subject": str(signal.get("subject") or message.get("subject") or "")[:500],
-                        "sender": str(signal.get("sender") or message.get("from") or "")[:500],
-                        "received_at": str(signal.get("received_at") or message.get("received_at") or "")[:80],
-                        "source_excerpt": str(
-                            signal.get("snippet") or body[:1200]
-                        )[:2000],
+                        "subject": str(message.get("subject") or "")[:500],
+                        "sender": str(message.get("from") or "")[:500],
+                        "received_at": str(message.get("received_at") or "")[:80],
+                        "source_excerpt": body[:2000],
                     },
-                    observed_at=str(
-                        signal.get("received_at") or message.get("received_at") or ""
-                    ),
+                    observed_at=str(message.get("received_at") or ""),
                     idempotency_key=f"email-career:{message_hash}",
                 )
                 if observation.get("id") is not None:
@@ -1177,7 +1153,6 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                 "failed": 0,
                 "total_found": len(messages),
                 "calendar_created": 0,
-                "candidate_ids": candidate_ids,
                 "requires_review": 0,
                 "core_change_ids": core_change_ids,
                 "observation_ids": observation_ids,

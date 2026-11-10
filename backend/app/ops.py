@@ -83,15 +83,10 @@ from app.services.agent_operations import (
     list_career_ledger,
     cancel_authorized_research_session,
     capture_authorized_research_page,
-    classify_progress_signal,
     consolidate_memory_observations,
     draft_interview_scoring_skill,
     export_resume_pdf,
     get_application_workspace,
-    get_application_progress_candidate,
-    get_application_progress_board,
-    get_application_progress_timeline,
-    get_application_progress_overview,
     get_ai_interview,
     get_ai_interview_runtime,
     get_authorized_research_session,
@@ -132,7 +127,6 @@ from app.services.agent_operations import (
     list_applications,
     list_ai_interviews,
     list_authorized_research_sessions,
-    list_application_progress_candidates,
     list_application_records,
     list_application_events,
     list_career_artifacts,
@@ -170,7 +164,6 @@ from app.services.agent_operations import (
     register_work_source,
     refresh_job_research_report,
     refresh_role_benchmark,
-    ingest_application_signal,
     ingest_interview_behavior_events,
     record_automation_event,
     record_learning_observation,
@@ -181,7 +174,6 @@ from app.services.agent_operations import (
     review_job_research,
     review_pre_application_decision,
     review_resume_optimization,
-    review_application_progress,
     submit_manual_pre_application_decision,
     resolve_automation_inbox_item,
     save_career_artifact,
@@ -1529,70 +1521,12 @@ class UpdateApplicationStatusInput(_StrictOperationInput):
     notes: str | None = Field(default=None, max_length=60_000)
 
 
-class IngestApplicationSignalInput(_StrictOperationInput):
-    channel: str = Field(pattern="^(email|sms_forward)$")
-    account_ref: str = Field(min_length=1, max_length=160)
-    external_message_id: str = Field(min_length=1, max_length=500)
-    sender: str = Field(max_length=500)
-    subject: str = Field(max_length=500)
-    body: str = Field(min_length=1, max_length=200_000)
-    external_thread_id: str = Field(default="", max_length=500)
-    received_at: str | None = Field(default=None, max_length=64)
-    stage_hint: str = Field(
-        default="",
-        pattern="^(|applied|written_test|assessment|interview_1|interview_2|interview_hr|offer|rejected)$",
-    )
-
-
-class ListApplicationProgressCandidatesInput(_StrictOperationInput):
-    status: str = Field(
-        default="pending",
-        pattern="^(pending|confirmed|rejected|all)$",
-    )
-    disclosure: str = Field(default="summary", pattern="^(summary|detail)$")
-    limit: int = Field(default=100, ge=1, le=500)
 class ScrubLegacyEmailBodiesInput(_StrictOperationInput):
     pass
 
 
 class PurgeSyntheticEmailTestDataInput(_StrictOperationInput):
     pass
-
-class ApplicationProgressCandidateInput(_StrictOperationInput):
-    candidate_id: str = Field(min_length=1, max_length=64)
-
-
-class ReviewApplicationProgressInput(ApplicationProgressCandidateInput):
-    action: str = Field(pattern="^(accept|reject)$")
-    application_attempt_id: int | None = Field(default=None, gt=0)
-    stage: str = Field(
-        default="",
-        pattern="^(|applied|written_test|assessment|interview_1|interview_2|interview_hr|offer|rejected)$",
-    )
-    note: str = Field(default="", max_length=1000)
-    add_calendar: bool = True
-    create_record: bool = False
-
-    @model_validator(mode="after")
-    def validate_create_record_action(self) -> "ReviewApplicationProgressInput":
-        if self.create_record and self.action != "accept":
-            raise ValueError("create_record can only be used with action=accept")
-        if self.create_record and self.application_attempt_id is not None:
-            raise ValueError(
-                "create_record cannot be combined with application_attempt_id"
-            )
-        return self
-
-
-class GetApplicationProgressOverviewInput(_StrictOperationInput):
-    disclosure: str = Field(default="summary", pattern="^(summary|detail)$")
-    job_id: int | None = Field(default=None, gt=0)
-    limit: int = Field(default=200, ge=1, le=500)
-
-
-class GetApplicationProgressTimelineInput(_StrictOperationInput):
-    application_attempt_id: int = Field(gt=0)
-
 
 class GetApplicationWorkspaceInput(_StrictOperationInput):
     pass
@@ -3672,68 +3606,6 @@ OPERATIONS: dict[str, Operation] = {
         input_model=PurgeSyntheticEmailTestDataInput,
         version="2026-08-31",
     ),
-    "ingest_application_signal": Operation(
-        name="ingest_application_signal",
-        fn=ingest_application_signal,
-        description="把一封邮件或主动转发短信保存为最小证据快照和待确认候选进展；不改变正式投递阶段。",
-        parameters={
-            "channel": "str (email|sms_forward)",
-            "account_ref": "str",
-            "external_message_id": "str",
-            "sender": "str",
-            "subject": "str",
-            "body": "str (transient; audit-redacted)",
-            "external_thread_id": "str?",
-            "received_at": "ISO-8601?",
-            "stage_hint": "str?",
-        },
-        group="applications",
-        side_effects=("write",),
-        audit_redacted_parameters=("body",),
-        input_model=IngestApplicationSignalInput,
-    ),
-    "list_application_progress_candidates": Operation(
-        name="list_application_progress_candidates",
-        fn=list_application_progress_candidates,
-        description="渐进式读取外部消息形成的候选进展；summary 默认隐藏正文片段和备选关联。",
-        parameters={"status": "str=pending", "disclosure": "str=summary", "limit": "int=100"},
-        group="applications",
-        input_model=ListApplicationProgressCandidatesInput,
-    ),
-    "get_application_progress_candidate": Operation(
-        name="get_application_progress_candidate",
-        fn=get_application_progress_candidate,
-        description="读取一条候选进展的最小消息证据、关联依据和备选投递尝试。",
-        parameters={"candidate_id": "str"},
-        group="applications",
-        input_model=ApplicationProgressCandidateInput,
-    ),
-    "review_application_progress": Operation(
-        name="review_application_progress",
-        fn=review_application_progress,
-        description="用户确认或拒绝候选进展；接受未关联候选时可显式一键建档，只有接受才追加投递阶段事件。",
-        parameters={
-            "candidate_id": "str",
-            "action": "str (accept|reject)",
-            "application_attempt_id": "int?",
-            "stage": "str?",
-            "note": "str?",
-            "add_calendar": "bool=true",
-            "create_record": "bool=false",
-        },
-        group="applications",
-        side_effects=("write",),
-        input_model=ReviewApplicationProgressInput,
-        version="2026-08-13",
-    ),
-    "get_application_progress_overview": Operation(
-        name="get_application_progress_overview",
-        fn=get_application_progress_overview,
-        description="从投递尝试和已确认阶段事件派生紧凑进度表；detail 才展开时间线。",
-        parameters={"disclosure": "str=summary", "job_id": "int?", "limit": "int=200"},
-        group="applications",
-        input_model=GetApplicationProgressOverviewInput,
-    ),
     "get_application_workspace": Operation(
         name="get_application_workspace",
         fn=get_application_workspace,
@@ -4461,16 +4333,6 @@ WORKFLOW_CATALOG: dict[str, dict[str, Any]] = {
             {"operation": "refresh_job_research_report", "args": {"job_id": 0}, "dry_run": True},
         ],
     },
-    "progress_board_review": {
-        "name": "progress_board_review",
-        "description": "查看公司→岗位二级进度看板，列出待确认候选，逐条审核接受或拒绝并安排下一步动作。",
-        "intent_keywords": ["进度", "看板", "进展", "面试", "offer", "progress", "review"],
-        "steps": [
-            {"operation": "get_application_progress_board", "args": {}},
-            {"operation": "list_application_progress_candidates", "args": {"status": "pending", "limit": 20}},
-            {"operation": "review_application_progress", "args": {"candidate_id": "", "action": "accept"}, "dry_run": True},
-        ],
-    },
 }
 
 
@@ -5151,31 +5013,6 @@ OPERATIONS.update(
             group="research",
             side_effects=("llm", "write"),
         ),
-        "get_application_progress_board": Operation(
-            name="get_application_progress_board",
-            fn=get_application_progress_board,
-            description="读取公司→岗位二级分组的求职进度看板，含未关联候选、阶段、下一步动作与面试时间。",
-            parameters={"status": "str=active (active|closed|all)", "include_timeline": "bool=false"},
-            group="applications",
-            version="2026-08-13",
-        ),
-        "get_application_progress_timeline": Operation(
-            name="get_application_progress_timeline",
-            fn=get_application_progress_timeline,
-            description="读取单条投递的追加式阶段时间线、邮件证据与待确认候选。",
-            parameters={"application_attempt_id": "int"},
-            group="applications",
-            input_model=GetApplicationProgressTimelineInput,
-            version="2026-08-13",
-        ),
-        "classify_progress_signal": Operation(
-            name="classify_progress_signal",
-            fn=classify_progress_signal,
-            description="确认后对单条待审核的求职进展候选重跑 LLM 分类（回填旧信号或重试失败分类）；基于 subject+snippet。",
-            parameters={"candidate_id": "str"},
-            group="applications",
-            side_effects=("llm", "write"),
-        ),
         "draft_interview_scoring_skill": Operation(
             name="draft_interview_scoring_skill",
             fn=draft_interview_scoring_skill,
@@ -5574,42 +5411,6 @@ OPERATIONS.update(
         ),
     }
 )
-
-
-class AnswerCheckInInput(_StrictOperationInput):
-    key: str = Field(min_length=1, max_length=160)
-    choice: str = Field(default="", max_length=40)
-    text: str = Field(default="", max_length=2000)
-    user_quote: str = Field(default="", max_length=2000)
-    question: str = Field(default="", max_length=500)
-
-
-def _career_stage_ops() -> dict[str, Operation]:
-    from app.services.career_stage import answer_check_in, get_career_next_step_for_agent
-
-    return {
-        "get_career_next_step": Operation(
-            name="get_career_next_step",
-            fn=get_career_next_step_for_agent,
-            description="读取用户的求职阶段、唯一的下一步（最多一个备选）和今天要问的问题；工作台显示的是同一份结果。",
-            group="career_runtime",
-            input_model=_StrictOperationInput,
-            version="2026-10-21",
-        ),
-        "answer_check_in": Operation(
-            name="answer_check_in",
-            fn=answer_check_in,
-            description="记录用户对一条 OfferU 问题的回答并立刻生效（自述阶段、投递结果）；带上用户原话，可在时间线撤销。",
-            group="career_runtime",
-            side_effects=("write",),
-            input_model=AnswerCheckInInput,
-            interaction_tier="auto",
-            version="2026-10-21",
-        ),
-    }
-
-
-OPERATIONS.update(_career_stage_ops())
 
 
 class CreateApplyFormInput(_StrictOperationInput):

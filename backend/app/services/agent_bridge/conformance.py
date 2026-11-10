@@ -41,7 +41,6 @@ _BUSINESS_TO_OPERATIONS = {
     "offeru_list_jobs": "list_jobs",
     "offeru_list_resumes": "list_resumes",
     "offeru_list_profile_evidence": "list_profile_evidence",
-    "offeru_list_application_progress_candidates": "list_application_progress_candidates",
     "offeru_list_learning_observations": "list_learning_observations",
     "offeru_list_memory_inbox": "list_memory_inbox",
     "offeru_list_email_accounts": "list_email_accounts",
@@ -70,7 +69,6 @@ _REQUIRED_CONTEXT_READS = frozenset(
 # to this read-only probe; the underlying Registry operation limits remain
 # unchanged for product callers.
 _CONFORMANCE_READ_LIMITS = {
-    "list_application_progress_candidates": 50,
     "list_profile_evidence": 50,
     "list_learning_observations": 25,
     "list_memory_inbox": 25,
@@ -117,7 +115,6 @@ def _tool_descriptions() -> list[str]:
         "offeru_list_jobs() — read saved jobs",
         "offeru_list_resumes() — read saved resumes",
         "offeru_list_profile_evidence() — read source-linked profile evidence",
-        "offeru_list_application_progress_candidates() — read pending email progress candidates",
         "offeru_list_learning_observations() — read career observations",
         "offeru_list_memory_inbox() — read pending profile candidates",
         "offeru_list_email_accounts() — read connected email account metadata",

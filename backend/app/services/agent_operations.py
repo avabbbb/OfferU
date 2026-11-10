@@ -705,18 +705,6 @@ async def get_application_progress_board(
     return await _board(status=status, include_timeline=include_timeline)
 
 
-async def get_application_progress_timeline(application_attempt_id: int) -> dict:
-    from app.services.application_progress import get_application_progress_timeline as _timeline
-
-    return await _timeline(application_attempt_id=application_attempt_id)
-
-
-async def classify_progress_signal(candidate_id: str) -> dict:
-    from app.services.application_progress import classify_progress_signal as _classify
-
-    return await _classify(candidate_id=candidate_id)
-
-
 async def draft_interview_scoring_skill(
     goal: str,
     target_role: str = "",
@@ -2223,82 +2211,6 @@ async def update_application_status(
             "updated": True,
             "event_warning": event_warning or stage_event_warning,
         }
-
-
-async def ingest_application_signal(
-    channel: str,
-    account_ref: str,
-    external_message_id: str,
-    sender: str,
-    subject: str,
-    body: str,
-    external_thread_id: str = "",
-    received_at: Optional[str] = None,
-    stage_hint: str = "",
-) -> dict:
-    from app.services.application_progress import ingest_application_signal as _ingest
-
-    return await _ingest(
-        channel=channel,
-        account_ref=account_ref,
-        external_message_id=external_message_id,
-        sender=sender,
-        subject=subject,
-        body=body,
-        external_thread_id=external_thread_id,
-        received_at=received_at,
-        stage_hint=stage_hint,
-    )
-
-
-async def list_application_progress_candidates(
-    status: str = "pending",
-    disclosure: str = "summary",
-    limit: int = 100,
-) -> dict:
-    from app.services.application_progress import (
-        list_application_progress_candidates as _list,
-    )
-
-    return await _list(status=status, disclosure=disclosure, limit=limit)
-
-
-async def get_application_progress_candidate(candidate_id: str) -> dict:
-    from app.services.application_progress import get_application_progress_candidate as _get
-
-    return await _get(candidate_id=candidate_id)
-
-
-async def review_application_progress(
-    candidate_id: str,
-    action: str,
-    application_attempt_id: Optional[int] = None,
-    stage: str = "",
-    note: str = "",
-    add_calendar: bool = True,
-    create_record: bool = False,
-) -> dict:
-    from app.services.application_progress import review_application_progress as _review
-
-    return await _review(
-        candidate_id=candidate_id,
-        action=action,
-        application_attempt_id=application_attempt_id,
-        stage=stage,
-        note=note,
-        add_calendar=add_calendar,
-        create_record=create_record,
-    )
-
-
-async def get_application_progress_overview(
-    disclosure: str = "summary",
-    job_id: Optional[int] = None,
-    limit: int = 200,
-) -> dict:
-    from app.services.application_progress import get_application_progress_overview as _get
-
-    return await _get(disclosure=disclosure, job_id=job_id, limit=limit)
 
 
 async def get_application_workspace() -> dict:
