@@ -129,6 +129,13 @@ describe("demo core", () => {
     expect(store.get("job", saved.record.id)?.title).toBe("后端实习");
   });
 
+  it("keeps agent writes behind the user-only guards", () => {
+    const store = new MemoryStore();
+    const saved = job(store, { status: "offer" });
+    expect(() => saveRecord(store, { type: "job", id: saved.record.id, data: { status: "saved" } }, { ...ctx, actor: "Agent" })).toThrow(/只有用户/);
+    expect(() => saveRecord(store, { type: "memory", data: { kind: "skill", title: "x", confirmed: true } }, { ...ctx, actor: "Agent" })).toThrow(/只有用户/);
+  });
+
   it("buckets overview events and searches records", () => {
     const store = new MemoryStore();
     store.seedProfile();

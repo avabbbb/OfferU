@@ -209,8 +209,14 @@ export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext): Save
 
   checkRecord(type, data, id === undefined, store);
 
-  if (type === "memory" && id === undefined) {
-    data = { source: ctx.actor === "你" ? "user" : "agent", confirmed: ctx.actor === "你", ...data };
+  if (type === "memory") {
+    if (ctx.actor !== "你") {
+      if (data.confirmed === true) throw new CoreError("只有用户能确认记忆：Agent 存的记忆是待确认");
+      if (data.source === "user") throw new CoreError("memory.source 不能由 Agent 记成 user");
+    }
+    if (id === undefined) {
+      data = { source: ctx.actor === "你" ? "user" : "agent", confirmed: ctx.actor === "你", ...data };
+    }
   }
 
   const existing = id !== undefined ? store.get(type, id) : null;
