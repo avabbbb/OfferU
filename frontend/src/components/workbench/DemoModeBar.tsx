@@ -11,6 +11,7 @@ import {
 } from "@/lib/bridge";
 import { refreshAll } from "@/lib/core";
 import { SHOWCASE, resetShowcase } from "@/lib/showcase";
+import { DemoDataDialog } from "./DemoDataDialog";
 
 function useBridge() {
   return useSyncExternalStore(subscribeBridge, getBridgeState, getBridgeState);
@@ -21,6 +22,7 @@ function useBridge() {
 export function DemoModeBar() {
   const bridge = useBridge();
   const [open, setOpen] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
   const [token, setToken] = useState("");
   const [probing, setProbing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -82,6 +84,7 @@ export function DemoModeBar() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {notice && <span role="status">{notice}</span>}
+          {!bridge.active && <button type="button" onClick={() => setDataOpen(true)} className="hover:text-[var(--foreground)]">数据包 / 同步</button>}
           {!bridge.active && <button type="button" onClick={() => void clear()} className="hover:text-[var(--foreground)]">清空演示数据</button>}
           {bridge.active ? (
             <button type="button" onClick={() => void disconnect()} className="hover:text-[var(--foreground)]">断开本机</button>
@@ -134,6 +137,7 @@ export function DemoModeBar() {
           </div>
         </div>
       )}
+      <DemoDataDialog open={dataOpen} onClose={() => setDataOpen(false)} />
     </>
   );
 }

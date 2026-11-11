@@ -60,3 +60,16 @@ against same-origin XSS. The default is memory-only; the user must opt in.
 The provider must allow browser CORS. The demo never proxies model requests and
 never sends the key to OfferU. The chat log is plaintext demo data and is cleared
 by the mode bar reset.
+
+## Data package and WebDAV snapshot
+
+The mode bar exposes a JSON package (`offeru-demo-*.json`) built from the demo
+store snapshot. It contains records and changes, not API keys or Agent chat.
+Importing replaces the whole demo state (no field-level merge) and keeps one
+pre-import snapshot in `offeru-demo-sync` for recovery.
+
+WebDAV sync follows Flovart's pattern: browser-side `PROPFIND`/`MKCOL`/`GET`/
+`PUT` with optional Basic auth. The remote file is `offeru-demo.json`; upload
+overwrites the remote, download overwrites the local snapshot. The password is
+memory-only. The WebDAV server must allow CORS and those methods. This is a
+manual snapshot sync, not background sync and not conflict-free merging.

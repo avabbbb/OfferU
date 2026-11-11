@@ -135,6 +135,13 @@ export class BrowserDemoStore implements CoreStore {
     return this.writes;
   }
 
+  /** Replace the entire demo state, e.g. after importing a portable data package. */
+  async replace(next: DemoState): Promise<void> {
+    await this.writes;
+    this.state = clone(next);
+    await storage.setItem(STATE_KEY, this.state);
+  }
+
   async reset(): Promise<void> {
     await this.writes;
     this.state = this.initialState();
