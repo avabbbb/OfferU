@@ -32,8 +32,9 @@ best-effort behavior that only exists in the browser.
 ## Data and privacy
 
 Demo records are fictional and stored as plaintext IndexedDB under
-`offeru-demo`. The API key vault (when the built-in Agent lands) is separate and
-encrypted; see `docs/` before adding it. The mode bar offers a clear/reset
+`offeru-demo`. The API key vault is separate: `keyVault.ts` encrypts a
+remembered provider key with a non-extractable device key before writing it to
+IndexedDB; memory-only is the default. The mode bar offers a clear/reset
 action. Do not add real identity numbers, phone numbers, resumes or provider
 keys to seed data.
 
