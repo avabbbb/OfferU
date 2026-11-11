@@ -12,6 +12,8 @@ import {
   prepareCriticalSmartFillPlan,
 } from "./content/smartfill-v2/pipeline.js";
 import { PendingFieldHighlighter } from "./content/smartfill-v2/ui/highlighter.js";
+import { FieldOverlay } from "./content/smartfill-v2/ui/field-overlay.js";
+import { writeBatch } from "./content/smartfill-v2/write/writer.js";
 import { setDebugEnabled, logDebug as logSmartFillDebug } from "./content/smartfill-v2/shared/logger.js";
 import type { CriticalSmartFillPlan, ScannedField } from "./content/smartfill-v2/core/types.js";
 import { safeExtensionError } from "./lib/safe-error.js";
@@ -1065,6 +1067,7 @@ function createFloatingDock(): void {
 
   const toggleGlyphEl = root.querySelector("#offeruFloatingToggleGlyph") as HTMLElement | null;
   const pendingHighlighter = new PendingFieldHighlighter();
+  const fieldOverlay = new FieldOverlay();
 
   let panel: HTMLDivElement | null = null;
   let panelController: AbortController | null = null;
@@ -1309,6 +1312,7 @@ function createFloatingDock(): void {
     smartFillPreviewMode = false;
     smartFillChecklistData = [];
     pendingHighlighter.clear();
+    fieldOverlay.hide();
     updateSmartFillUi();
   }
 
@@ -1339,6 +1343,7 @@ function createFloatingDock(): void {
     smartFillPendingCount = 0;
     smartFillChecklistData = [];
     pendingHighlighter.clear();
+    fieldOverlay.hide();
     smartFillStatus = "running";
     smartFillStatusText = "正在识别页面";
     smartFillSubText = "";
@@ -1390,10 +1395,35 @@ function createFloatingDock(): void {
           resolved: true,
           reason: `将填写：${item.valuePreview}`,
         }));
+        fieldOverlay.show(plan, {
+          onFillField: async (item) => {
+            try {
+              const result = await applyCriticalSmartFillPlan({ ...plan, items: [item] });
+              const written = result.outcome.results.find((entry) => entry.fieldId === item.field.fieldId);
+              if (written?.verified) return { ok: true };
+              return { ok: false, message: written?.written ? "已写入但未通过回读" : "没写进去" };
+            } catch (error) {
+              return { ok: false, message: safeExtensionError(error, "填写失败") };
+            }
+          },
+          onRestoreField: async (item, value) => {
+            try {
+              const results = await writeBatch([item.field], new Map([[item.field.fieldId, { ...item.candidate, value, confidence: 1 }]]), {
+                adapterId: plan.adapterId,
+                preserveExistingValues: false,
+              });
+              return Boolean(results[0]?.written);
+            } catch {
+              return false;
+            }
+          },
+          onClose: () => resetSmartFillState(),
+        });
         return;
       }
 
       const planToApply = smartFillPlan;
+      fieldOverlay.hide();
       const result = await applyCriticalSmartFillPlan(planToApply, {
         signal: smartFillAbortController.signal,
         onProgress: progressHandler,

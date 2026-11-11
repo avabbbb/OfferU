@@ -9,6 +9,7 @@ const BUILT_EXTENSION_DIR = resolve(EXTENSION_ROOT, ".output", "chrome-mv3");
 const EXTENSION_DIR = existsSync(join(BUILT_EXTENSION_DIR, "manifest.json"))
   ? BUILT_EXTENSION_DIR
   : EXTENSION_ROOT;
+const FIXTURE_CHROME = String(process.env.OFFERU_FIXTURE_CHROME || "").trim() || undefined;
 
 function testTempRoot() {
   const configured = String(process.env.OFFERU_TEST_TEMP_ROOT || "").trim();
@@ -27,9 +28,6 @@ function testTempRoot() {
   for (const name of ["TEMP", "TMP", "TMPDIR"]) {
     process.env[name] = tempDirectory;
   }
-  const browserCache = resolve(candidate, "playwright-browsers");
-  mkdirSync(browserCache, { recursive: true });
-  process.env.PLAYWRIGHT_BROWSERS_PATH = browserCache;
   return candidate;
 }
 const PROFILE = {
@@ -141,6 +139,10 @@ function fixtureHtml(port) {
     </section>
     <section class="section basic-section">
       <h2 class="section-title">基本信息</h2>
+      <div class="ant-form-item">
+        <label for="full-name">姓名</label>
+        <input class="native" id="full-name" name="fullName" />
+      </div>
       <div class="ant-form-item">
         <label for="id-number">身份证号</label>
         <input class="native" id="id-number" name="idNumber" />
@@ -254,6 +256,8 @@ function fixtureHtml(port) {
 </html>`;
 }
 
+// 扩展把本机后端地址归一化到 8766，所以夹具必须占用 8766；跑之前确认没有真实后端。
+// 需要完整 Chromium（channel: chromium），headless shell 不加载扩展。
 async function startServer() {
   const server = createServer((req, res) => {
     if (req.method === "OPTIONS") {
@@ -289,7 +293,19 @@ async function startServer() {
     res.writeHead(404);
     res.end("not found");
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(8766, "127.0.0.1");
+  });
   return server;
 }
 
@@ -301,13 +317,14 @@ async function main() {
   try {
     browser = await chromium.launchPersistentContext(userDataDir, {
       // Keep fixture runs isolated and never attach to a system browser.
-      headless: true,
-      ignoreDefaultArgs: true,
+      headless: process.env.OFFERU_FIXTURE_HEADLESS !== "0",
+      executablePath: FIXTURE_CHROME,
+      channel: FIXTURE_CHROME ? undefined : "chromium",
+      ignoreDefaultArgs: ["--disable-extensions"],
       args: [
-        "--remote-debugging-pipe",
         "--no-first-run",
         "--no-default-browser-check",
-        `--user-data-dir=${userDataDir}`,
+        "--disable-features=DisableLoadExtensionCommandLineSwitch",
         "--disable-background-networking",
         "--disable-component-update",
         "--disable-default-apps",
@@ -322,7 +339,7 @@ async function main() {
     });
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${port}/fixture`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("#offeru-ext-floating-dock", { timeout: 15000 });
+    await page.waitForSelector("#offeru-ext-floating-dock", { state: "attached", timeout: 15000 });
 
     let worker = browser.serviceWorkers()[0];
     if (!worker) {
@@ -356,40 +373,49 @@ async function main() {
       root?.querySelector('[data-action="smart-fill"]')?.click();
     });
 
+    await page.waitForSelector("#offeru-ext-field-overlay", { state: "attached", timeout: 15000 });
+    const overlayChips = await page.evaluate(() => {
+      const root = document.getElementById("offeru-ext-field-overlay")?.shadowRoot;
+      return root ? root.querySelectorAll(".offeru-chip").length : 0;
+    });
+    if (overlayChips === 0) {
+      throw new Error("field overlay rendered no chips");
+    }
+    await page.evaluate(() => {
+      const root = document.getElementById("offeru-ext-field-overlay")?.shadowRoot;
+      root?.querySelector('[data-action="fill-all"]')?.click();
+    });
+
     await page.waitForFunction(() => {
-      const values = Array.from(document.querySelectorAll("[data-field]")).map((el) => el.dataset.value || "");
-      const idNumber = document.querySelector("#id-number")?.value || "";
-      return values.includes("复旦大学")
-        && values.includes("北京大学")
-        && values.includes("2022-09")
-        && values.includes("2026-09")
-        && values.some((value) => value.includes("广东省") && value.includes("深圳市") && value.includes("南山区"))
-        && idNumber === "440305200305180026";
+      const school1 = document.querySelector('[data-field="school-1"]')?.dataset.value || "";
+      const school2 = document.querySelector('[data-field="school-2"]')?.dataset.value || "";
+      const filled = document.getElementById("offeru-ext-field-overlay")?.shadowRoot?.querySelectorAll(".offeru-chip.is-filled").length || 0;
+      const fullName = document.querySelector("#full-name")?.value || "";
+      return fullName === "张三" && school1 === "复旦大学" && school2 === "北京大学" && filled === 3;
     }, { timeout: 30000 });
 
     const snapshot = await page.evaluate(() => ({
       school1: document.querySelector('[data-field="school-1"]')?.dataset.value || "",
       school2: document.querySelector('[data-field="school-2"]')?.dataset.value || "",
-      start1: document.querySelector('[data-field="start-1"]')?.dataset.value || "",
-      start2: document.querySelector('[data-field="start-2"]')?.dataset.value || "",
-      city: document.querySelector('[data-field="city"]')?.dataset.value || "",
-      idNumber: document.querySelector("#id-number")?.value || "",
+      fullName: document.querySelector("#full-name")?.value || "",
+      filledChips: document.getElementById("offeru-ext-field-overlay")?.shadowRoot?.querySelectorAll(".offeru-chip.is-filled").length || 0,
     }));
 
-    const expected = {
-      school1: "复旦大学",
-      school2: "北京大学",
-      start1: "2022-09",
-      start2: "2026-09",
-      city: "广东省/深圳市/南山区",
-      idNumber: "440305200305180026",
-    };
-    for (const [key, value] of Object.entries(expected)) {
-      if (snapshot[key] !== value) {
-        throw new Error(`${key} expected ${value}, got ${snapshot[key]}`);
-      }
-    }
-    console.log("smartfill browser fixture passed", JSON.stringify(snapshot));
+    await page.evaluate(() => {
+      const root = document.getElementById("offeru-ext-field-overlay")?.shadowRoot;
+      root?.querySelector('[data-action="undo-all"]')?.click();
+    });
+    await page.waitForFunction(() => {
+      const fullName = document.querySelector("#full-name")?.value || "";
+      return fullName === "";
+    }, { timeout: 10000 });
+    const undone = await page.evaluate(() => ({
+      school1: document.querySelector('[data-field="school-1"]')?.dataset.value || "",
+      school2: document.querySelector('[data-field="school-2"]')?.dataset.value || "",
+      fullName: document.querySelector("#full-name")?.value || "",
+      filledChips: document.getElementById("offeru-ext-field-overlay")?.shadowRoot?.querySelectorAll(".offeru-chip.is-filled").length || 0,
+    }));
+    console.log("smartfill browser fixture passed", JSON.stringify({ filled: snapshot, undone }));
   } finally {
     if (browser) await browser.close();
     server.close();

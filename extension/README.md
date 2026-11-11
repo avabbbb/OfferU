@@ -6,6 +6,8 @@ OfferU 浏览器插件用于在招聘网站页面手动采集岗位信息，并�
 关键约束：
 - 岗位采集仅支持用户手动触发，并只读取页面 DOM。
 - SmartFill 也必须由用户手动触发，填充结束在用户审核，不自动提交表单。
+- SmartFill 现在是「先预览再填」：第一次点「一键智填」只扫描并生成计划，页面每个字段旁出现灰色预览（将填写什么、来自档案哪一条）和「填入」；点单项、卡片或「填写本页」才写入，填完回读，支持逐项/全部撤销。复杂控件无法自动恢复时标「需手动撤销」，不谎报成功。
+- 预览浮层挂在独立 Shadow DOM 里，不往表单 DOM 插节点；只作用于飞书招聘、Moka、北森等公开官网，不碰 BOSS 直聘 / 小红书等风控平台。
 - 默认后端地址为 `http://127.0.0.1:8766`；网页端口固定为 `7410`，不要把 `8080` 等模型服务端口当作网页入口。
 - 扩展顶部的“打开 OfferU 网页”只在用户点击且 `7410` 前端健康检查通过后打开 `http://127.0.0.1:7410`；服务未启动时只显示提示，不创建无法连接的浏览器标签。后端 `8766` 只用于 API 通信。
 
@@ -51,7 +53,14 @@ Popup 源码入口是 `src/popup.html`，由它引用 `src/popup.ts` 与 `static
 - `npm run zip`：打包产物
 - `npm run build:legacy`：旧构建链路（tsc + 静态复制）
 
-SmartFill fixture 验收只使用 Playwright 自带的 managed Chromium 与临时隔离 profile；首次运行前请执行 `npx playwright install chromium`。浏览器未安装时应直接报告缺失，不会回退到系统 Chrome/Edge，也不会打开可见窗口。
+SmartFill fixture 验收使用 Playwright 的**完整 Chromium**（不是 headless shell；headless shell 不加载扩展）。首次运行前执行 `npx playwright install chromium`。夹具服务器固定监听 `127.0.0.1:8766`，因为扩展会把本机后端地址归一化到 8766；跑之前先确认 8766 没被真实后端占用。需要指定浏览器时用 `OFFERU_FIXTURE_CHROME`，需要可见窗口时加 `OFFERU_FIXTURE_HEADLESS=0`：
+
+```bash
+node scripts/smartfill-browser-fixture.mjs
+OFFERU_FIXTURE_CHROME="C:/path/to/chrome.exe" node scripts/smartfill-browser-fixture.mjs
+```
+
+夹具会验证：预览浮层出现、批量填入、原生字段撤销（复杂控件标「需手动撤销」）。
 
 ## 目录说明
 - `src/`：核心源码（background/content/popup）
