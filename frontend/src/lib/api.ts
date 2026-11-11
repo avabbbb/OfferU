@@ -6,6 +6,7 @@
 // =============================================
 
 import { SHOWCASE, SHOWCASE_UNSUPPORTED, showcaseHandle } from "./showcase";
+import { bridgeActive, bridgeHeaders } from "./bridge";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
 import { decideAgentActionInDesktop } from "./desktop-proposal-decision";
@@ -58,15 +59,15 @@ function buildQuery(params?: Record<string, unknown>) {
 }
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  if (SHOWCASE) {
+  if (SHOWCASE && !bridgeActive()) {
     // 展示站：回放录好的真实响应，改动存在浏览器里（见 lib/showcase）
     return (await showcaseHandle(path, options)) as T;
   }
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
-      headers: { "Content-Type": "application/json" },
+    res = await fetch(`${resolveApiBase()}${path}`, {
       ...options,
+      headers: { "Content-Type": "application/json", ...bridgeHeaders(), ...(options?.headers || {}) },
       redirect: "error",
     });
   } catch (error) {
@@ -96,10 +97,10 @@ async function readEventStream<T>(
   onEvent?: (event: string, data: any) => void,
   signal?: AbortSignal
 ): Promise<T> {
-  if (SHOWCASE) throw new Error(SHOWCASE_UNSUPPORTED);
+  if (SHOWCASE && !bridgeActive()) throw new Error(SHOWCASE_UNSUPPORTED);
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: { Accept: "text/event-stream", ...options.headers },
+    headers: { Accept: "text/event-stream", ...bridgeHeaders(), ...(options?.headers || {}) },
     redirect: "error",
     signal,
   });
@@ -1821,7 +1822,7 @@ export const profileApi = {
     request(`/api/profile/sections/${id}`, { method: "DELETE" }),
 
   chat: async (data: { topic: string; message: string; session_id?: number }) => {
-    if (SHOWCASE) throw new Error(SHOWCASE_UNSUPPORTED);
+    if (SHOWCASE && !bridgeActive()) throw new Error(SHOWCASE_UNSUPPORTED);
     const res = await fetch(`${API_BASE}/api/profile/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

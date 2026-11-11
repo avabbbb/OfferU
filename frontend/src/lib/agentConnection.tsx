@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation";
 import { agentRuntimeApi } from "./api";
 import { SHOWCASE } from "./showcase";
+import { bridgeActive } from "./bridge";
 import { safeClientErrorMessage } from "./safe-error";
 import type { AgentConnection } from "./api";
 import { useWorkbench } from "./workbench";
@@ -123,7 +124,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   }, [pathname, selection]);
 
   useEffect(() => {
-    if (SHOWCASE || /^\/resume\/print\//.test(pathname)) {
+    if ((SHOWCASE && !bridgeActive()) || /^\/resume\/print\//.test(pathname)) {
       queued.current = null;
       sequence.current += 1;
       // 排队中的同步被丢掉了，别让状态停在 syncing。

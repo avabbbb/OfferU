@@ -149,7 +149,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
         </p>
       </div>
 
-      {SHOWCASE ? <p role="status" className="p-6 text-sm text-[var(--foreground-muted)]">展示模式使用 Demo Agent 和虚构数据。真实 Agent 接入请在本机安装 OfferU 后运行 offeru start。</p> : <div className="space-y-5 p-5 sm:p-7">
+      {SHOWCASE ? <div role="status" className="space-y-2 p-6 text-sm leading-relaxed text-[var(--foreground-muted)]"><p>展示模式默认使用浏览器里的虚构数据，不会自动连接本机。</p><p>在页面顶部点「连接本机 OfferU」，配对后外置 Agent 通过本机 MCP 读写同一份 <code>offeru.db</code>；未连接时 AI 与外置 Agent 不可用。</p></div> : <div className="space-y-5 p-5 sm:p-7">
         <AgentConnectPrompt />
         <AgentBoard />
         {desktop ? <div className="space-y-3">

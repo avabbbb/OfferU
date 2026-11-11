@@ -1,0 +1,45 @@
+# Showcase demo core (test branch)
+
+`VITE_SHOWCASE=true` normally replays `snapshot.json`. This directory adds a
+real browser-side store for the core loop, so the static demo can create,
+edit, delete, search and undo records without a Python backend.
+
+## What is shared
+
+- `src/lib/domain/` is pure TypeScript: validation, labels, overview buckets,
+  status rules, change log and undo. No React, DOM, IndexedDB or fetch.
+- `src/lib/demo/store.ts` is the browser adapter (localforage/IndexedDB).
+- `src/lib/demo/seed.ts` is fictional demo data.
+- A future Node adapter can implement `CoreStore` and reuse the same domain
+  code; do not put browser APIs into `src/lib/domain/`.
+
+## Supported tools only
+
+`overview`, `list`, `get`, `save`, `delete`, `undo`, `changes`, `search`.
+
+Everything else throws `DEMO_UNSUPPORTED`; never return a fake success. AI,
+email sync, file reads, PDF export, browser extension and external agents are
+deliberately unsupported in the static demo. The local bridge is the only way
+to use a real backend.
+
+## Drift control
+
+Python `backend/app/core/tools.py` remains the source of truth. Before changing
+one of the eight supported tools, update the matching behavior here and its
+test in `domain/operations.test.ts`. The demo must stay a subset; do not add
+best-effort behavior that only exists in the browser.
+
+## Data and privacy
+
+Demo records are fictional and stored as plaintext IndexedDB under
+`offeru-demo`. The API key vault (when the built-in Agent lands) is separate and
+encrypted; see `docs/` before adding it. The mode bar offers a clear/reset
+action. Do not add real identity numbers, phone numbers, resumes or provider
+keys to seed data.
+
+## Local bridge
+
+The mode bar can pair with `http://127.0.0.1:8766`. The backend requires
+`X-OfferU-Pairing` for bridge origins; the token is displayed at
+`/api/pairing` and kept in memory only. Without pairing, the page never talks
+to the loopback backend.

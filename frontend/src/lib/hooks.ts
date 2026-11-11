@@ -8,6 +8,7 @@
 
 import useSWR from "swr";
 import { SHOWCASE, showcaseHandle } from "@/lib/showcase";
+import { bridgeActive, bridgeHeaders } from "@/lib/bridge";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import type { CareerArtifact, CareerDelivery } from "@/lib/api";
@@ -31,13 +32,13 @@ function formatBackendNetworkError(_error?: unknown) {
  * 自动处理 JSON 解析和错误码
  */
 const fetcher = async (url: string) => {
-  if (SHOWCASE) {
+  if (SHOWCASE && !bridgeActive()) {
     const parsed = new URL(url, window.location.href);
     return showcaseHandle(parsed.pathname + parsed.search);
   }
   let res: Response;
   try {
-    res = await fetch(url, { redirect: "error" });
+    res = await fetch(url, { redirect: "error", headers: bridgeHeaders() });
   } catch {
     throw new Error(formatBackendNetworkError());
   }
@@ -54,11 +55,11 @@ const fetcher = async (url: string) => {
  * 合成标准 Response；不支持的操作直接抛错。
  */
 async function showcaseFetch(url: string, init?: RequestInit): Promise<Response> {
-  if (!SHOWCASE) {
+  if (!SHOWCASE || bridgeActive()) {
     const target = /^https?:\/\//i.test(url)
       ? url
       : `${API_BASE}${url.startsWith("/") ? url : `/${url}`}`;
-    return fetch(target, { ...init, redirect: "error" });
+    return fetch(target, { ...init, headers: { ...bridgeHeaders(), ...(init?.headers || {}) }, redirect: "error" });
   }
   const data = await showcaseHandle(url, init);
   return new Response(JSON.stringify(data), {

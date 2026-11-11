@@ -1272,7 +1272,7 @@ export default function SettingsPage() {
       transition={{ type: "spring", damping: 15 }}
       className="space-y-6"
     >
-      <PageHeader title="设置" description={SHOWCASE ? "展示版不连接本机，真实数据和外置 Agent 请使用桌面版。" : "Agent 连接、模型服务和数据安全。"} />
+      <PageHeader title="设置" description={SHOWCASE ? "展示版默认用浏览器数据；顶部可配对连接本机 OfferU，外置 Agent 走本机 MCP。" : "Agent 连接、模型服务和数据安全。"} />
 
       <div className="divide-y divide-[var(--border)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
         <SettingsRow rowKey="agent" title="我的 Agent" status={agentStatus} onOpen={() => setOpenSection("agent")} />

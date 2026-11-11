@@ -5,6 +5,9 @@ import useSWR, { mutate as globalMutate } from "swr";
 
 import { request } from "@/lib/api";
 import { resolveApiBase } from "@/lib/apiBase";
+import { bridgeActive } from "@/lib/bridge";
+import { DEMO_TOOL_NAMES, demoTool } from "@/lib/demo/tools";
+import { SHOWCASE } from "@/lib/showcase";
 
 export type JobStatus = "saved" | "applied" | "test" | "interview" | "offer" | "rejected" | "closed";
 export type EventKind = "todo" | "deadline" | "test" | "interview";
@@ -43,6 +46,9 @@ export type Overview = {
 };
 
 export function tool<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+  if (SHOWCASE && !bridgeActive() && DEMO_TOOL_NAMES.has(name)) {
+    return demoTool<T>(name, args);
+  }
   return request<T>(`/api/tools/${name}`, { method: "POST", body: JSON.stringify(args) });
 }
 

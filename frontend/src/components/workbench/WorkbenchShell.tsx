@@ -17,6 +17,7 @@ import { SectionTabs } from "@/components/layout/SectionTabs";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
 import { AgentConnectionProvider } from "@/lib/agentConnection";
 import { AgentConnectionDialog, AgentConnectionStatus } from "./AgentConnectionPanel";
+import { DemoModeBar } from "./DemoModeBar";
 import { AgentActionsInbox } from "./AgentActionsInbox";
 import { resolveApiBase } from "@/lib/apiBase";
 
@@ -165,6 +166,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
         <div className="offeru-focus-shell offeru-viewport-shell flex w-full flex-col overflow-hidden">
           <FocusTopBar rule={focusRule} agentOpen={agentOpen} />
           <main className="workbench-main relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 md:px-6">
+            <DemoModeBar />
             {children}
           </main>
         </div>
@@ -180,6 +182,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <main className="workbench-main relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-36 md:px-6 md:py-6 md:pb-8">
           <div className="mx-auto max-w-[1600px]">
+            <DemoModeBar />
             <SectionTabs />
             {children}
           </div>

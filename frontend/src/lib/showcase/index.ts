@@ -4,6 +4,8 @@
 // - 新增、删除、AI 这类必须有后端的操作：直接报错提示下载桌面版，不假装成功。
 import localforage from "localforage";
 
+import { resetDemoData } from "@/lib/demo/store";
+
 export const SHOWCASE = process.env.VITE_SHOWCASE === "true";
 export const SHOWCASE_UNSUPPORTED = "展示版只能浏览和修改已有内容，新增、删除和 AI 功能请下载桌面版体验。";
 
@@ -46,12 +48,16 @@ async function write(key: string, body: unknown): Promise<unknown> {
   return next;
 }
 
+export async function resetShowcase(): Promise<void> {
+  await Promise.all([edits.clear(), resetDemoData()]);
+}
+
 export async function showcaseHandle(path: string, options?: RequestInit): Promise<unknown> {
   const method = String(options?.method || "GET").toUpperCase();
   const key = keyOf(path);
   if (method === "GET") return read(key);
   if (method === "POST" && key === "/api/agent/data/demo/reset") {
-    await edits.clear();
+    await resetShowcase();
     return { reset: true, scope: "showcase_edits" };
   }
   if (method === "PUT" || method === "PATCH") {
