@@ -192,6 +192,24 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 页面右侧开小侧栏，用的是这个岗位的同一份网申对话 doc。
 - 每个输入框标题旁边放「填写」：悬停预览，已有内容时变「替换」，填完可撤销。不自动点提交。
 
+### 12.1 内部 Alpha 浏览器助手（受邀用户）
+
+范围只对 `INTERNAL_ALPHA_TERMS.md` 里的受邀注册用户开放；公开版不默认开启。能力分三块，共用一条 plan / fill 管道：
+
+- **表单填写**：content script 扫描当前页字段（label / type / required / options / 当前值），只把这些描述发给本机后端的 `forms.plan`；后端用 profile、已确认记忆和岗位定制简历生成 `{ref, value, source, confidence}`。页面用 Shadow DOM 覆盖层在每个字段旁显示灰色预览和「填入」，点单项或「填写本页」才写入；填完回读校验，支持逐字段撤销。填不进去的进 `needs_user` 或 `skipped`，不谎报成功。
+- **BOSS 直聘**：只在用户本人已登录的浏览器里、用户打开岗位页后工作。扩展可填打招呼语、附上定制简历 PDF 的本地文件入口，发送按钮由用户点；不做自动提交、不做多账号、不做反检测。内部测试用测试账号，账号被限流/封禁的后果按协议由用户承担。
+- **小红书**：只做当前页/选中文字的采集，用户在搜索结果或笔记页点「存为岗位」才读取；不后台翻页、不批量抓取、不调用非公开接口。用户可以把「点点」的回答或笔记正文粘贴到 `add_job` 解析。
+
+实现约束：
+
+- 扩展是唯一执行器；Agent 通过 `browser` 工具的 `snapshot / plan / fill / readback / undo` 调同一套消息，不另开 CDP 或 Playwright 路径。没有扩展时明确报错，不静默降级到脚本爬取。
+- 覆盖层挂在 `all: initial` 的 Shadow DOM 宿主上，不往表单 DOM 插节点；用 `getBoundingClientRect` 定位，`scroll / resize / ResizeObserver` 更新，`IntersectionObserver` 只渲染可视区。
+- React/Vue 受控组件用原型链原生 setter + `input/change`；`contenteditable` 用 `execCommand("insertText")`，失败再合成 paste；select/radio/checkbox 用原生 click/change。填完必须回读，不一致进 mismatch。
+- 密码、证件号、隐藏字段、文件上传不自动填；提交、下一步、发送永远由用户点。
+- 每个页面一份填写 session，记录 before/after 供撤销；只存在扩展本地，不写 offeru.db，除非用户点「记录这次投递」。
+- 页面内容视为不可信输入；只把字段描述发给本机后端，不发整页 HTML，不把页面指令当提示词。
+- 平台风险：不提供绕过验证码、反爬、风控、实名限制的能力；不做多账号、后台批量抓取、代投收费。测试和演示只用内部测试账号或公开官方招聘页。
+
 ## 13. 桌面小球（第四期之后）
 
 pywebview 小窗，随 `offeru start` 打开，轮询 overview；有新的改动或临近的日程时头像动一下；悬停展开今天的待办，可以勾掉。
