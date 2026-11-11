@@ -50,6 +50,8 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
+import { DemoBridgeDialog } from "@/components/workbench/DemoBridgeDialog";
+import { DemoDataDialog } from "@/components/workbench/DemoDataDialog";
 import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";
 import { PlatformConsentCard } from "@/components/settings/PlatformConsentCard";
 import { BossLoginCard } from "@/components/boss-login";
@@ -352,6 +354,8 @@ function LocalDataSafetyCard() {
   const [invalidBackups, setInvalidBackups] = useState(0);
   const [selectedBackup, setSelectedBackup] = useState<DataBackupItem | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
+  const [demoDataOpen, setDemoDataOpen] = useState(false);
+  const [demoBridgeOpen, setDemoBridgeOpen] = useState(false);
   const [demoResetOpen, setDemoResetOpen] = useState(false);
   const [demoConfirmationText, setDemoConfirmationText] = useState("");
   const [privacyHygiene, setPrivacyHygiene] = useState<PrivacyHygieneStatus | null>(null);
@@ -635,6 +639,24 @@ function LocalDataSafetyCard() {
           </div>
         </div>
 
+        {SHOWCASE && (
+          <div className="bauhaus-panel-sm border-[var(--border)] bg-[var(--surface-muted)] p-4" data-testid="demo-data-sync">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-3xl">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">示例数据</p>
+                <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">数据包、备份与多设备同步</p>
+                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+                  导出 JSON 数据包，或通过 WebDAV 上传/下载整包快照。示例数据只在这个浏览器；导入、下载和同步都会整包覆盖，不做自动合并。连接本机 OfferU 后改读写本机数据库。
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="bordered" onPress={() => setDemoDataOpen(true)}>数据包 / 同步</Button>
+                <Button size="sm" variant="bordered" onPress={() => setDemoBridgeOpen(true)}>连接本机 OfferU</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {!SHOWCASE && privacyHygiene && (
           <div
             className={`bauhaus-panel-sm p-4 ${legacyEmailBodyCount || syntheticEmailDataCount ? "border-amber-500 bg-amber-50" : "border-emerald-600 bg-emerald-50"}`}
@@ -764,6 +786,9 @@ function LocalDataSafetyCard() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <DemoDataDialog open={demoDataOpen} onClose={() => setDemoDataOpen(false)} />
+      <DemoBridgeDialog open={demoBridgeOpen} onClose={() => setDemoBridgeOpen(false)} />
 
       <Modal isOpen={privacyScrubOpen} onClose={() => setPrivacyScrubOpen(false)} size="lg" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
@@ -1272,7 +1297,7 @@ export default function SettingsPage() {
       transition={{ type: "spring", damping: 15 }}
       className="space-y-6"
     >
-      <PageHeader title="设置" description={SHOWCASE ? "展示版默认用浏览器数据；顶部可配对连接本机 OfferU，外置 Agent 走本机 MCP。" : "Agent 连接、模型服务和数据安全。"} />
+      <PageHeader title="设置" description={SHOWCASE ? "展示版默认用示例数据；在「数据」里导出、同步或连接本机 OfferU。" : "Agent 连接、模型服务和数据安全。"} />
 
       <div className="divide-y divide-[var(--border)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
         <SettingsRow rowKey="agent" title="我的 Agent" status={agentStatus} onOpen={() => setOpenSection("agent")} />
