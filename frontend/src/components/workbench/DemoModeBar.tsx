@@ -62,7 +62,7 @@ export function DemoModeBar() {
   };
 
   const clear = async () => {
-    if (!window.confirm("清空这个浏览器里的演示数据，恢复示例内容？")) return;
+    if (!window.confirm("清空这个浏览器里的演示数据，恢复示例内容？演示数据是虚构的，不要填真实证件或手机号。")) return;
     await resetShowcase();
     await refreshAll();
     setNotice("演示数据已恢复为示例内容。");

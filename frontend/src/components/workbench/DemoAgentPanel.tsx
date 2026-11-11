@@ -211,7 +211,7 @@ export function DemoAgentPanel() {
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
             <p className="flex items-center gap-2 text-[13px] font-medium"><KeyRound size={14} /> 模型配置</p>
             <p className="mt-1 text-[12px] leading-relaxed text-[var(--foreground-muted)]">
-              Key 只用于浏览器直连你填的 provider，不经过 OfferU 服务器。记住 Key 会用设备密钥 AES-GCM 存 IndexedDB，但不防同源 XSS；共用电脑不要勾选。
+              Key 只用于浏览器直连你填的 provider，不经过 OfferU 服务器。记住 Key 会用设备密钥 AES-GCM 存 IndexedDB，但不防同源 XSS；共用电脑不要勾选。对话和业务数据明文存在这个浏览器，不要填真实证件或手机号。
             </p>
             <label className="mt-3 block text-[12px] text-[var(--foreground-muted)]">
               预设
