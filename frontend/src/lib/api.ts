@@ -273,6 +273,7 @@ export const resumeApi = {
     const res = await fetch(`${API_BASE}/api/resume/${resumeId}/photo`, {
       method: "POST",
       body: formData,
+      headers: bridgeHeaders(),
       redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
@@ -286,7 +287,7 @@ export const resumeApi = {
     const formData = new FormData();
     formData.append("file", file);
     const res = await fetch(`${API_BASE}/api/resume/${resumeId}/logo`, {
-      method: "POST", body: formData, redirect: "error",
+      method: "POST", body: formData, headers: bridgeHeaders(), redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
@@ -294,7 +295,7 @@ export const resumeApi = {
 
   // 导出
   exportPdf: (id: number) =>
-    fetch(`${API_BASE}/api/resume/${id}/export/pdf`, { method: "POST", redirect: "error" }),
+    fetch(`${API_BASE}/api/resume/${id}/export/pdf`, { method: "POST", headers: bridgeHeaders(), redirect: "error" }),
 
   exportPdfUrl: (id: number) => `${API_BASE}/api/resume/${id}/export/pdf`,
 
@@ -1178,6 +1179,7 @@ export const agentRuntimeApi = {
     const res = await fetch(API_BASE + "/api/agent/runtime/attachments", {
       method: "POST",
       body: formData,
+      headers: bridgeHeaders(),
       redirect: "error",
     });
     const body: unknown = await res.json().catch(() => null);
@@ -1420,7 +1422,7 @@ export const agentBoardApi = {
     if (isTauri()) return invoke<AgentLaunchResult>("launch_agent", { agentId });
     const token = liteToken();
     if (!token) throw new Error("请用 offeru start 打开的工作台打开对话");
-    const res = await fetch(API_BASE + agentBoardPath(agentId, "/launch"), { method: "POST", headers: { Authorization: "Bearer " + token }, redirect: "error" });
+    const res = await fetch(API_BASE + agentBoardPath(agentId, "/launch"), { method: "POST", headers: { Authorization: "Bearer " + token, ...bridgeHeaders() }, redirect: "error" });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(res.status === 403 ? "工作台授权已失效，请重新运行 offeru start" : payload?.detail || "打开对话失败：" + res.status);
     return payload as AgentLaunchResult;
@@ -1825,7 +1827,7 @@ export const profileApi = {
     if (SHOWCASE && !bridgeActive()) throw new Error(SHOWCASE_UNSUPPORTED);
     const res = await fetch(`${API_BASE}/api/profile/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...bridgeHeaders() },
       body: JSON.stringify(data),
       redirect: "error",
     });
@@ -1840,6 +1842,7 @@ export const profileApi = {
     const res = await fetch(`${API_BASE}/api/profile/import-resume?${params.toString()}`, {
       method: "POST",
       body: formData,
+      headers: bridgeHeaders(),
       redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
@@ -1878,6 +1881,7 @@ export const profileApi = {
     const res = await fetch(`${API_BASE}/api/profile/agent/start`, {
       method: "POST",
       body: formData,
+      headers: bridgeHeaders(),
       redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);

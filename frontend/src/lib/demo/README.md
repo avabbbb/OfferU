@@ -43,3 +43,19 @@ The mode bar can pair with `http://127.0.0.1:8766`. The backend requires
 `X-OfferU-Pairing` for bridge origins; the token is displayed at
 `/api/pairing` and kept in memory only. Without pairing, the page never talks
 to the loopback backend.
+
+## Built-in browser Agent
+
+`src/lib/demo/agent.ts` runs a tiny OpenAI-compatible function-calling loop in
+the page. It exposes six tools only: `overview`, `list`, `get`, `save`,
+`search`, `undo`. Tool calls go through the same demo core as the UI, with the
+actor fixed to `Agent`, so status moves follow the forward-only guard.
+
+`keyVault.ts` keeps an optional remembered provider key encrypted with a
+non-extractable AES-GCM device key. The config (base URL/model) is plaintext;
+the key is not. This is an at-rest protection only; the page cannot defend
+against same-origin XSS. The default is memory-only; the user must opt in.
+
+The provider must allow browser CORS. The demo never proxies model requests and
+never sends the key to OfferU. The chat log is plaintext demo data and is cleared
+by the mode bar reset.

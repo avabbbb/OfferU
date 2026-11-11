@@ -78,7 +78,7 @@ export function DemoModeBar() {
           {bridge.active && <span aria-hidden="true">·</span>}
           {bridge.active && <span>外置 Agent 可用</span>}
           {!bridge.active && <span aria-hidden="true">·</span>}
-          {!bridge.active && <span>AI 与外部 Agent 暂未接入</span>}
+          {!bridge.active && <span>内置 Agent 用你的 Key · 外置 Agent 需本机</span>}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {notice && <span role="status">{notice}</span>}

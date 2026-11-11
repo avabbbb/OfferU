@@ -4,6 +4,7 @@
 // - 新增、删除、AI 这类必须有后端的操作：直接报错提示下载桌面版，不假装成功。
 import localforage from "localforage";
 
+import { clearAgentChat } from "@/lib/demo/agentSession";
 import { resetDemoData } from "@/lib/demo/store";
 
 export const SHOWCASE = process.env.VITE_SHOWCASE === "true";
@@ -49,7 +50,7 @@ async function write(key: string, body: unknown): Promise<unknown> {
 }
 
 export async function resetShowcase(): Promise<void> {
-  await Promise.all([edits.clear(), resetDemoData()]);
+  await Promise.all([edits.clear(), resetDemoData(), clearAgentChat()]);
 }
 
 export async function showcaseHandle(path: string, options?: RequestInit): Promise<unknown> {
