@@ -186,29 +186,41 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 阴影只给浮起的 L4：侧栏左缘柔和阴影（不画平直边线），输入框和提问卡用多层柔和阴影（0 0 0 1px + 0 2px 8px + 大半径淡阴影），历史浮层更深一档。圆角：输入框 16px，其他容器 12px，行和工具按钮 8px，发送按钮 14px。
 - 输入框按 Flovart 结构：卡片 16px 圆角、8px 内边距、最小高 148px，多层柔和阴影浮起；上面无边框文本区（13px / 22px 行高），下面一行控件：左侧 28px 高的图标工具按钮（模型等），右侧 40px、14px 圆角的深色发送按钮，底部对齐。
 
-## 12. 浏览器插件（PR4，第四期）
+## 12. 浏览器插件（PR4）：官网表单填写助手
 
-- 在已适配的网申系统上自动读出表单字段（沿用 smartfill-v2 的站点规则）；其他网站点一下插件图标再读。
-- 页面右侧开小侧栏，用的是这个岗位的同一份网申对话 doc。
-- 每个输入框标题旁边放「填写」：悬停预览，已有内容时变「替换」，填完可撤销。不自动点提交。
+只作用于飞书招聘、Moka、北森等公开官网的网申/招聘表单。BOSS 直聘、小红书等风控平台不做自动操作，只保留用户手动「存为岗位」。
 
-### 12.1 内部 Alpha 浏览器助手（受邀用户）
+### 12.1 页面交互
 
-范围只对 内部 Alpha 协议（随内部发行包提供，不公开） 里的受邀注册用户开放；公开版不默认开启。能力分三块，共用一条 plan / fill 管道：
+- content script 扫描当前页字段，Shadow DOM 覆盖层在每个控件旁显示灰色只读预览：「将填写：张三 · 档案」+「填入」；已有值时「将替换：李四 → 张三」；低置信度「待确认」；没有依据「档案里没有，点这里补充」。
+- 点单项或「填写本页」才写入；批量条只做「填写本页 / 撤销」，不做提交。
+- 提交、下一步、发送永远由用户点。密码、证件号、隐藏字段、文件上传不自动填。
+- 覆盖层挂在 `all: initial` 的 Shadow DOM 宿主上，不往表单 DOM 插节点；用 `getBoundingClientRect` 定位，`scroll / resize / ResizeObserver` 更新，`IntersectionObserver` 只渲染可视区。
 
-- **表单填写**：content script 扫描当前页字段（label / type / required / options / 当前值），只把这些描述发给本机后端的 `forms.plan`；后端用 profile、已确认记忆和岗位定制简历生成 `{ref, value, source, confidence}`。页面用 Shadow DOM 覆盖层在每个字段旁显示灰色预览和「填入」，点单项或「填写本页」才写入；填完回读校验，支持逐字段撤销。填不进去的进 `needs_user` 或 `skipped`，不谎报成功。
-- **BOSS 直聘**：只在用户本人已登录的浏览器里、用户打开岗位页后工作。扩展可填打招呼语、附上定制简历 PDF 的本地文件入口，发送按钮由用户点；不做自动提交、不做多账号、不做反检测。内部测试用测试账号，账号被限流/封禁的后果按协议由用户承担。
-- **小红书**：只做当前页/选中文字的采集，用户在搜索结果或笔记页点「存为岗位」才读取；不后台翻页、不批量抓取、不调用非公开接口。用户可以把「点点」的回答或笔记正文粘贴到 `add_job` 解析。
+### 12.2 字段与标签
 
-实现约束：
+- 字段：input 的 text/search/email/url/tel、textarea、select、radio/checkbox、`contenteditable=true`；跳过 password/hidden/readOnly/disabled/file。
+- 开放 shadow root 递归扫描；同源 iframe 注入，跨域 iframe 标「需手动」。
+- 标签解析顺序：`label[for]` → 包裹 label → `aria-labelledby` → `aria-label` → placeholder → `name/id` → 最近的文本块；radio/checkbox 按组去重。
+- 字段指纹用 label + name + DOM 路径，不用索引；MutationObserver、URL 变化、pageshow 触发 debounce 重扫。
+
+### 12.3 plan / fill
+
+- plan：只把字段描述（label / type / required / options / 当前值）发给本机后端，后端用 profile、已确认记忆和岗位定制简历生成 `{ref, value, source, confidence}`。确定性映射优先，模型只补歧义；不编造，没有依据进 `needs_user`。
+- fill：React/Vue 受控组件用原型链原生 setter + `input/change`；`contenteditable` 用 `execCommand("insertText")`，失败再合成 paste；select/radio/checkbox 用原生 change/click。填完回读，不一致进 mismatch，不谎报成功。
+- 每个字段记录 before/after 支持逐字段撤销；填写 session 只存在扩展本地，不写 offeru.db，除非用户点「记录这次投递」。
+
+### 12.4 Agent 联动
 
 - 扩展是唯一执行器；Agent 通过 `browser` 工具的 `snapshot / plan / fill / readback / undo` 调同一套消息，不另开 CDP 或 Playwright 路径。没有扩展时明确报错，不静默降级到脚本爬取。
-- 覆盖层挂在 `all: initial` 的 Shadow DOM 宿主上，不往表单 DOM 插节点；用 `getBoundingClientRect` 定位，`scroll / resize / ResizeObserver` 更新，`IntersectionObserver` 只渲染可视区。
-- React/Vue 受控组件用原型链原生 setter + `input/change`；`contenteditable` 用 `execCommand("insertText")`，失败再合成 paste；select/radio/checkbox 用原生 click/change。填完必须回读，不一致进 mismatch。
-- 密码、证件号、隐藏字段、文件上传不自动填；提交、下一步、发送永远由用户点。
-- 每个页面一份填写 session，记录 before/after 供撤销；只存在扩展本地，不写 offeru.db，除非用户点「记录这次投递」。
-- 页面内容视为不可信输入；只把字段描述发给本机后端，不发整页 HTML，不把页面指令当提示词。
-- 平台风险：不提供绕过验证码、反爬、风控、实名限制的能力；不做多账号、后台批量抓取、代投收费。测试和演示只用内部测试账号或公开官方招聘页。
+- Agent 先 `plan` 把计划给用户看，用户批准后才 `fill`；UI 和 Agent 共用同一个 plan 实现。
+- 站点适配沿用 smartfill-v2 的规则；飞书 / Moka / 北森的自定义组件走站点适配器，通用页 fallback。
+
+### 12.5 安全边界
+
+- 只发字段描述，不发整页 HTML；页面内容视为不可信输入，不把页面指令当提示词。
+- 不自动提交网申、不自动点下一步；不对 BOSS / 小红书做自动操作或后台抓取。
+- 参考沉浸式翻译的「就地可见、不打断操作」和 KISS Translator 的 Shadow DOM / 输入框回填 / 规则引擎；实现代码在 `extension/`，表单 plan 的后端接口只读 profile，不写库。
 
 ## 13. 桌面小球（第四期之后）
 
