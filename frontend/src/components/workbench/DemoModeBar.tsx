@@ -76,7 +76,7 @@ export function DemoModeBar() {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-[var(--foreground)]">{bridge.active ? "本机数据" : "演示版"}</span>
           <span aria-hidden="true">·</span>
-          <span>{bridge.active ? "127.0.0.1:8766" : "数据只存在这个浏览器"}</span>
+          <span>{bridge.active ? "127.0.0.1:8766" : "示例数据 · 只存在这个浏览器"}</span>
           {bridge.active && <span aria-hidden="true">·</span>}
           {bridge.active && <span>外置 Agent 可用</span>}
           {!bridge.active && <span aria-hidden="true">·</span>}

@@ -180,7 +180,7 @@ export function DemoDataDialog({ open, onClose }: Props) {
           <button type="button" onClick={onClose} className="text-[var(--foreground-muted)] hover:text-[var(--foreground)]" aria-label="关闭">关闭</button>
         </div>
         <p className="mt-2 leading-relaxed text-[var(--foreground-muted)]">
-          导出的是演示数据快照，不含 API Key、Agent 对话或本机 OfferU 数据库。导入和 WebDAV 同步都是整包覆盖，不做字段级合并；多台设备不要同时编辑。
+          导出的是演示数据快照，不含 API Key、Agent 对话或本机 OfferU 数据库。示例数据内置在页面代码里，所有人首次打开看到相同内容；你的修改只在本浏览器。导入和 WebDAV 同步都是整包覆盖，不做字段级合并；多台设备不要同时编辑。
         </p>
 
         <section className="mt-4 border-t border-[var(--border)] pt-4">
