@@ -194,7 +194,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ### 12.1 内部 Alpha 浏览器助手（受邀用户）
 
-范围只对 `INTERNAL_ALPHA_TERMS.md` 里的受邀注册用户开放；公开版不默认开启。能力分三块，共用一条 plan / fill 管道：
+范围只对 内部 Alpha 协议（随内部发行包提供，不公开） 里的受邀注册用户开放；公开版不默认开启。能力分三块，共用一条 plan / fill 管道：
 
 - **表单填写**：content script 扫描当前页字段（label / type / required / options / 当前值），只把这些描述发给本机后端的 `forms.plan`；后端用 profile、已确认记忆和岗位定制简历生成 `{ref, value, source, confidence}`。页面用 Shadow DOM 覆盖层在每个字段旁显示灰色预览和「填入」，点单项或「填写本页」才写入；填完回读校验，支持逐字段撤销。填不进去的进 `needs_user` 或 `skipped`，不谎报成功。
 - **BOSS 直聘**：只在用户本人已登录的浏览器里、用户打开岗位页后工作。扩展可填打招呼语、附上定制简历 PDF 的本地文件入口，发送按钮由用户点；不做自动提交、不做多账号、不做反检测。内部测试用测试账号，账号被限流/封禁的后果按协议由用户承担。

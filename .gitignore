@@ -73,6 +73,8 @@ backend/.playwright-cli/
 .temp/
 # 文档默认保持本地；只版本化 PRD / DESIGN / DOGFOOD 和归档。
 docs/*
+# 内部 Alpha 的实现代码和用户协议不进公开仓库
+internal/
 !docs/README.md
 !docs/PRD.md
 !docs/DESIGN.md
