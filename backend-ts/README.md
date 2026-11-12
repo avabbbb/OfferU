@@ -26,6 +26,19 @@ npm install
 OFFERU_TS_PORT=8767 OFFERU_DB_PATH=H:/tmp/offeru-ts/offeru.db npm run dev
 ```
 
+CLI:
+
+```bash
+npm run cli -- doctor
+npm run cli -- tool overview
+npm run cli -- tool save '{"type":"job","data":{"company":"示例","title":"后端"}}'
+npm run cli -- mcp
+npm run cli -- serve
+```
+
+MCP is stdio-only in this slice. `/api/pairing` and the bridge token/CORS
+checks exist for the static showcase; PNA preflight is handled.
+
 Default DB: `backend-ts/.data/offeru.db`. It is intentionally separate from the
 real local app database unless `OFFERU_DB_PATH` points at it.
 
@@ -41,8 +54,7 @@ The compatibility check performed during migration: Python writes `profile` and
 
 ## Not migrated yet
 
-- Pairing/auth for the public showcase bridge
-- MCP server and `offeru` CLI
+- `/mcp` Streamable HTTP transport
 - Email sync, PDF/Playwright rendering, file parsing, job sources
 - All Python tools outside the eight core tools
 - Production packaging/build (the slice runs through `tsx`)

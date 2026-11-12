@@ -1,14 +1,20 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { pairingToken } from "./pairing";
+import { dbPath } from "./paths";
 import { callTool, openStore, SUPPORTED_TOOLS } from "./tools";
 import type { SqliteCoreStore } from "./store";
 
 const MAX_BODY = 2 * 1024 * 1024;
+const BRIDGE_ORIGIN = /^https:\/\/(?:offeru\.avabbbb\.com|offeru-showcase\.pages\.dev|[a-z0-9-]+\.offeru-showcase\.pages\.dev)$/;
+
+function isBridgeOrigin(origin: string | undefined): boolean {
+  return Boolean(origin && BRIDGE_ORIGIN.test(origin));
+}
 
 function allowOrigin(origin: string | undefined): boolean {
+  if (isBridgeOrigin(origin)) return true;
   if (!origin) return false;
   if (origin === "tauri://localhost" || origin === "http://tauri.localhost" || origin === "https://tauri.localhost") return true;
   try {
@@ -54,13 +60,39 @@ export function createAppServer(store: SqliteCoreStore): Server {
         ...(allowOrigin(origin) ? {
           "Access-Control-Allow-Origin": origin!,
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, X-OfferU-Actor",
+          "Access-Control-Allow-Headers": "Content-Type, X-OfferU-Actor, X-OfferU-Pairing",
           "Access-Control-Max-Age": "600",
+          "Access-Control-Allow-Private-Network": "true",
         } : {}),
         Vary: "Origin",
       });
       res.end();
       return;
+    }
+
+    if (method === "GET" && url.pathname === "/api/pairing") {
+      if (origin && !allowOrigin(origin)) {
+        json(res, 403, { detail: "配对信息只给本机页面" }, origin);
+        return;
+      }
+      if (isBridgeOrigin(origin)) {
+        json(res, 403, { detail: "配对信息只给本机页面" }, origin);
+        return;
+      }
+      json(res, 200, {
+        token: pairingToken(),
+        backend: `http://${req.headers.host || "127.0.0.1:8767"}`,
+        mcp_stdio: "offeru-ts mcp",
+      }, origin);
+      return;
+    }
+
+    if (isBridgeOrigin(origin) && url.pathname.startsWith("/api/") && url.pathname !== "/api/health") {
+      const supplied = String(req.headers["x-offeru-pairing"] || "");
+      if (!supplied || supplied !== pairingToken()) {
+        json(res, 403, { detail: "请求被拒绝：本机 OfferU 未配对或配对 token 已变化" }, origin);
+        return;
+      }
     }
 
     if (method === "GET" && url.pathname === "/api/health") {
@@ -98,20 +130,17 @@ export function createAppServer(store: SqliteCoreStore): Server {
   });
 }
 
-export function dbPath(): string {
-  if (process.env.OFFERU_DB_PATH) return process.env.OFFERU_DB_PATH;
-  const dir = process.env.OFFERU_DATA_DIR || resolve("backend-ts/.data");
-  mkdirSync(dir, { recursive: true });
-  return join(dir, "offeru.db");
+export function startHttpServer(store: SqliteCoreStore, port = Number(process.env.OFFERU_TS_PORT || 8767)): Server {
+  const server = createAppServer(store);
+  server.listen(port, "127.0.0.1", () => {
+    console.log(`OfferU TS backend on http://127.0.0.1:${port} (${dbPath()})`);
+  });
+  return server;
 }
 
 function main(): void {
   const store = openStore(dbPath());
-  const server = createAppServer(store);
-  const port = Number(process.env.OFFERU_TS_PORT || 8767);
-  server.listen(port, "127.0.0.1", () => {
-    console.log(`OfferU TS backend on http://127.0.0.1:${port} (${dbPath()})`);
-  });
+  const server = startHttpServer(store);
   const shutdown = () => {
     server.close(() => {
       store.close();
