@@ -162,6 +162,8 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ## 11. 前端
 
+> **新增及迁移 UI 规范（唯一有效依据）**：[`docs/design/visual-system.md`](design/visual-system.md)，配套 Tokens 在 `frontend/src/styles/design-tokens.css`。本节其余蓝色/状态/布局描述记录的是 **现存实现**，将逐页迁移；不得把旧 Hex 或旧字号当作新功能的默认规范。
+
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
 - 共用组件：EventList、RecentChanges、JobBoard（今天页投递看板，前端直接 list job 和未完成 event）、TagInput、ChatDoc（PR3）、CommandK（PR3）。简历编辑器：顶栏一行（简历名下拉切换 / 新建 / 改名 / 复制 / 删除 | 排版工具栏，数值是「输入 + 下拉常用值」 | 下载 PDF）；左侧结构化表单，正文是所见即所得编辑框（存轻量标记）；右侧中性浅灰画布上的 A4 预览（只用一层浅阴影托出纸面），悬停模块显示蓝色虚线框，点击定位左侧；第一页分页线是中性灰虚线。简历编辑器配色和岗位页同一套 Notion 式中性色：底色、文字、细线继承全局，卡片纯白、输入框浅灰、标题无衬线、卡片圆角 10px（--radius-card）；彩色只留给蓝色主操作（下载 PDF，和「添加岗位」同色 #2383e2）、聚焦和链接，报错统一用 --primary-red。对齐：顶栏和左栏内边距都是 0.75rem，左栏卡片左缘对齐顶栏内容，卡片顶对齐右侧画布顶部。
