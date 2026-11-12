@@ -89,7 +89,7 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
           !cancelled
           && payload?.status === "ok"
           && payload?.service === "OfferU"
-          && payload?.runtime === "python"
+          && (payload?.runtime === "python" || payload?.runtime === "node")
           && (versionOk || isDev)
         ) {
           if (!versionOk && isDev) {

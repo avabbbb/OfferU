@@ -1,7 +1,7 @@
 import localforage from "localforage";
 
 import { buildDemoState, type DemoState } from "./seed";
-import type { ChangeRow, CoreStore, Json, PutOptions, RecordType, StoredRecord } from "../domain/types";
+import type { ChangeRow, CoreStore, Json, PutOptions, RecordType, StoredRecord } from "@offeru/core";
 
 const STATE_KEY = "offeru-demo-state:v1";
 const storage = localforage.createInstance({ name: "offeru-demo", storeName: "records" });

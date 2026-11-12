@@ -1,4 +1,4 @@
-import { nowIso, todayIso } from "../domain/labels";
+import { nowIso, todayIso } from "@offeru/core";
 import {
   changesView,
   deleteRecord,
@@ -8,8 +8,8 @@ import {
   saveRecord,
   searchRecords,
   undoChange,
-} from "../domain/operations";
-import type { CoreContext } from "../domain/types";
+} from "@offeru/core";
+import type { CoreContext } from "@offeru/core";
 import { demoStore } from "./store";
 
 export const DEMO_TOOL_NAMES = new Set([

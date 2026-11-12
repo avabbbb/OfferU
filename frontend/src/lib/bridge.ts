@@ -51,7 +51,7 @@ export async function probeLocalBridge(): Promise<{ available: boolean; version?
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => null);
-    if (!response.ok || payload?.service !== "OfferU" || payload?.runtime !== "python") {
+    if (!response.ok || payload?.service !== "OfferU" || (payload?.runtime !== "python" && payload?.runtime !== "node")) {
       publish({ checking: false, error: "本机 8766 有响应，但不是 OfferU 后端。" });
       return { available: false };
     }

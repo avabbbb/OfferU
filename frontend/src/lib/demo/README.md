@@ -6,12 +6,12 @@ edit, delete, search and undo records without a Python backend.
 
 ## What is shared
 
-- `src/lib/domain/` is pure TypeScript: validation, labels, overview buckets,
+- `packages/core/` is pure TypeScript: validation, labels, overview buckets,
   status rules, change log and undo. No React, DOM, IndexedDB or fetch.
 - `src/lib/demo/store.ts` is the browser adapter (localforage/IndexedDB).
 - `src/lib/demo/seed.ts` is fictional demo data.
 - A future Node adapter can implement `CoreStore` and reuse the same domain
-  code; do not put browser APIs into `src/lib/domain/`.
+  code; do not put browser APIs into `packages/core/`.
 
 ## Supported tools only
 

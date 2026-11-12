@@ -111,7 +111,8 @@ export function addDays(iso: string, days: number): string {
 }
 
 export function nowIso(date = new Date()): string {
-  return date.toISOString().slice(0, 19);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 export function stable(value: unknown): string {

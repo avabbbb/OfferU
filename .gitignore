@@ -160,3 +160,7 @@ backend/agent_board.json
 # Local outputs (not part of the repo)
 deliverables/
 Videos/
+
+# ---- TS backend local state ----
+backend-ts/.data/
+backend-ts/coverage/

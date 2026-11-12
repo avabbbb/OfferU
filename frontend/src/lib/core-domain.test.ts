@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { deleteRecord, overview, saveRecord, undoChange, searchRecords } from "./operations";
-import type { ChangeRow, CoreContext, CoreStore, Json, PutOptions, RecordType, StoredRecord } from "./types";
+import { deleteRecord, overview, saveRecord, undoChange, searchRecords } from "@offeru/core";
+import type { ChangeRow, CoreContext, CoreStore, Json, PutOptions, RecordType, StoredRecord } from "@offeru/core";
 
 class MemoryStore implements CoreStore {
   records: StoredRecord[] = [];

@@ -1,5 +1,5 @@
-import { todayIso } from "../domain/labels";
-import type { ChangeRow, StoredRecord } from "../domain/types";
+import { todayIso } from "@offeru/core";
+import type { ChangeRow, StoredRecord } from "@offeru/core";
 
 export type DemoState = {
   version: 1;

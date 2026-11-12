@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
+      ts_backend: ${{ steps.filter.outputs.ts_backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       agent_runtime: ${{ steps.filter.outputs.agent_runtime }}
       extension: ${{ steps.filter.outputs.extension }}
@@ -53,7 +54,8 @@ jobs:
           }
           {
             echo "backend=$(flag '^(backend/|requirements.*|pyproject\.toml)')"
-            echo "frontend=$(flag '^frontend/')"
+            echo "ts_backend=$(flag '^(backend-ts/|packages/core/)')"
+            echo "frontend=$(flag '^(frontend/|packages/core/)')"
             echo "agent_runtime=$(flag '^agent-runtime/')"
             echo "extension=$(flag '^extension/')"
             echo "tauri=$(flag '^frontend/src-tauri/')"
@@ -100,6 +102,34 @@ jobs:
       - name: Audit release version consistency
         if: ${{ github.event_name != 'pull_request' }}
         run: python backend/scripts/release/audit_version_consistency.py --repo-root . --json
+
+  backend-ts-tests:
+    name: TS backend tests
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.ts_backend == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend-ts/package-lock.json
+
+      - name: Install TS backend dependencies
+        working-directory: backend-ts
+        run: npm ci
+
+      - name: Typecheck TS backend
+        working-directory: backend-ts
+        run: npm run typecheck
+
+      - name: Run TS backend tests
+        working-directory: backend-ts
+        run: npm test
 
   frontend-quality:
     name: Frontend typecheck and build

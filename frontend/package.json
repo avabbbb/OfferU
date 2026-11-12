@@ -24,6 +24,7 @@
     "@fullcalendar/timegrid": "^6.1.10",
     "@heroui/react": "^2.8.10",
     "@mediapipe/tasks-vision": "^0.10.35",
+    "@offeru/core": "file:../packages/core",
     "@tanstack/react-table": "^8.21.3",
     "@tauri-apps/api": "^2.11.1",
     "framer-motion": "^11.0.0",
