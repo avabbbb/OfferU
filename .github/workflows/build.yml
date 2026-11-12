@@ -109,6 +109,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Design audit must compare the full PR against its base.
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -128,6 +130,16 @@ jobs:
       - name: Run frontend tests
         working-directory: frontend
         run: npm test
+
+      - name: Test visual design audit rules
+        working-directory: frontend
+        run: npm run design:audit:test
+
+      - name: Gate newly introduced UI style debt
+        working-directory: frontend
+        env:
+          DESIGN_AUDIT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: npm run design:audit
 
       - name: Build frontend
         working-directory: frontend
