@@ -1,0 +1,85 @@
+/* OfferU editorial workspace tokens. New UI uses --ou-*; legacy variables are migrated page-by-page.
+ * Importing these tokens MUST NOT recolor existing pages by itself.
+ * Color references: Zapier brand palette, adapted to OfferU semantic roles.
+ */
+:root {
+  /* 5 brand roles: paper / surface / ink / orange / purple. Lavender = purple derivative. */
+  --ou-color-paper: #fff3e6;
+  --ou-color-surface: #ffffff;
+  --ou-color-ink: #201515;
+  --ou-color-orange: #ff4f00;
+  --ou-color-purple: #2b2358;
+  --ou-color-lavender: #c1b7ff;
+  --ou-color-ink-soft: rgba(32, 21, 21, 0.74);
+  --ou-color-ink-muted: rgba(32, 21, 21, 0.62);
+  --ou-color-border: rgba(32, 21, 21, 0.12);
+  --ou-color-field: rgba(32, 21, 21, 0.045);
+  --ou-color-hover: rgba(32, 21, 21, 0.07);
+  /* On orange, prefer dark ink text: white normal-weight text does not pass AA. */
+  --ou-color-on-orange: var(--ou-color-ink);
+
+  /* Feedback roles are not additional brand colors; never communicate state through hue alone. */
+  --ou-color-danger: #b42318;
+  --ou-color-warning: #875918;
+  --ou-color-success: #326b4a;
+
+  --ou-type-xs: 0.75rem;
+  --ou-type-sm: 0.8125rem;
+  --ou-type-body: 0.875rem;
+  --ou-type-section: 1rem;
+  --ou-type-page: clamp(1.375rem, 1.2rem + 0.45vw, 1.75rem);
+  --ou-line-body: 1.55;
+
+  --ou-space-1: 0.25rem;
+  --ou-space-2: 0.5rem;
+  --ou-space-3: 0.75rem;
+  --ou-space-4: 1rem;
+  --ou-space-6: 1.5rem;
+  --ou-space-8: 2rem;
+
+  --ou-radius-1: 0.375rem;
+  --ou-radius-2: 0.625rem;
+  --ou-radius-3: 0.875rem;
+
+  --ou-shadow-1: 0 1px 2px rgba(32, 21, 21, 0.05);
+  --ou-shadow-2: 0 2px 8px rgba(32, 21, 21, 0.08);
+  --ou-shadow-3: 0 8px 26px rgba(32, 21, 21, 0.12);
+
+  --ou-layer-base: 0;
+  --ou-layer-sticky: 10;
+  --ou-layer-popover: 20;
+  --ou-layer-overlay: 30;
+  --ou-layer-modal: 40;
+  --ou-layer-toast: 50;
+
+  --ou-glass-bg: rgba(255, 255, 255, 0.88);
+  --ou-glass-blur: 12px;
+}
+
+/* Prospective dark tokens for migrated surfaces. No existing dark styles are overridden. */
+:root.dark,
+:root[data-theme="dark"] {
+  --ou-color-paper: #181519;
+  --ou-color-surface: #242027;
+  --ou-color-ink: #f7f3f4;
+  --ou-color-orange: #ff875b;
+  --ou-color-purple: #c1b7ff;
+  --ou-color-lavender: #443c66;
+  --ou-color-ink-soft: rgba(247, 243, 244, 0.82);
+  --ou-color-ink-muted: rgba(247, 243, 244, 0.65);
+  --ou-color-border: rgba(247, 243, 244, 0.14);
+  --ou-color-field: rgba(247, 243, 244, 0.06);
+  --ou-color-hover: rgba(247, 243, 244, 0.09);
+  --ou-color-on-orange: #201515;
+  --ou-color-danger: #ff9b8e;
+  --ou-color-warning: #f0c57e;
+  --ou-color-success: #9cd4b0;
+  --ou-glass-bg: rgba(36, 32, 39, 0.90);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --ou-glass-bg: var(--ou-color-surface);
+    --ou-glass-blur: 0px;
+  }
+}
