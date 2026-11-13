@@ -25,7 +25,7 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
 
 - 测试环境的情况，没有真实用户，旧代码和旧数据可以直接删，不写迁移和兼容层。
 - 不写防御性代码和只为覆盖率的测试。每个新工具一条走真实 HTTP / MCP 的端到端测试。
-- 视觉：参照 `docs/design/visual-system.md`（v2，Minimal）：暖中性色阶 + 白色内容面 + **墨黑主按钮**，橙色只表示紧急 / 委托给 Agent，紫色只属于 Agent；状态 / 标签是浅底深字胶囊。新 UI 只用 `frontend/src/styles/design-tokens.css` 的语义 Token（`--ou-bg-*`、`--ou-text-*`、`--ou-line-*`、`--ou-tone-*`、`--ou-elev-*`），不自行写新色值、字体 px、阴影、圆角或 z-index。正文约 13–15px；不用 KPI 卡堆砌、彩色大底、随机渐变和超大衬线标题。
+- 视觉：参照 `docs/design/visual-system.md`（v3 Glass，2026-11-13 起，参考 Inspora · Bleep App）：冷暖渐变画布（只此一处渐变）+ 磨砂玻璃侧栏 + 半透明白纸面，几乎不用 1px 描边（靠透明度和柔和大阴影分层），大圆角，悬停 / 选中是白胶囊；**墨黑胶囊主按钮**，橙色只表示紧急 / 委托给 Agent，紫色只属于 Agent；状态 / 标签是浅底深字胶囊。新 UI 只用 `frontend/src/styles/design-tokens.css` 的语义 Token（`--ou-bg-*`、`--ou-glass-*`、`--ou-capsule-*`、`--ou-text-*`、`--ou-line-*`、`--ou-tone-*`、`--ou-elev-*`、`--ou-radius-*`），不自行写新色值、字体 px、阴影、圆角或 z-index。正文约 13–15px，文档视图 16px；不用 KPI 卡堆砌、彩色大底、卡片 / 按钮渐变和超大衬线标题。
 - **先找参考**：做新界面、改版或新动效之前，先读 `docs/design/DESIGN.md`，再按 `docs/design/references.md` 在 Inspora / Awwwards / GSAP Showcase / Refero 找 2–3 个参考，把链接和「借什么」写进 PR 描述的「参考」一节。动效落地用 CSS + `--ou-motion-*` Token，不随手引入动画库。
 - **组件**：新 UI 只组合 `frontend/src/components/ui/`（Button、Field、Select、Menu、Popover、Dialog、Panel、Pill，行为基于 Radix Primitives），规格见 `docs/design/components.md`。缺组件就先在 `components/ui` 加组件并写进 components.md，再在页面里用；禁止裸 `<select>`、手写菜单 / 弹层 / 阴影（`design:audit` 的 `raw-control` 规则会拦）。容器层级按 L0–L4，页面宽度用 `.ou-page-reading / -default / -wide`。
 - 新 UI 首先明确任务、状态、主操作和渐进式披露；对照 `visual-system.md` 检查窄窗口、中文长文本、侧栏、浮层、IME、键盘焦点与错误恢复。改了界面要提供验证路径；有稳定测试夹具时跑 Playwright，用户明确要求手工验收时也要说明未覆盖的自动化项。

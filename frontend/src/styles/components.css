@@ -192,7 +192,7 @@
 
 /* 今天页的「要做的事」「最近改动」：各一张半透明白纸，内边距宽松。 */
 .ou-today-sheet { padding: var(--ou-space-4) var(--ou-space-6) var(--ou-space-6); }
-.ou-today-sheet > h2 { color: var(--ou-text-primary); font-size: var(--ou-type-section); font-weight: 600; }
+.ou-today-sheet h2 { color: var(--ou-text-primary); font-size: var(--ou-type-section); font-weight: 600; }
 .ou-today-sheet :is(input:not([type="checkbox"]), select) { border-color: transparent; border-radius: var(--ou-radius-control); background: var(--ou-bg-field); }
 
 /* 岗位表格：放在一张白色纸面上（大圆角 + 柔和阴影），不再是贴边的白块。 */
