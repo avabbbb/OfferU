@@ -64,6 +64,7 @@
 | `--ou-bg-canvas` | `#EEECF1` | 渐变的实色兜底 |
 | `--ou-glass-bg` / `--ou-bg-sidebar` | 白 55% + `blur(24px) saturate(170%)` | 侧栏、Agent 栏、编辑器顶栏、聚焦顶栏 |
 | `--ou-glass-strong` / `--ou-bg-floating` | 白 90% + 同样的模糊 | 菜单、下拉、Popover、弹窗、⌘K、运行胶囊 |
+| `--ou-glass-menu` + `--ou-glass-blur-heavy` | 白 70% + `blur(40px)` | 浅色玻璃 Menu / Popover / LabelPicker / ⌘K（v3.1） |
 | `--ou-glass-subtle` | 白 36% | 分段控件轨道、看板列、按钮组底 |
 | `--ou-bg-surface` | 白 84% | 内容纸面（表格外的面板、今天页白纸、简历文档） |
 | `--ou-bg-surface-solid` | `#FFFFFF` | 内容不能透出的地方：A4 纸、表格单元格、输入框、白胶囊 |
@@ -72,6 +73,9 @@
 | `--ou-bg-control` / `--ou-bg-field` | 半透明墨 5% / 4% | 白面上的浅底胶囊、输入聚焦底 |
 | `--ou-tile-bg` | 白 72% | 磨砂图标小方块 |
 | `--ou-line-separator` / `-control` / `-strong` | 半透明墨 8% / 14% / 24% | 少量必要的线；焦点环 |
+| `--ou-line-faint` | 半透明墨 5% | 日历整点线等「几乎看不见」的网格线 |
+| `--ou-alpha-strong / soft / muted / faint` | 0.96 / 0.78 / 0.55 / 0.4 | 浅色玻璃菜单里同一支墨色的透明度层级（标题 / 正文 / 描述 / 分组名） |
+| `--ou-swatch-*` | 内白边 `-rim`、3px 深底边 `-edge`、`-shadow` / `-hover` / `-drag`、面色混合比 `-mix` | 色块 `.ou-swatch` |
 | `--ou-highlight-code` | `#FBEBC8` | 行内代码的浅琥珀底（配 `--ou-font-mono`） |
 
 阴影统一用偏冷的紫灰墨（`rgba(60,50,80,·)`），在渐变上读作「深度」而不是「脏」。`prefers-reduced-transparency` 下玻璃全部回落实底、画布回落纯色；`prefers-contrast: more` 下纸面变实白。
@@ -128,9 +132,13 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 | `--ou-radius-1` | 10px | 菜单项、小控件、文档里的属性值悬停底 |
 | `--ou-radius-tile` | 10px | 磨砂图标小方块（28px） |
 | `--ou-radius-control` / `--ou-radius-input` | 12px | 输入框、搜索胶囊、侧栏行、分段项 |
-| `--ou-radius-floating` | 16px | 菜单、下拉、Popover |
+| `--ou-radius-floating` | 16px | 下拉（Select）、格式条 |
+| `--ou-radius-swatch` | 16px | 色块（看板卡、日历事项）、Agent 附件拼贴 |
 | `--ou-radius-card` | 18px | 卡片 |
-| `--ou-radius-panel` | 20px | 窗格（侧栏）、面板、纸面、弹窗、看板列 |
+| `--ou-radius-panel` | 20px | 窗格（侧栏、Agent）、面板、纸面、弹窗、看板列 |
+| `--ou-radius-menu` | 22px | 浅色玻璃 Menu / Popover / LabelPicker / ⌘K |
+| `--ou-radius-composer` | 26px | Agent 输入框卡片 |
+| `--ou-radius-check` / `--ou-radius-pixel` | 5px / 1px | LabelPicker 勾选框 / 像素格加载的格子 |
 | `--ou-radius-button` / `--ou-radius-pill` | 999px | 所有按钮（胶囊）、图标按钮（圆）、chip、状态胶囊 |
 
 ## 5. 层级（Elevation）L0–L4
@@ -140,11 +148,11 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 | L0 | 渐变画布 | `--ou-elev-0` | `--ou-bg-wash` | 无 |
 | L1 | 玻璃窗格、纸面、输入 | `--ou-elev-1` / `--ou-elev-pane` | 玻璃或白 84% | 0 1 2 / 4% + 0 6 20 / 6%，**无描边** |
 | L2 | 卡片、纸面、表格白纸、次按钮 | `--ou-elev-2` → 悬停 `--ou-elev-2-hover` | 白 84% / 实白 | 0 12 32 / 10% → 0 18 44 / 16%，悬停上移 2px，**无描边** |
-| L3 | 浮层（菜单、下拉、Popover、格式条、/ 菜单） | `--ou-elev-3` | 白 90% + 模糊 | 0.5px 极淡环 + 0 12 32 / 16% |
+| L3 | 浮层（菜单、下拉、Popover、格式条、/ 菜单） | 菜单 / Popover / LabelPicker：`--ou-elev-menu`；其余 `--ou-elev-3` | 菜单类：白 70% + 40px 模糊；其余白 90% + 模糊 | 0.5px 极淡环 + 0 2 6 / 5% + 0 24 60 / 18%（菜单类）；0.5px 环 + 0 12 32 / 16%（其余） |
 | L4 | 弹窗、⌘K 外壳 | `--ou-elev-4` + `--ou-scrim`（遮罩带 6px 模糊） | 白 90% + 模糊 | 0.5px 极淡环 + 0 28 72 / 24% |
 
 - v3 去掉了 v2「描边 + 阴影必须成对」的规定：L1–L2 只用阴影和透明度分层（Bleep）；L3–L4 留 0.5px 的极淡环，是为了半透明浮层压在复杂内容上时边缘仍然清楚。
-- z-index 只用 `--ou-layer-*`：sticky 10、popover 20、overlay 30、modal 40、toast 50、command 90（⌘K 必须盖住尚未迁移的旧层）。
+- z-index 只用 `--ou-layer-*`：sticky 10、popover 20、overlay 30、modal 40、toast 50、command 90（⌘K 必须盖住尚未迁移的旧层）；`xl` 以下 Agent 抽屉和它的遮罩用 `--ou-layer-drawer`（= toast）/ `--ou-layer-drawer-scrim`（= modal），写在 CSS 里，不在 className 写 `z-40 / z-50`。
 - 毛玻璃（`--ou-glass-*`）用于外壳和浮层：侧栏、Agent 栏、编辑器顶栏、菜单、弹窗、⌘K、运行胶囊。内容纸面是半透明白（不加模糊也可读）；A4 纸、表格单元格、输入框用实白。`prefers-reduced-transparency` 下自动变实底。
 - 组件类：`.ou-glass`（磨砂窗格）、`.ou-sheet`（白纸面）、`.ou-tile`（磨砂图标方块）、`.ou-capsule-row`（玻璃上的白胶囊行）、`.ou-segment`（分段胶囊）、`.ou-button-group`（一串圆形 ghost 钮）、`.ou-chip` + `.ou-chip-check`（圆形勾选筛选）、`.ou-fade-bottom`（底部渐隐），规格见 [components.md](components.md)。
 
@@ -159,7 +167,8 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 - 留白 `--ou-gutter` = clamp(16px … 40px)，随视口流动；顶部留白同理。
 - 侧栏宽 `--ou-sidebar-width` = clamp(13.5rem … 16rem)，是一块离视口边 `--ou-pane-inset`（8px）的磨砂窗格；`md`（768px）以下收成底部玻璃标签栏。
 - 断点只作为验收档位：**390 / 768 / 1024 / 1440 / 1920**，横竖屏都看；布局本身靠流动宽度，而不是一档一套。
-- 看板列宽 `--ou-kanban-column` = clamp(16rem … 22rem)；放不下时在看板自己的轨道里横向滚动并按列吸附，窄屏（< 40rem）一列约 85vw，强制吸附。轨道左右出血到页面边缘，滚动时不被留白截断。
+- 看板列 `flex: 1 0 0`，在 `--ou-kanban-column-min`（12.5rem）和 `--ou-kanban-column`（≤ 22rem）之间平分可用宽度（v3.1 修 1440 右侧截断）；「已结束」收起钮放在标签筛选那一行右端，不占轨道。放不下时（窄屏、开着 Agent 栏）在看板自己的轨道里横向滚动并按列吸附、右缘渐隐，窄屏（< 40rem）一列约 85vw，强制吸附。轨道左右出血到页面边缘，滚动时不被留白截断。
+- 周日历：`--ou-cal-hour`（52px / 小时）、`--ou-cal-gutter`（3.5rem 时间列）、`--ou-cal-day-min`（7.5rem 一天最窄），七天放不下时在日历自己的容器里横滚。
 - flex / grid 收缩边界写 `min-w-0`、`minmax(0, 1fr)`；不用 `overflow: hidden` 掩盖错位；弹层由 Radix 做碰撞翻转。
 
 ## 7. 动效
@@ -174,6 +183,7 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 | `--ou-ease-standard` | cubic-bezier(.2,0,0,1) | 默认 |
 | `--ou-ease-spring` | cubic-bezier(.32,.72,0,1) | 进场、展开（接近 iOS 弹簧） |
 | `--ou-stagger` | 28ms | 列表逐项进场间隔（最多 8 项） |
+| `--ou-ease-spring-soft` | cubic-bezier(.2,.9,.25,1.2) | 带一点回弹：菜单行右挪、色块悬停放大 |
 
 | 类 | 效果 | 用在 |
 | --- | --- | --- |
@@ -186,6 +196,10 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 | `.ou-button:active` | 缩到 0.97 | 所有按钮 |
 | `.ou-check-draw` | 勾线画出 | 完成 |
 | 看板拖拽 | 卡片拿起微倾 + 抬到 L3；目标列底色和焦点环淡入 | 今天 / 岗位看板 |
+| `.ou-swatch` 悬停 / 拖动 | 上浮 + 放大 1.04（spring-soft）；拖动图倾斜 -5° + `--ou-swatch-shadow-drag`，原卡变淡 | 看板卡、日历事项 |
+| `.ou-menu-item` 悬停 | 白胶囊淡入 + 文字右挪 `--ou-nudge` + 箭头淡入 | Menu、⌘K |
+| `BrailleLoader`（`.ou-braille`） | 标签图标 → 2×4 盲文点阵轮流亮 → 对勾画出 | LabelPicker 创建标签 |
+| `.agent-composer[data-sent]` / `.agent-pixel` | 发送时整卡轻压；运行中 5×5 像素格一步一格游走 | Agent 输入框 |
 
 `prefers-reduced-motion` 下：时长、位移、错开全部归零，扫光变静态次要色，呼吸点停止。
 
@@ -213,7 +227,7 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 
 ## 11. 迁移状态（2026-11-13）
 
-v3 Glass 落地：Token + 外壳（PR #196），简历编辑器文档化（PR #197）。旧变量（`--surface`、`--border`、`--background`…）全部桥接到 v3，未迁移的页面自动跟随渐变底、半透明面、胶囊按钮；页面里写死的白底 / 1px 边框是历史债，`design:audit` 有统计。
+v3 Glass 落地：Token + 外壳（PR #196），简历编辑器文档化（PR #197）；v3.1：浅色玻璃菜单 + 标签选择器 + ⌘K 两栏（PR #198）、周日历 + 色块（PR #199）、Agent 窗格 + 输入框（PR #200），各自怎么看见 [DESIGN.md](DESIGN.md) 的「v3.1 新增 · 怎么看」。旧变量（`--surface`、`--border`、`--background`…）全部桥接到 v3，未迁移的页面自动跟随渐变底、半透明面、胶囊按钮；页面里写死的白底 / 1px 边框是历史债，`design:audit` 有统计。
 
 **怎么看**：`frontend/` 里 `npm run build`，`backend/` 里 `OFFERU_RUNTIME_MODE=lite uvicorn app.main:app --port 8766`（后端直接托管 `frontend/dist`），打开 `http://127.0.0.1:8766/#/`（今天）、`#/jobs`（岗位）、`#/resume`（简历编辑器）；开发时 `npm run dev` 看 `http://127.0.0.1:7410`。
 
@@ -232,7 +246,10 @@ v3 Glass 落地：Token + 外壳（PR #196），简历编辑器文档化（PR #1
 | 岗位：浅色胶囊、墨黑「添加岗位」、wide 容器、甘特状态色 | ✅ |
 | ⌘K：Token 化（L4、毛玻璃、层级） | ✅ |
 | 组件层 `components/ui`（Button / Field / Select / Menu / Popover / Dialog / Panel / Pill / ContextUsageRing） | ✅ 已建，页面逐步替换 |
-| 岗位表格内部的筛选 / 排序 Popover、状态菜单换成 `components/ui` | ⏳ 下一个 PR |
+| 岗位表格内部的筛选 / 排序 Popover、状态菜单换成 `components/ui` | ✅ PR #198（浅色玻璃 Menu / Popover、LabelPicker） |
+| ⌘K 两栏（索引 + 预览） | ✅ PR #198 |
+| 周日历视图 + 看板 / 日历色块、1440 看板截断修复 | ✅ PR #199 |
+| Agent 窗格 + 输入框（浮动磨砂窗格、空状态建议、玻璃输入卡、像素格加载） | ✅ PR #200 |
 | Agent 栏：运行胶囊、一行步骤、上下文用量环接数据 | ⏳ 需要后端在 run 事件里给 token 用量 |
 | 设置、面试页 | ⏳ 按页迁移 |
 | 深色模式开关 | ⏳ Token 已备好（含 v3 深色玻璃），待旧页面迁完再开 |

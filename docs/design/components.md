@@ -32,13 +32,25 @@
 
 ## Menu（Radix DropdownMenu）
 
-「更多」、行操作、状态切换。每项 = 16px 图标 + 文字 + 可选快捷键；高亮是半透明墨圆角底，不加描边；危险项放最后、红字（`--ou-tone-red-text`），中间用分隔线。浮层是 L3 磨砂（白 90% + 模糊，16px 圆角）。
+「更多」、行操作、状态切换。v3.1 是**浅色玻璃**（参考 Inspora · Mona「feature menu」改成浅色）：面板 `--ou-glass-menu`（白 70%）+ `--ou-glass-blur-heavy`（40px）模糊、`--ou-radius-menu`（22px）、`--ou-elev-menu`。每项是一行 `--ou-menu-row`（40px）胶囊 = 16px 图标 + 文字 + 可选 `description`（第二行小字）+ 可选快捷键；层级只靠同一支墨色的透明度（`--ou-alpha-*`），不靠字重。悬停 / 键盘高亮 = 白胶囊浮起 + 文字右挪 `--ou-nudge` + 右侧小箭头淡入（`--ou-ease-spring-soft`）。`{ heading }` 项是分组小标题；危险项放最后、红字（`--ou-tone-red-text`），中间用 `"separator"`。可选 `label` 作为浮层的 `aria-label`。
+
+看：`#/jobs` 任一行的「…」、日历色块右上「…」、Agent 头部「…」。
 
 可选 `side`，以及受控的 `open / onOpenChange`：调用方自己决定何时打开。例：简历要点的「⋮⋮」把手——按下后移动是拖动排序，没移动松手才开菜单；触发器的 `onPointerDown` 里 `preventDefault()` 就能跳过 Radix 默认的「按下即开」，键盘 Enter / Space 仍由 Radix 打开。可选 `onCloseAutoFocus`：某一项要把焦点放到别处（如「在下面加一条」后的新块）时在这里 `preventDefault()`，否则关菜单会把焦点还给触发器。
 
 ## Popover（Radix Popover）
 
-筛选、排序、字段、行高、上下文用量。L3 磨砂，内边距 12px，最小宽 16rem，贴边自动翻转。
+筛选、排序、字段、行高、上下文用量、日历「新建事项」。和 Menu 同一块浅色玻璃（22px 圆角、白 70% + 40px 模糊、`--ou-elev-menu`），内边距 12px，最小宽 16rem，贴边自动翻转（`collisionPadding` 12）。可选 `side`、`style`、`label`（`aria-label`）。
+
+## LabelPicker / Tag / BrailleLoader（`components/ui/LabelPicker.tsx`）
+
+参考 Inspora · kian bazza「Morphing braille loader」。
+
+- **LabelPicker**：标签（多选）或状态（`multiple={false}`，点一下选中并关闭）选择器。浅色玻璃浮层，顶上一行搜索（`placeholder` 默认「搜索或创建标签…」）；下面一行一个「色点 + 名字」（`.ou-label-row`），悬停 / 方向键高亮是浅灰圆角底；勾选框（`--ou-check-size` 18px、`--ou-radius-check`）只在悬停或已选时出现，已选 = 墨黑实心 + 白勾。传了 `onCreate` 才出现「创建标签：xxx」行；返回的 Promise 结束前整块浮层变淡（`data-busy`）。选项颜色走 `toneOf()`，与表格 / 看板 / 甘特同色。
+- **Tag**：`<Tag tone>` = 色点（`--ou-tag-dot` 8px）+ 名字的 chip（`.ou-tag`），和选择器里的行一个样子；传 `onClick` 时是按钮。
+- **BrailleLoader**：`state = idle | creating | created`，同一个字形位置上 标签图标 → 2×4 盲文点阵轮流亮 → 对勾画出；头部动词同步「创建 → 创建中 → 已创建」。`prefers-reduced-motion` 下不轮播。
+
+看：`#/jobs` 表格视图，点状态胶囊（`button[title="改状态"]`）或标签格（`button[title="改标签"]`），输入一个不存在的名字回车看创建动画。
 
 ## Dialog（Radix Dialog）
 
@@ -76,13 +88,28 @@ L2：白 84%、**无描边**、`--ou-elev-2`（0 12 32 / 10%）、18px 圆角；
 
 参照 Bleep 文档视图 / Notion：一张半透明白纸，模块是 20px 粗体标题，正文 16px / 1.6 直接写在纸上（`RichText` 无框无聚焦环，空块只在聚焦时显示占位）；属性（公司 / 职位 / 城市 / 时间、联系方式）是「灰色小标签 + 纸上的值」，悬停浅底、聚焦浅灰底。要点一行一块，左侧留白里悬停出「+」和「⋮⋮」（拖动排序 / 单击开 `Menu`），绝对定位、不占正文宽度。低频操作悬停或键盘聚焦才出现。样式在 `globals.css` 的 `.resume-shell .rf-*` / `.rt-*`。
 
+## 色块（`.ou-swatch`，参考 Inspora · sam「Event Swatch」）
+
+粉彩面 = 语气色浅底与中间色按 `--ou-swatch-mix` 混合；内白边 `--ou-swatch-rim`；底边深一截 `--ou-swatch-edge`（3px，表示厚度）；`--ou-radius-swatch`（16px）；阴影 `--ou-swatch-shadow`。颜色用 `.ou-tone-{hue}` 指定。悬停 / 键盘聚焦：上浮 + 放大 `--ou-swatch-scale`（1.04，spring-soft）+ `--ou-swatch-shadow-hover`；拖动：`lib/dragLift.ts` 在屏幕外放一张已倾斜 `--ou-swatch-tilt`（-5°）+ `--ou-swatch-shadow-drag` 的副本当拖动图（光标保持箭头），原卡 `data-dragging` 变淡。子元素：`.ou-swatch-top`（左上类型图标）、`.ou-swatch-more`（右上「…」，开 Menu）、`.ou-swatch-meta`（时间 · 类型 · 公司）、`.ou-swatch-title`（粗体标题）、`.ou-swatch-hidden`（「+N 隐藏」胶囊）。
+
+## 周日历（JobsCalendar，`#/jobs?view=calendar`）
+
+- 岗位页视图分段「表格 / 看板 / 甘特 / 日历」的第四项；旧的 `#/calendar` 跳到这里。纯逻辑在 `lib/weekCalendar.ts`（周起止、ISO 周、按天叠摞、15 分钟吸附），有 vitest。
+- 网格无框：只有 `--ou-line-faint` 整点线，周末列再淡一层；高度 `--ou-cal-hour`、时间列 `--ou-cal-gutter`、一天最窄 `--ou-cal-day-min`。
+- 工具条（`.ou-cal-toolbar`）只有胶囊：「今天」白胶囊、‹ › `.ou-button-group`、「2026 年 11 月 · 第 46 周」、右侧白色 + 圆钮（`.ou-cal-plus`，开 Popover：标题 / 类型 Select / 时间）。
+- 只有「今天 / 现在」用橙色：今天的日期是橙色实心圆（墨色字），现在是一条橙线 + 左侧时间胶囊。
+- 事项是 `.ou-swatch`，按类型取色；同时段的叠成一摞（后面的下移、略小、只露底边），最上面一张带「+N 隐藏」，点开并排展开。拖到别的格子按 15 分钟吸附改 `at`（走现有 `save`，可撤销）。事项只有开始时间，按 110 分钟画高度。
+
 ## 看板（JobBoard）
 
-- 列：玻璃底（`--ou-glass-subtle`）、20px 圆角、8px 内边距，宽 `--ou-kanban-column`（16–22rem 流动），列头「状态胶囊 + 灰色数量」。
-- 卡片：`.ou-card`，内边距 12 / 10px；标题 14px / 600，岗位 13px 次要色，元数据 12px 三级色（分数、下一件事、标签）。
-- 列底「+ 新建」：无描边灰字，悬停白胶囊。
-- 拖拽悬停列：焦点环（N8 描边 + N5 光晕），不再用蓝色。
-- 轨道横向滚动、按列吸附，左右出血到页面边缘。
+- 今天页「投递看板」和岗位页看板是同一个组件。
+- 轨道 `.ou-kanban-track`：横向滚动、按列吸附（proximity），左右出血到页面边缘，右缘渐隐提示还能滚。
+- 列 `.ou-kanban-column`：玻璃底（`--ou-glass-subtle`）、20px 圆角、8px 内边距；`flex: 1 0 0`，在 `--ou-kanban-column-min`（12.5rem）和 `--ou-kanban-column`（≤ 22rem）之间平分宽度——1440×900 下五列完整放下。列头「状态胶囊 + 灰色数量」。
+- 卡片 `.ou-kanban-card` = `.ou-swatch` + 按状态取色（想投灰、已投递蓝、笔试黄、面试橙、offer 绿）；公司 600、岗位 / 元数据用 `--ou-pill-text`；标签是 `Tag`。悬停放大、拖动倾斜同色块。
+- 标签筛选是分段胶囊（`.ou-segment`）；「已结束 N」收起钮在筛选那一行右端，不占轨道宽度。
+- 列底「+ 新建」：无描边灰字，悬停白胶囊。拖拽悬停列：焦点环（`--ou-ring-focus`）。
+
+看：`#/`（今天）、`#/jobs` → 看板。
 
 ## 表格（JobsTable）
 
@@ -90,7 +117,19 @@ Notion 式：整张表放在 20px 圆角的实白纸上（`.ou-jobs-sheet`，L2 
 
 ## ⌘K 命令面板
 
-L4 外壳 + 毛玻璃（`--ou-glass-strong` + 模糊），20px 圆角，遮罩 `--ou-scrim`，层级 `--ou-layer-command`。行为见 `docs/DESIGN.md` §11.2。
+浅色玻璃外壳（`--ou-glass-menu` + 重模糊、`--ou-radius-menu`、`--ou-elev-menu`），遮罩 `--ou-scrim`，层级 `--ou-layer-command`。v3.1 两栏：左边**索引**（顶上输入框 + 分组列表，行同 Menu：40px 白胶囊、悬停右挪 + 箭头）；右边**预览**（`.offeru-command-preview`：磨砂图标块——Agent 动作是紫色——+ 标题 + 一行说明 + 一张小卡「打开页面 · 路径」或「会交给右侧 OfferU · 提示词」+ 底部「↵ 打开 / 提问 / 执行」），随方向键高亮就地换。窄屏只留索引。行为见 `docs/DESIGN.md` §11.2。
+
+看：任意页按 ⌘K / Ctrl K，方向键上下。
+
+## Agent 窗格 + 输入框（`AgentPanel.tsx`，参考 Inspora · Seb Cornelius「composer mockup」）
+
+- **窗格**：`ContextRail` / 专注模式的 `.offeru-focus-agent` 都是 `.ou-glass` 浮动窗格，和左侧侧栏对称（离边 `--ou-pane-inset`、`--ou-radius-panel`）；`xl` 以下是抽屉，层级 `--ou-layer-drawer`，遮罩 `.offeru-rail-scrim`（`--ou-layer-drawer-scrim` + `--ou-scrim`）。
+- **头部一行**（`.agent-head`）：紫色身份小方块（`--ou-tone-purple-*`，紫色只属于 Agent）+「对话标题 ▾」胶囊（展开历史）+ 圆形 ghost 钮「…」（Menu：新对话 / 历史对话 / 外部执行器会话）和「×」收起。标题行下不画分隔线。
+- **空状态**：只有欢迎语时画成问候「今天想让 OfferU 帮你做什么？」+ 一行说明 + 建议胶囊（量化实习、今天要做的事、整理面试邀约、先投哪个），点了直接发。
+- **输入框**（`.agent-composer`，`data-testid="agent-composer"`）：一张 `--ou-radius-composer`（26px）浅色玻璃卡、`--ou-elev-composer`；从上到下 正文 → 附件 → 底栏（方形「+」附件钮、模型 / 模式胶囊、右侧墨黑「发送 ↑」胶囊，没东西可发时 32% 透明度）。聚焦是整卡 `--ou-ring-composer`；拖入文件是整卡紫环 `--ou-ring-agent` + 一行「松开即可添加…」，不用虚线框。回车发送（输入法选词时不发），Shift+Enter 换行。发送时整卡轻压（`data-sent`）；正在跑且没东西可发时，发送键收成 5×5 像素格加载（`.agent-pixel`，格子圆角 `--ou-radius-pixel`，`steps()`，reduced-motion 下静止）。
+- **附件**（`AgentAttachmentTray`）：图片按 1 → 2 → 1+2 → 田字拼贴（`.agent-mosaic`，`--ou-radius-swatch`），悬停出删除钮，超过 4 张显示「+N」；文档是小胶囊，出错时红色内环 `--ou-ring-error`。
+
+看：任意页点右上角 bot 钮（1440 宽约在 (1408, 32)），再在输入框里打字。
 
 ## Agent 运行（参考 Inspora · Jessy Barret「agent dashboard」，Minimal / Rounded）
 
