@@ -12,10 +12,12 @@ export class BrowserDemoStore implements CoreStore {
   private state: DemoState | null = null;
   private loading: Promise<void> | null = null;
   private writes: Promise<void> = Promise.resolve();
+  private txQueue: Promise<unknown> = Promise.resolve();
+  private inTx = false;
 
   constructor(private readonly initialState: () => DemoState = buildDemoState) {}
 
-  async ready(): Promise<void> {
+  async ready(): Promise<Promise<void>> {
     this.loading ??= this.load();
     await this.loading;
   }
@@ -35,27 +37,27 @@ export class BrowserDemoStore implements CoreStore {
     return this.state;
   }
 
-  all(type: RecordType, jobId?: number | null): StoredRecord[] {
+  async all(type: RecordType, jobId?: number | null): Promise<StoredRecord[]> {
     const items = this.current().records.filter((record) => record.type === type && (jobId === undefined || record.job_id === jobId));
     return [...items].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)) || b.id - a.id);
   }
 
-  get(type: RecordType, id: number): StoredRecord | null {
+  async get(type: RecordType, id: number): Promise<StoredRecord | null> {
     return this.current().records.find((record) => record.type === type && record.id === id) ?? null;
   }
 
-  first(type: RecordType): StoredRecord | null {
+  async first(type: RecordType): Promise<StoredRecord | null> {
     return this.current().records.filter((record) => record.type === type).sort((a, b) => a.id - b.id)[0] ?? null;
   }
 
-  put(type: RecordType, data: Json, options: PutOptions): StoredRecord {
+  async put(type: RecordType, data: Json, options: PutOptions): Promise<StoredRecord> {
     const state = this.current();
     const clean: Json = {};
     for (const [key, value] of Object.entries(data)) {
       if (["id", "type", "job_id", "created_at", "updated_at"].includes(key)) continue;
       if (value !== null) clean[key] = value;
     }
-    const existing = options.id !== undefined ? this.get(type, options.id) : null;
+    const existing = options.id !== undefined ? await this.get(type, options.id) : null;
     if (options.id !== undefined && !existing && !options.restore) throw new Error(`${type} #${options.id} 不存在`);
     if (existing) {
       const merged: StoredRecord = options.replace
@@ -96,34 +98,60 @@ export class BrowserDemoStore implements CoreStore {
     return clone(record);
   }
 
-  remove(type: RecordType, id: number): void {
+  async remove(type: RecordType, id: number): Promise<void> {
     const state = this.current();
     state.records = state.records.filter((record) => !(record.type === type && record.id === id));
   }
 
-  changes(limit: number): ChangeRow[] {
+  async changes(limit: number): Promise<ChangeRow[]> {
     return clone([...this.current().changes].sort((a, b) => b.id - a.id).slice(0, limit));
   }
 
-  getChange(id: number): ChangeRow | null {
+  async getChange(id: number): Promise<ChangeRow | null> {
     return this.current().changes.find((row) => row.id === id) ?? null;
   }
 
-  lastChange(): ChangeRow | null {
+  async lastChange(): Promise<ChangeRow | null> {
     return this.current().changes.reduce<ChangeRow | null>((last, row) => (!last || row.id > last.id ? row : last), null);
   }
 
-  addChange(row: Omit<ChangeRow, "id" | "undone_at">): number {
+  async addChange(row: Omit<ChangeRow, "id" | "undone_at">): Promise<number> {
     const state = this.current();
     const id = state.nextChangeId++;
     state.changes.push({ ...row, id, undone_at: null });
     return id;
   }
 
-  updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): void {
-    const row = this.getChange(id);
+  async updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): Promise<void> {
+    const row = this.current().changes.find((change) => change.id === id);
     if (!row) throw new Error(`改动 #${id} 不存在`);
     Object.assign(row, patch);
+  }
+
+  /**
+   * All-or-nothing over the in-memory state: on failure the snapshot taken at
+   * BEGIN is restored, on success the state is flushed to IndexedDB. Calls
+   * queue so two concurrent tool calls never see each other's half-writes.
+   */
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.inTx) return fn();
+    const run = this.txQueue.then(async () => {
+      const before = clone(this.current());
+      this.inTx = true;
+      try {
+        const result = await fn();
+        this.inTx = false;
+        await this.flush();
+        return result;
+      } catch (error) {
+        this.state = before;
+        throw error;
+      } finally {
+        this.inTx = false;
+      }
+    });
+    this.txQueue = run.catch(() => undefined);
+    return run;
   }
 
   /** Persist the current snapshot; writes are serialized so a slow IndexedDB write never reorders. */
@@ -136,13 +164,13 @@ export class BrowserDemoStore implements CoreStore {
   }
 
   /** Replace the entire demo state, e.g. after importing a portable data package. */
-  async replace(next: DemoState): Promise<void> {
+  async replace(next: DemoState): Promise<Promise<void>> {
     await this.writes;
     this.state = clone(next);
     await storage.setItem(STATE_KEY, this.state);
   }
 
-  async reset(): Promise<void> {
+  async reset(): Promise<Promise<void>> {
     await this.writes;
     this.state = this.initialState();
     await storage.setItem(STATE_KEY, this.state);

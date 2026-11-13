@@ -67,7 +67,7 @@ async function main(): Promise<number> {
         return 2;
       }
       try {
-        const result = callTool(name, payloadOf(args[0]), store, actor);
+        const result = await callTool(name, payloadOf(args[0]), store, actor);
         process.stdout.write(JSON.stringify(result, null, pretty ? 2 : 0) + "\n");
         return 0;
       } catch (cause) {

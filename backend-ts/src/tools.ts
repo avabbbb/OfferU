@@ -10,6 +10,7 @@ import {
   todayIso,
   undoChange,
 } from "@offeru/core";
+import { CoreError } from "@offeru/core";
 import type { CoreContext, CoreStore } from "@offeru/core";
 
 import { SqliteCoreStore } from "./store";
@@ -36,7 +37,7 @@ function argsOf(value: unknown): Args {
 }
 
 /** The shared core behind HTTP, CLI, and (later) MCP. No route logic lives here. */
-export function callTool(name: string, rawArgs: unknown, store: CoreStore, actor = "你"): unknown {
+export async function callTool(name: string, rawArgs: unknown, store: CoreStore, actor = "你"): Promise<unknown> {
   const args = argsOf(rawArgs);
   const ctx = context(actor);
   switch (name) {
@@ -49,7 +50,7 @@ export function callTool(name: string, rawArgs: unknown, store: CoreStore, actor
     case "changes": return changesView(store, typeof args.limit === "number" ? args.limit : 20);
     case "search": return searchRecords(store, args);
     default:
-      throw new Error(`TS backend 暂不支持工具「${name}」；当前支持：${SUPPORTED_TOOLS.join(", ")}`);
+      throw new CoreError(`TS backend 暂不支持工具「${name}」；当前支持：${SUPPORTED_TOOLS.join(", ")}`, "unsupported");
   }
 }
 

@@ -128,7 +128,7 @@ export function createMcpServer(store: SqliteCoreStore): Server {
       };
     }
     try {
-      const result = callTool(name, request.params.arguments ?? {}, store, "agent");
+      const result = await callTool(name, request.params.arguments ?? {}, store, "agent");
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     } catch (cause) {
       return {

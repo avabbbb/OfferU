@@ -40,21 +40,21 @@ export async function demoTool<T = unknown>(name: string, rawArgs: Record<string
   try {
     switch (name) {
       case "overview":
-        return overview(demoStore, ctx) as T;
+        return await overview(demoStore, ctx) as T;
       case "list":
-        return listRecords(demoStore, args) as T;
+        return await listRecords(demoStore, args) as T;
       case "get":
-        return getRecord(demoStore, args) as T;
+        return await getRecord(demoStore, args) as T;
       case "save":
-        return saveRecord(demoStore, args, ctx) as T;
+        return await saveRecord(demoStore, args, ctx) as T;
       case "delete":
-        return deleteRecord(demoStore, args, ctx) as T;
+        return await deleteRecord(demoStore, args, ctx) as T;
       case "undo":
-        return undoChange(demoStore, args, ctx) as T;
+        return await undoChange(demoStore, args, ctx) as T;
       case "changes":
-        return changesView(demoStore, typeof args.limit === "number" ? args.limit : 20) as T;
+        return await changesView(demoStore, typeof args.limit === "number" ? args.limit : 20) as T;
       case "search":
-        return searchRecords(demoStore, args) as T;
+        return await searchRecords(demoStore, args) as T;
       default:
         throw new Error(DEMO_UNSUPPORTED);
     }

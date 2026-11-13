@@ -16,7 +16,7 @@ afterEach(() => {
 describe("TS MCP surface", () => {
   it("lists the shared tools and calls overview", async () => {
     store = new SqliteCoreStore(":memory:");
-    callTool("save", { type: "profile", data: { name: "MCP 用户" } }, store);
+    await callTool("save", { type: "profile", data: { name: "MCP 用户" } }, store);
     const server = createMcpServer(store);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);

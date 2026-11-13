@@ -9,22 +9,22 @@ class MemoryStore implements CoreStore {
   nextRecord = 1;
   nextChange = 1;
 
-  all(type: RecordType, jobId?: number | null): StoredRecord[] {
+  async all(type: RecordType, jobId?: number | null): Promise<StoredRecord[]> {
     return this.records
       .filter((record) => record.type === type && (jobId === undefined || record.job_id === jobId))
       .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)) || b.id - a.id);
   }
 
-  get(type: RecordType, id: number): StoredRecord | null {
+  async get(type: RecordType, id: number): Promise<StoredRecord | null> {
     return this.records.find((record) => record.type === type && record.id === id) ?? null;
   }
 
-  first(type: RecordType): StoredRecord | null {
+  async first(type: RecordType): Promise<StoredRecord | null> {
     return this.records.filter((record) => record.type === type).sort((a, b) => a.id - b.id)[0] ?? null;
   }
 
-  put(type: RecordType, data: Json, options: PutOptions): StoredRecord {
-    const existing = options.id === undefined ? null : this.get(type, options.id);
+  async put(type: RecordType, data: Json, options: PutOptions): Promise<StoredRecord> {
+    const existing = options.id === undefined ? null : await this.get(type, options.id);
     if (options.id !== undefined && !existing && !options.restore) throw new Error("missing");
     if (existing) {
       const next: StoredRecord = options.replace
@@ -47,33 +47,45 @@ class MemoryStore implements CoreStore {
     return record;
   }
 
-  remove(type: RecordType, id: number): void {
+  async remove(type: RecordType, id: number): Promise<void> {
     this.records = this.records.filter((record) => !(record.type === type && record.id === id));
   }
 
-  changes(limit: number): ChangeRow[] {
+  async changes(limit: number): Promise<ChangeRow[]> {
     return [...this.changeRows].sort((a, b) => b.id - a.id).slice(0, limit);
   }
 
-  getChange(id: number): ChangeRow | null {
+  async getChange(id: number): Promise<ChangeRow | null> {
     return this.changeRows.find((row) => row.id === id) ?? null;
   }
 
-  lastChange(): ChangeRow | null {
+  async lastChange(): Promise<ChangeRow | null> {
     return [...this.changeRows].sort((a, b) => b.id - a.id)[0] ?? null;
   }
 
-  addChange(row: Omit<ChangeRow, "id" | "undone_at">): number {
+  async addChange(row: Omit<ChangeRow, "id" | "undone_at">): Promise<number> {
     const id = this.nextChange++;
     this.changeRows.push({ ...row, id, undone_at: null });
     return id;
   }
 
-  updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): void {
+  async updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): Promise<void> {
     Object.assign(this.changeRows.find((row) => row.id === id)!, patch);
   }
 
-  seedProfile(): StoredRecord {
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    const records = structuredClone(this.records);
+    const changeRows = structuredClone(this.changeRows);
+    try {
+      return await fn();
+    } catch (error) {
+      this.records = records;
+      this.changeRows = changeRows;
+      throw error;
+    }
+  }
+
+  async seedProfile(): Promise<StoredRecord> {
     return this.put("profile", { name: "测试", stage: "applying" }, { now: "2026-01-01T09:00:00" });
   }
 }
@@ -85,68 +97,68 @@ function job(store: MemoryStore, data: Json = {}) {
 }
 
 describe("demo core", () => {
-  it("defaults a new job to saved and undo removes it", () => {
+  it("defaults a new job to saved and undo removes it", async () => {
     const store = new MemoryStore();
-    const saved = job(store);
+    const saved = (await job(store));
     expect(saved.record.status).toBe("saved");
-    expect(store.changes(5)[0].before).toBeNull();
-    undoChange(store, { change_id: saved.change_id }, { ...ctx, now: "2026-01-10T10:01:00" });
-    expect(store.get("job", saved.record.id)).toBeNull();
-    expect(store.getChange(saved.change_id!)?.undone_at).toBe("2026-01-10T10:01:00");
+    expect((await store.changes(5))[0].before).toBeNull();
+    await undoChange(store, { change_id: saved.change_id }, { ...ctx, now: "2026-01-10T10:01:00" });
+    expect((await store.get("job", saved.record.id))).toBeNull();
+    expect((await store.getChange(saved.change_id!))?.undone_at).toBe("2026-01-10T10:01:00");
   });
 
-  it("adds applied_at and undo restores the previous job", () => {
+  it("adds applied_at and undo restores the previous job", async () => {
     const store = new MemoryStore();
-    const saved = job(store);
-    const applied = saveRecord(store, { type: "job", id: saved.record.id, data: { status: "applied" } }, { ...ctx, now: "2026-01-10T10:02:00" });
+    const saved = (await job(store));
+    const applied = (await saveRecord(store, { type: "job", id: saved.record.id, data: { status: "applied" } }, { ...ctx, now: "2026-01-10T10:02:00" }));
     expect(applied.record.status).toBe("applied");
     expect(applied.record.applied_at).toBe("2026-01-10");
-    undoChange(store, { change_id: applied.change_id }, { ...ctx, now: "2026-01-10T10:03:00" });
-    expect(store.get("job", saved.record.id)?.status).toBe("saved");
-    expect(store.get("job", saved.record.id)?.applied_at).toBeUndefined();
+    await undoChange(store, { change_id: applied.change_id }, { ...ctx, now: "2026-01-10T10:03:00" });
+    expect((await store.get("job", saved.record.id))?.status).toBe("saved");
+    expect((await store.get("job", saved.record.id))?.applied_at).toBeUndefined();
   });
 
-  it("merges a duplicate URL without moving status backwards", () => {
+  it("merges a duplicate URL without moving status backwards", async () => {
     const store = new MemoryStore();
-    const saved = job(store, { url: "https://example.com/jobs/1?utm_source=x" });
-    saveRecord(store, { type: "job", id: saved.record.id, data: { status: "applied" } }, ctx);
-    const again = saveRecord(store, {
+    const saved = (await job(store, { url: "https://example.com/jobs/1?utm_source=x" }));
+    await saveRecord(store, { type: "job", id: saved.record.id, data: { status: "applied" } }, ctx);
+    const again = (await saveRecord(store, {
       type: "job",
       data: { url: "https://example.com/jobs/1", city: "杭州", status: "saved" },
-    }, { ...ctx, now: "2026-01-10T10:04:00" });
+    }, { ...ctx, now: "2026-01-10T10:04:00" }));
     expect(again.existed).toBe(true);
     expect(again.record.id).toBe(saved.record.id);
     expect(again.record.status).toBe("applied");
     expect(again.record.city).toBe("杭州");
   });
 
-  it("deletes and restores a record", () => {
+  it("deletes and restores a record", async () => {
     const store = new MemoryStore();
-    const saved = job(store);
-    const removed = deleteRecord(store, { type: "job", id: saved.record.id }, ctx);
-    expect(store.get("job", saved.record.id)).toBeNull();
-    undoChange(store, { change_id: removed.change_id }, { ...ctx, now: "2026-01-10T10:05:00" });
-    expect(store.get("job", saved.record.id)?.title).toBe("后端实习");
+    const saved = (await job(store));
+    const removed = (await deleteRecord(store, { type: "job", id: saved.record.id }, ctx));
+    expect((await store.get("job", saved.record.id))).toBeNull();
+    await undoChange(store, { change_id: removed.change_id }, { ...ctx, now: "2026-01-10T10:05:00" });
+    expect((await store.get("job", saved.record.id))?.title).toBe("后端实习");
   });
 
-  it("keeps agent writes behind the user-only guards", () => {
+  it("keeps agent writes behind the user-only guards", async () => {
     const store = new MemoryStore();
-    const saved = job(store, { status: "offer" });
-    expect(() => saveRecord(store, { type: "job", id: saved.record.id, data: { status: "saved" } }, { ...ctx, actor: "Agent" })).toThrow(/只有用户/);
-    expect(() => saveRecord(store, { type: "memory", data: { kind: "skill", title: "x", confirmed: true } }, { ...ctx, actor: "Agent" })).toThrow(/只有用户/);
+    const saved = (await job(store, { status: "offer" }));
+    await expect((saveRecord(store, { type: "job", id: saved.record.id, data: { status: "saved" } }, { ...ctx, actor: "Agent" }))).rejects.toThrow(/只有用户/);
+    await expect((saveRecord(store, { type: "memory", data: { kind: "skill", title: "x", confirmed: true } }, { ...ctx, actor: "Agent" }))).rejects.toThrow(/只有用户/);
   });
 
-  it("buckets overview events and searches records", () => {
+  it("buckets overview events and searches records", async () => {
     const store = new MemoryStore();
-    store.seedProfile();
-    const saved = job(store, { company: "字节跳动", title: "后端" });
-    store.put("event", { title: "逾期", kind: "todo", at: "2026-01-09T10:00", done: false, job_id: saved.record.id }, { now: "2026-01-09T09:00:00" });
-    store.put("event", { title: "今天", kind: "interview", at: "2026-01-10T14:00", done: false }, { now: "2026-01-09T09:00:00" });
-    store.put("event", { title: "以后", kind: "todo", at: null, done: false }, { now: "2026-01-09T09:00:00" });
-    const view = overview(store, ctx);
+    await store.seedProfile();
+    const saved = (await job(store, { company: "字节跳动", title: "后端" }));
+    await store.put("event", { title: "逾期", kind: "todo", at: "2026-01-09T10:00", done: false, job_id: saved.record.id }, { now: "2026-01-09T09:00:00" });
+    await store.put("event", { title: "今天", kind: "interview", at: "2026-01-10T14:00", done: false }, { now: "2026-01-09T09:00:00" });
+    await store.put("event", { title: "以后", kind: "todo", at: null, done: false }, { now: "2026-01-09T09:00:00" });
+    const view = (await overview(store, ctx));
     expect(view.todos.overdue.map((event) => event.title)).toContain("逾期");
     expect(view.todos.today.map((event) => event.title)).toContain("今天");
     expect(view.todos.undated.map((event) => event.title)).toContain("以后");
-    expect(searchRecords(store, { query: "字节" }).items[0]).toMatchObject({ type: "job", label: "字节跳动 · 后端" });
+    expect((await searchRecords(store, { query: "字节" })).items[0]).toMatchObject({ type: "job", label: "字节跳动 · 后端" });
   });
 });

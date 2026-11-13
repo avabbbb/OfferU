@@ -59,23 +59,44 @@ export type PutOptions = {
   restore?: boolean;
 };
 
-/** Persistence adapter. The core owns semantics; the adapter only stores rows. */
+/**
+ * Persistence adapter. The core owns semantics; the adapter only stores rows.
+ *
+ * Every method is async so the same core runs on IndexedDB/OPFS in the
+ * browser, node:sqlite on the local companion, and anything else later.
+ * `transaction` must make every write inside `fn` all-or-nothing: a record
+ * write and its change-log row either both land or neither does.
+ */
 export interface CoreStore {
-  all(type: RecordType, jobId?: number | null): StoredRecord[];
-  get(type: RecordType, id: number): StoredRecord | null;
-  first(type: RecordType): StoredRecord | null;
-  put(type: RecordType, data: Json, options: PutOptions): StoredRecord;
-  remove(type: RecordType, id: number): void;
-  changes(limit: number): ChangeRow[];
-  getChange(id: number): ChangeRow | null;
-  lastChange(): ChangeRow | null;
-  addChange(row: Omit<ChangeRow, "id" | "undone_at">): number;
-  updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): void;
+  all(type: RecordType, jobId?: number | null): Promise<StoredRecord[]>;
+  get(type: RecordType, id: number): Promise<StoredRecord | null>;
+  first(type: RecordType): Promise<StoredRecord | null>;
+  put(type: RecordType, data: Json, options: PutOptions): Promise<StoredRecord>;
+  remove(type: RecordType, id: number): Promise<void>;
+  changes(limit: number): Promise<ChangeRow[]>;
+  getChange(id: number): Promise<ChangeRow | null>;
+  lastChange(): Promise<ChangeRow | null>;
+  addChange(row: Omit<ChangeRow, "id" | "undone_at">): Promise<number>;
+  updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): Promise<void>;
+  transaction<T>(fn: () => Promise<T>): Promise<T>;
 }
 
+/**
+ * Machine-readable error kinds. Transports map these to status codes
+ * (HTTP 400/404/409/403) instead of pattern-matching the Chinese message.
+ */
+export type CoreErrorCode = "invalid" | "not_found" | "conflict" | "forbidden" | "unsupported";
+
 export class CoreError extends Error {
-  constructor(message: string) {
+  readonly code: CoreErrorCode;
+
+  constructor(message: string, code: CoreErrorCode = "invalid") {
     super(message);
     this.name = "CoreError";
+    this.code = code;
   }
+}
+
+export function isCoreError(value: unknown): value is CoreError {
+  return value instanceof Error && (value as { name?: string }).name === "CoreError" && typeof (value as { code?: unknown }).code === "string";
 }

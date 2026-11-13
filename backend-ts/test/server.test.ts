@@ -66,4 +66,18 @@ describe("TS backend HTTP", () => {
     expect(response.status).toBe(400);
     expect(((await response.json()) as { detail: string }).detail).toContain("status");
   });
+
+  it("maps core error codes to HTTP status", async () => {
+    const { base } = await start();
+    const missing = await fetch(`${base}/api/tools/get`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "job", id: 404 }),
+    });
+    expect(missing.status).toBe(404);
+    const unsupported = await fetch(`${base}/api/tools/email_sync`, { method: "POST", body: "{}" });
+    expect(unsupported.status).toBe(501);
+    const broken = await fetch(`${base}/api/tools/list`, { method: "POST", body: "{nope" });
+    expect(broken.status).toBe(400);
+  });
 });

@@ -62,7 +62,7 @@ function checkTags(value: unknown): void {
   if (new Set(value).size !== value.length) throw new CoreError("job.tags 有重复标签");
 }
 
-function checkRecord(type: RecordType, data: Json, creating: boolean, store: CoreStore): void {
+async function checkRecord(type: RecordType, data: Json, creating: boolean, store: CoreStore): Promise<void> {
   if (type === "job") {
     oneOf(data.status, JOB_STATUS, "job.status");
     if (creating && !stringValue(data.company) && !stringValue(data.title)) {
@@ -89,8 +89,8 @@ function checkRecord(type: RecordType, data: Json, creating: boolean, store: Cor
     }
   }
   if (data.job_id !== undefined && data.job_id !== null) {
-    if (typeof data.job_id !== "number" || !store.get("job", data.job_id)) {
-      throw new CoreError(`岗位 #${String(data.job_id)} 不存在`);
+    if (typeof data.job_id !== "number" || !(await store.get("job", data.job_id))) {
+      throw new CoreError(`岗位 #${String(data.job_id)} 不存在`, "not_found");
     }
   }
 }
@@ -117,10 +117,10 @@ export function jobUrlKey(value: unknown): string {
   }
 }
 
-function findJobByUrl(store: CoreStore, url: unknown): StoredRecord | null {
+async function findJobByUrl(store: CoreStore, url: unknown): Promise<StoredRecord | null> {
   const key = jobUrlKey(url);
   if (!key) return null;
-  return store.all("job").find((job) => jobUrlKey(job.url) === key) ?? null;
+  return (await store.all("job")).find((job) => jobUrlKey(job.url) === key) ?? null;
 }
 
 function mergeSavedJob(existing: StoredRecord, data: Json): Json {
@@ -149,11 +149,11 @@ export function statusMoveError(current: JobStatus | undefined, next: JobStatus)
   return null;
 }
 
-function logChange(
+async function logChange(
   store: CoreStore,
   data: { actor: string; summary: string; type: RecordType; record_id: number; before: PlainRecord | null; after: PlainRecord | null; now: string },
-): number {
-  const last = store.lastChange();
+): Promise<number> {
+  const last = await store.lastChange();
   if (
     last
     && last.before !== null
@@ -165,10 +165,10 @@ function logChange(
     && last.record_id === data.record_id
     && Date.parse(data.now) - Date.parse(last.at) < 600_000
   ) {
-    store.updateChange(last.id, { at: data.now, after: data.after });
+    await store.updateChange(last.id, { at: data.now, after: data.after });
     return last.id;
   }
-  return store.addChange({
+  return (await store.addChange({
     at: data.now,
     actor: data.actor,
     summary: data.summary,
@@ -176,7 +176,7 @@ function logChange(
     record_id: data.record_id,
     before: data.before,
     after: data.after,
-  });
+  }));
 }
 
 export type SaveResult = {
@@ -186,19 +186,24 @@ export type SaveResult = {
   open_events?: number;
 };
 
-export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext): SaveResult {
+/** All-or-nothing: the record write and its change-log row commit together. */
+export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext): Promise<SaveResult> {
+  return store.transaction(() => saveRecordUnsafe(store, args, ctx));
+}
+
+async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext): Promise<SaveResult> {
   const type = recordType(args.type);
   let data = objectArg(args.data ?? {}, "data");
   let id = args.id === undefined || args.id === null ? undefined : numberArg(args.id, "id");
 
   if (type === "profile" && id === undefined) {
-    const existing = store.first("profile");
+    const existing = await store.first("profile");
     if (existing) id = existing.id;
   }
 
   let existed = false;
   if (type === "job" && id === undefined && data.url) {
-    const previous = findJobByUrl(store, data.url);
+    const previous = await findJobByUrl(store, data.url);
     if (previous) {
       existed = true;
       id = previous.id;
@@ -207,19 +212,19 @@ export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext): Save
     }
   }
 
-  checkRecord(type, data, id === undefined, store);
+  await checkRecord(type, data, id === undefined, store);
 
   if (type === "memory") {
     if (ctx.actor !== "你") {
-      if (data.confirmed === true) throw new CoreError("只有用户能确认记忆：Agent 存的记忆是待确认");
-      if (data.source === "user") throw new CoreError("memory.source 不能由 Agent 记成 user");
+      if (data.confirmed === true) throw new CoreError("只有用户能确认记忆：Agent 存的记忆是待确认", "forbidden");
+      if (data.source === "user") throw new CoreError("memory.source 不能由 Agent 记成 user", "forbidden");
     }
     if (id === undefined) {
       data = { source: ctx.actor === "你" ? "user" : "agent", confirmed: ctx.actor === "你", ...data };
     }
   }
 
-  const existing = id !== undefined ? store.get(type, id) : null;
+  const existing = id !== undefined ? (await store.get(type, id)) : null;
   const verb = type === "event" && data.done === true && id !== undefined ? "完成" : id === undefined ? "新建" : "更新";
   const statusNote = type === "job" && id !== undefined && typeof data.status === "string"
     ? `：${JOB_STATUS[data.status as JobStatus]}`
@@ -234,7 +239,7 @@ export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext): Save
   }
   if (type === "job" && id !== undefined && typeof data.status === "string" && ctx.actor !== "你") {
     const error = statusMoveError(existing?.status as JobStatus | undefined, data.status as JobStatus);
-    if (error) throw new CoreError(error);
+    if (error) throw new CoreError(error, "forbidden");
   }
   if (type === "job" && id === undefined) data = { status: "saved", ...data };
 
@@ -246,7 +251,7 @@ export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext): Save
   } as StoredRecord;
   let openEvents = 0;
   if (type === "job" && id !== undefined && (data.status === "rejected" || data.status === "closed")) {
-    openEvents = store.all("event", id).filter((event) => !event.done).length;
+    openEvents = (await store.all("event", id)).filter((event) => !event.done).length;
   }
   const note = openEvents ? `，还有 ${openEvents} 件未完成事项` : "";
   const summary = `${verb}${TYPE_LABEL[type]}「${label(preview)}」${statusNote}${note}`;
@@ -254,8 +259,8 @@ export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext): Save
   const jobId = typeof data.job_id === "number" || data.job_id === null
     ? (data.job_id as number | null)
     : existing?.job_id ?? null;
-  const record = store.put(type, data, { id, jobId, now: ctx.now, createdAt: existing?.created_at });
-  const changeId = logChange(store, {
+  const record = await store.put(type, data, { id, jobId, now: ctx.now, createdAt: existing?.created_at });
+  const changeId = await logChange(store, {
     actor: ctx.actor,
     summary,
     type,
@@ -267,26 +272,26 @@ export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext): Save
   return { record, change_id: changeId, existed, ...(openEvents ? { open_events: openEvents } : {}) };
 }
 
-export function getRecord(store: CoreStore, args: Args): { record: StoredRecord | null; events?: StoredRecord[]; docs?: StoredRecord[] } {
+export async function getRecord(store: CoreStore, args: Args): Promise<{ record: StoredRecord | null; events?: StoredRecord[]; docs?: StoredRecord[] }> {
   const type = recordType(args.type);
-  const record = type === "profile" ? store.first("profile") : store.get(type, numberArg(args.id, "id"));
+  const record = type === "profile" ? (await store.first("profile")) : (await store.get(type, numberArg(args.id, "id")));
   if (!record) {
     if (type === "profile") return { record: null };
-    throw new CoreError(`${type} #${String(args.id)} 不存在`);
+    throw new CoreError(`${type} #${String(args.id)} 不存在`, "not_found");
   }
   if (type === "job") {
     return {
       record,
-      events: store.all("event", record.id).map(brief),
-      docs: store.all("doc", record.id).map(brief),
+      events: (await store.all("event", record.id)).map(brief),
+      docs: (await store.all("doc", record.id)).map(brief),
     };
   }
   return { record };
 }
 
-export function listRecords(store: CoreStore, args: Args): { total: number; items: Array<StoredRecord & { label: string }> } {
+export async function listRecords(store: CoreStore, args: Args): Promise<{ total: number; items: Array<StoredRecord & { label: string }> }> {
   const type = recordType(args.type);
-  let items = store.all(type);
+  let items = await store.all(type);
   if (typeof args.status === "string" && args.status) items = items.filter((item) => item.status === args.status);
   if (typeof args.kind === "string" && args.kind) items = items.filter((item) => item.kind === args.kind);
   if (typeof args.job_id === "number") items = items.filter((item) => item.job_id === args.job_id);
@@ -302,13 +307,18 @@ export function listRecords(store: CoreStore, args: Args): { total: number; item
   return { total: items.length, items: items.slice(0, limit).map((item) => (full ? { ...item, label: label(item) } : brief(item))) };
 }
 
-export function deleteRecord(store: CoreStore, args: Args, ctx: CoreContext): { change_id: number } {
+/** All-or-nothing: the record write and its change-log row commit together. */
+export function deleteRecord(store: CoreStore, args: Args, ctx: CoreContext): Promise<{ change_id: number }> {
+  return store.transaction(() => deleteRecordUnsafe(store, args, ctx));
+}
+
+async function deleteRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext): Promise<{ change_id: number }> {
   const type = recordType(args.type);
   const id = numberArg(args.id, "id");
-  const record = store.get(type, id);
-  if (!record) throw new CoreError(`${type} #${id} 不存在`);
-  store.remove(type, id);
-  const changeId = logChange(store, {
+  const record = await store.get(type, id);
+  if (!record) throw new CoreError(`${type} #${id} 不存在`, "not_found");
+  await store.remove(type, id);
+  const changeId = await logChange(store, {
     actor: ctx.actor,
     summary: `删除${TYPE_LABEL[type]}「${label(record)}」`,
     type,
@@ -320,20 +330,25 @@ export function deleteRecord(store: CoreStore, args: Args, ctx: CoreContext): { 
   return { change_id: changeId };
 }
 
-export function undoChange(store: CoreStore, args: Args, ctx: CoreContext): { undone: number; summary: string; actor: string } {
+/** All-or-nothing: the record write and its change-log row commit together. */
+export function undoChange(store: CoreStore, args: Args, ctx: CoreContext): Promise<{ undone: number; summary: string; actor: string }> {
+  return store.transaction(() => undoChangeUnsafe(store, args, ctx));
+}
+
+async function undoChangeUnsafe(store: CoreStore, args: Args, ctx: CoreContext): Promise<{ undone: number; summary: string; actor: string }> {
   const changeId = numberArg(args.change_id, "change_id");
-  const row = store.getChange(changeId);
-  if (!row) throw new CoreError(`改动 #${changeId} 不存在`);
-  if (row.undone_at) throw new CoreError("这条改动已经撤销过了");
-  const current = store.get(row.type, row.record_id);
+  const row = await store.getChange(changeId);
+  if (!row) throw new CoreError(`改动 #${changeId} 不存在`, "not_found");
+  if (row.undone_at) throw new CoreError("这条改动已经撤销过了", "conflict");
+  const current = await store.get(row.type, row.record_id);
   if (stable(plain(current)) !== stable(row.after)) {
-    throw new CoreError("这条记录在这次改动之后又被改过，撤销会盖掉后面的改动；请先撤销更新的那条");
+    throw new CoreError("这条记录在这次改动之后又被改过，撤销会盖掉后面的改动；请先撤销更新的那条", "conflict");
   }
   if (row.before === null) {
-    store.remove(row.type, row.record_id);
+    await store.remove(row.type, row.record_id);
   } else {
     const { job_id: jobId = null, ...data } = row.before;
-    store.put(row.type, data, {
+    await store.put(row.type, data, {
       id: row.record_id,
       jobId: typeof jobId === "number" || jobId === null ? jobId : null,
       now: ctx.now,
@@ -342,13 +357,13 @@ export function undoChange(store: CoreStore, args: Args, ctx: CoreContext): { un
       restore: true,
     });
   }
-  store.updateChange(changeId, { undone_at: ctx.now });
+  await store.updateChange(changeId, { undone_at: ctx.now });
   return { undone: changeId, summary: row.summary, actor: ctx.actor };
 }
 
-export function changesView(store: CoreStore, limit = 20): { items: ChangeView[] } {
+export async function changesView(store: CoreStore, limit = 20): Promise<{ items: ChangeView[] }> {
   return {
-    items: store.changes(Math.max(1, Math.min(200, limit))).map((row) => ({
+    items: (await store.changes(Math.max(1, Math.min(200, limit)))).map((row) => ({
       id: row.id,
       at: row.at,
       actor: row.actor,
@@ -362,7 +377,7 @@ export function changesView(store: CoreStore, limit = 20): { items: ChangeView[]
   };
 }
 
-export function searchRecords(store: CoreStore, args: Args): { items: Array<{ type: RecordType; id: number; label: string; snippet: string }> } {
+export async function searchRecords(store: CoreStore, args: Args): Promise<{ items: Array<{ type: RecordType; id: number; label: string; snippet: string }> }> {
   const query = typeof args.query === "string" ? args.query.trim() : "";
   if (!query) throw new CoreError("query 不能为空");
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -372,7 +387,7 @@ export function searchRecords(store: CoreStore, args: Args): { items: Array<{ ty
   const limit = Math.max(1, Math.min(100, typeof args.limit === "number" ? args.limit : 20));
   const hits: Array<{ score: number; item: { type: RecordType; id: number; label: string; snippet: string } }> = [];
   for (const type of types) {
-    for (const record of store.all(type)) {
+    for (const record of (await store.all(type))) {
       const raw = Object.entries(record)
         .filter(([key, value]) => !["id", "type", "created_at", "updated_at", "job_id"].includes(key) && value !== null && value !== "")
         .map(([, value]) => (typeof value === "string" ? value : JSON.stringify(value)))
@@ -405,10 +420,10 @@ export type Overview = {
   mail: { today_changes: number; last_change_at: string | null };
 };
 
-export function overview(store: CoreStore, ctx: CoreContext): Overview {
-  const jobs = store.all("job");
+export async function overview(store: CoreStore, ctx: CoreContext): Promise<Overview> {
+  const jobs = await store.all("job");
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
-  const events = store.all("event")
+  const events = (await store.all("event"))
     .filter((event) => !event.done && !["rejected", "closed"].includes(String(jobsById.get(event.job_id ?? -1)?.status)))
     .map((event) => {
       const job = event.job_id !== null ? jobsById.get(event.job_id) : undefined;
@@ -436,7 +451,7 @@ export function overview(store: CoreStore, ctx: CoreContext): Overview {
     const status = job.status as JobStatus;
     if (statuses[status]) statuses[status].push(job);
   }
-  const profile = store.first("profile");
+  const profile = await store.first("profile");
   const inferred = statuses.offer.length
     ? "offer"
     : statuses.interview.length
@@ -466,7 +481,7 @@ export function overview(store: CoreStore, ctx: CoreContext): Overview {
     };
   } else if (!profile?.name) {
     nextStep = { title: "先建档案", why: "填好基本信息和经历，简历和网申都从这里取", link: "/profile" };
-  } else if (!store.all("doc").some((doc) => doc.kind === "resume")) {
+  } else if (!(await store.all("doc")).some((doc) => doc.kind === "resume")) {
     nextStep = { title: "写一份简历", why: "从档案生成一份，再按岗位改", link: "/resume" };
   } else if (!jobs.length) {
     nextStep = { title: "存几个想投的岗位", why: "还没有岗位，OfferU 没法帮你安排", link: "/jobs" };
@@ -486,7 +501,7 @@ export function overview(store: CoreStore, ctx: CoreContext): Overview {
     next_step: nextStep,
     todos,
     jobs: Object.fromEntries(Object.keys(JOB_STATUS).map((status) => [status, statuses[status as JobStatus].length])) as Record<JobStatus, number>,
-    recent_changes: changesView(store, 5).items,
+    recent_changes: (await changesView(store, 5)).items,
     mail: { today_changes: 0, last_change_at: null },
   };
 }

@@ -75,6 +75,8 @@ function changeFromRow(row: ChangeSqlRow): ChangeRow {
 /** SQLite adapter for the shared OfferU core. Same records/changes schema as Python. */
 export class SqliteCoreStore implements CoreStore {
   private readonly db: DatabaseSync;
+  private queue: Promise<unknown> = Promise.resolve();
+  private inTx = false;
 
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -83,25 +85,25 @@ export class SqliteCoreStore implements CoreStore {
     this.db.exec(SCHEMA);
   }
 
-  all(type: RecordType, jobId?: number | null): StoredRecord[] {
+  async all(type: RecordType, jobId?: number | null): Promise<StoredRecord[]> {
     const rows = jobId === undefined
       ? this.db.prepare("SELECT * FROM records WHERE type=? ORDER BY updated_at DESC, id DESC").all(type)
       : this.db.prepare("SELECT * FROM records WHERE type=? AND job_id=? ORDER BY updated_at DESC, id DESC").all(type, jobId);
     return (rows as Row[]).map(recordFromRow);
   }
 
-  get(type: RecordType, id: number): StoredRecord | null {
+  async get(type: RecordType, id: number): Promise<StoredRecord | null> {
     const row = this.db.prepare("SELECT * FROM records WHERE type=? AND id=?").get(type, id) as Row | undefined;
     return row ? recordFromRow(row) : null;
   }
 
-  first(type: RecordType): StoredRecord | null {
+  async first(type: RecordType): Promise<StoredRecord | null> {
     const row = this.db.prepare("SELECT * FROM records WHERE type=? ORDER BY id LIMIT 1").get(type) as Row | undefined;
     return row ? recordFromRow(row) : null;
   }
 
-  put(type: RecordType, data: Json, options: PutOptions): StoredRecord {
-    const existing = options.id === undefined ? null : this.get(type, options.id);
+  async put(type: RecordType, data: Json, options: PutOptions): Promise<StoredRecord> {
+    const existing = options.id === undefined ? null : await this.get(type, options.id);
     if (options.id !== undefined && !existing && !options.restore) {
       throw new Error(`${type} #${options.id} 不存在`);
     }
@@ -123,43 +125,36 @@ export class SqliteCoreStore implements CoreStore {
     const id = existing?.id ?? options.id ?? this.nextRecordId();
     const sqlData = JSON.stringify(merged);
 
-    this.db.exec("BEGIN");
-    try {
-      if (existing) {
-        this.db.prepare("UPDATE records SET job_id=?, data=?, updated_at=? WHERE id=?").run(jobId, sqlData, now, id);
-      } else {
-        this.db.prepare("INSERT INTO records(id, type, job_id, data, created_at, updated_at) VALUES (?,?,?,?,?,?)")
-          .run(id, type, jobId, sqlData, createdAt, now);
-      }
-      this.db.exec("COMMIT");
-    } catch (error) {
-      this.db.exec("ROLLBACK");
-      throw error;
+    if (existing) {
+      this.db.prepare("UPDATE records SET job_id=?, data=?, updated_at=? WHERE id=?").run(jobId, sqlData, now, id);
+    } else {
+      this.db.prepare("INSERT INTO records(id, type, job_id, data, created_at, updated_at) VALUES (?,?,?,?,?,?)")
+        .run(id, type, jobId, sqlData, createdAt, now);
     }
 
-    return this.get(type, id)!;
+    return (await this.get(type, id))!;
   }
 
-  remove(type: RecordType, id: number): void {
+  async remove(type: RecordType, id: number): Promise<void> {
     this.db.prepare("DELETE FROM records WHERE type=? AND id=?").run(type, id);
   }
 
-  changes(limit: number): ChangeRow[] {
+  async changes(limit: number): Promise<ChangeRow[]> {
     const rows = this.db.prepare("SELECT * FROM changes ORDER BY id DESC LIMIT ?").all(limit) as ChangeSqlRow[];
     return rows.map(changeFromRow);
   }
 
-  getChange(id: number): ChangeRow | null {
+  async getChange(id: number): Promise<ChangeRow | null> {
     const row = this.db.prepare("SELECT * FROM changes WHERE id=?").get(id) as ChangeSqlRow | undefined;
     return row ? changeFromRow(row) : null;
   }
 
-  lastChange(): ChangeRow | null {
+  async lastChange(): Promise<ChangeRow | null> {
     const row = this.db.prepare("SELECT * FROM changes ORDER BY id DESC LIMIT 1").get() as ChangeSqlRow | undefined;
     return row ? changeFromRow(row) : null;
   }
 
-  addChange(row: Omit<ChangeRow, "id" | "undone_at">): number {
+  async addChange(row: Omit<ChangeRow, "id" | "undone_at">): Promise<number> {
     const result = this.db.prepare(
       "INSERT INTO changes(at, actor, summary, type, record_id, before, after) VALUES (?,?,?,?,?,?,?)",
     ).run(
@@ -174,7 +169,7 @@ export class SqliteCoreStore implements CoreStore {
     return Number(result.lastInsertRowid);
   }
 
-  updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): void {
+  async updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): Promise<void> {
     const sets: string[] = [];
     const values: Array<string | null> = [];
     if (patch.at !== undefined) { sets.push("at=?"); values.push(patch.at); }
@@ -182,6 +177,31 @@ export class SqliteCoreStore implements CoreStore {
     if (patch.undone_at !== undefined) { sets.push("undone_at=?"); values.push(patch.undone_at); }
     if (!sets.length) return;
     this.db.prepare(`UPDATE changes SET ${sets.join(", ")} WHERE id=?`).run(...values, id);
+  }
+
+  /**
+   * Serialized BEGIN IMMEDIATE ... COMMIT. node:sqlite is one synchronous
+   * connection, so concurrent async callers must queue or their statements
+   * would interleave inside each other's transaction.
+   */
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.inTx) return fn();
+    const run = this.queue.then(async () => {
+      this.inTx = true;
+      this.db.exec("BEGIN IMMEDIATE");
+      try {
+        const result = await fn();
+        this.db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        this.db.exec("ROLLBACK");
+        throw error;
+      } finally {
+        this.inTx = false;
+      }
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
   }
 
   close(): void {

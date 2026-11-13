@@ -4,7 +4,16 @@ import { pathToFileURL } from "node:url";
 import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
 import { callTool, openStore, SUPPORTED_TOOLS } from "./tools";
+import { isCoreError, type CoreErrorCode } from "@offeru/core";
 import type { SqliteCoreStore } from "./store";
+
+const STATUS_OF: Record<CoreErrorCode, number> = {
+  invalid: 400,
+  not_found: 404,
+  conflict: 409,
+  forbidden: 403,
+  unsupported: 501,
+};
 
 const MAX_BODY = 2 * 1024 * 1024;
 const BRIDGE_ORIGIN = /^https:\/\/(?:offeru\.avabbbb\.com|offeru-showcase\.pages\.dev|[a-z0-9-]+\.offeru-showcase\.pages\.dev)$/;
@@ -116,12 +125,17 @@ export function createAppServer(store: SqliteCoreStore): Server {
     if (method === "POST" && match) {
       try {
         const actor = String(req.headers["x-offeru-actor"] || "你");
-        const result = callTool(match[1], await bodyOf(req), store, actor);
+        const result = await callTool(match[1], await bodyOf(req), store, actor);
         json(res, 200, result, origin);
       } catch (cause) {
-        const message = cause instanceof Error ? cause.message : "请求失败";
-        const status = /不存在|只能是|要有|不能为空/.test(message) ? 400 : 422;
-        json(res, status, { detail: message }, origin);
+        if (cause instanceof SyntaxError) {
+          json(res, 400, { detail: "请求体不是合法 JSON", code: "invalid" }, origin);
+        } else if (isCoreError(cause)) {
+          json(res, STATUS_OF[cause.code], { detail: cause.message, code: cause.code }, origin);
+        } else {
+          console.error(cause);
+          json(res, 500, { detail: "服务器内部错误", code: "internal" }, origin);
+        }
       }
       return;
     }
