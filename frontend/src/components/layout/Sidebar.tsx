@@ -46,7 +46,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       }`}
     >
       <Icon size={17} strokeWidth={1.75} />
-      <span className={`truncate text-[13.5px] ${active ? "font-semibold" : "font-medium"}`}>{item.label}</span>
+      <span className={`truncate text-[length:var(--ou-type-body)] ${active ? "font-semibold" : "font-medium"}`}>{item.label}</span>
     </Link>
   );
 }
@@ -62,9 +62,9 @@ export function Sidebar() {
         <div className="offeru-sidebar-brand relative z-10 px-4 pb-2 pt-5">
           <Link href="/" className="flex items-center gap-2.5 rounded-md px-1.5 py-1">
             <div className="offeru-sidebar-mark flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-[var(--foreground)] text-[var(--surface)]">
-              <span className="text-[13px] font-bold tracking-tight">O</span>
+              <span className="text-[length:var(--ou-type-sm)] font-bold tracking-tight">O</span>
             </div>
-            <p className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">OfferU</p>
+            <p className="text-[length:var(--ou-type-section)] font-semibold tracking-tight text-[var(--foreground)]">OfferU</p>
           </Link>
         </div>
 
@@ -73,11 +73,11 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => workbench?.setPaletteOpen(true)}
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[length:var(--ou-type-sm)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
           >
             <Search size={14} strokeWidth={1.75} />
-            <span className="flex-1 text-left">搜索或问 OfferU</span>
-            <kbd className="font-sans text-[11px] text-[var(--foreground-faint)]">
+            <span className="min-w-0 flex-1 truncate whitespace-nowrap text-left">搜索或问 OfferU</span>
+            <kbd className="shrink-0 font-sans text-[length:var(--ou-type-xs)] text-[var(--foreground-faint)]">
               {modifierLabel(typeof navigator === "undefined" ? "" : navigator.platform || navigator.userAgent)} K
             </kbd>
           </button>
@@ -113,7 +113,7 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`relative flex min-h-[60px] flex-col items-center justify-center gap-1 border-r border-[var(--border)] px-1 py-2 text-[11px] font-medium last:border-r-0 ${
+                className={`relative flex min-h-[3.75rem] flex-col items-center justify-center gap-1 border-r border-[var(--border)] px-1 py-2 text-[length:var(--ou-type-xs)] font-medium last:border-r-0 ${
                   active ? "text-[var(--foreground)]" : "text-[var(--foreground-muted)]"
                 }`}
               >

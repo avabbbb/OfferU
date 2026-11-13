@@ -124,7 +124,7 @@
   --ou-width-page: 72rem;     /* Today, lists */
   --ou-width-wide: 100rem;    /* tables, kanban, gantt */
   --ou-kanban-column: clamp(16rem, 18vw + 4rem, 22rem);
-  --ou-sidebar-width: clamp(13.5rem, 10rem + 4vw, 16rem);
+  --ou-sidebar-width: clamp(14rem, 10rem + 5vw, 16rem);
 
   --ou-ring-hover: 0 0 0 1px var(--ou-line-control);
   --ou-ring-focus: 0 0 0 1px var(--ou-line-strong), 0 0 0 3px var(--ou-bg-selected);
