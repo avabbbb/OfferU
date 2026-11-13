@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type CoreErrorCode, type CoreStore } from "@offeru/core";
+import { isCoreError, type CoreErrorCode, type CoreStore, type LlmClient } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
 import { callTool, SUPPORTED_TOOLS } from "./tools";
@@ -16,6 +16,8 @@ export interface AppDeps {
   pairingToken?: () => string;
   runtime: "node" | "worker";
   storage: "sqlite" | "none";
+  /** The user's configured model (BYOK); called per request so a changed key applies at once. Absent/null = no model. */
+  llm?: () => LlmClient | null;
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };
