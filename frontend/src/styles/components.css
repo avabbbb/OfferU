@@ -421,6 +421,10 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
   border-radius: var(--ou-radius-pill); background: var(--ou-glass-subtle); font-size: var(--ou-type-sm);
   transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
 }
+.ou-kanban-filters { min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.ou-kanban-filters:not(:hover) { -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--ou-space-4)), transparent); mask-image: linear-gradient(to right, black calc(100% - var(--ou-space-4)), transparent); }
+.ou-kanban-filters::-webkit-scrollbar { display: none; }
+.ou-kanban-filters > .ou-kanban-filter { flex: none; }
 .ou-kanban-filter { display: inline-flex; min-height: 1.75rem; align-items: center; gap: 0.3125rem; padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); color: var(--ou-text-secondary); font-size: var(--ou-type-sm); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
 .ou-kanban-filter > span { color: var(--ou-text-placeholder); font-size: var(--ou-type-xs); }
 .ou-kanban-filter:hover { color: var(--ou-text-primary); }

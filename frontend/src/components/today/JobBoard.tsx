@@ -125,10 +125,11 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
 
   return (
     <section data-testid="today-board" className="text-[13.5px]">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {!embedded && <h2 className={"text-[13px] font-medium " + muted}>投递看板</h2>}
+      {/* 一行放下：标签多 / 开着 Agent 栏时，标签分段在自己的轨道里横滚，「已结束」始终留在行尾，不掉到第二行。 */}
+      <div className="flex items-center gap-x-3">
+        {!embedded && <h2 className={"shrink-0 text-[length:var(--ou-type-sm)] font-medium " + muted}>投递看板</h2>}
         {tags.length > 0 && (
-          <div className="ou-segment flex-wrap" role="group" aria-label="按标签筛选">
+          <div className="ou-segment ou-kanban-filters" role="group" aria-label="按标签筛选">
             <button type="button" aria-pressed={!tag} onClick={() => setTag(null)}
               className="ou-kanban-filter">全部</button>
             {tags.map((t) => (
@@ -142,7 +143,7 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
         {error && <span className="ou-field-error" role="alert">{error}</span>}
         {!showEnded && (
           <button type="button" onClick={() => setShowEnded(true)} {...dropZone("ended")}
-            className={"ou-kanban-ended ml-auto " + muted}>
+            className={"ou-kanban-ended ml-auto shrink-0 " + muted}>
             已结束<span className={"tabular-nums " + faint}>{ended.length}</span>
           </button>
         )}
