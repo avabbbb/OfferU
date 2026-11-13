@@ -21,6 +21,10 @@ test("detect raw palette, hardcoded typography, shadow and layer", () => {
     "literal-color", "arbitrary-radius", "arbitrary-shadow",
   ]);
   assert.deepEqual(violations('color: var(--ou-color-orange);', path), []);
+  assert.deepEqual(violations('box-shadow: var(--ou-elev-2);', path), []);
+  assert.deepEqual(violations('box-shadow: none;', path), []);
+  assert.deepEqual(violations('<select value={x}>', path), ["raw-control"]);
+  assert.deepEqual(violations('<div role="menu">', path), ["raw-control"]);
   assert.deepEqual(violations('/* historical color #ffffff is a comment */', path), []);
 });
 

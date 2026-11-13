@@ -41,17 +41,10 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       aria-current={active ? "page" : undefined}
       className={`offeru-nav-link group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors duration-[var(--dur-quick)] ${
         active
-          ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
+          ? "text-[var(--foreground)]"
           : "text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
       }`}
     >
-      {active && (
-        <motion.span
-          layoutId="sidebar-active-indicator"
-          className="absolute inset-y-1.5 left-0 w-[2.5px] rounded-full bg-[var(--foreground)]"
-          transition={{ type: "spring", stiffness: 480, damping: 38 }}
-        />
-      )}
       <Icon size={17} strokeWidth={1.75} />
       <span className={`truncate text-[13.5px] ${active ? "font-semibold" : "font-medium"}`}>{item.label}</span>
     </Link>
@@ -65,7 +58,7 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="offeru-sidebar relative hidden h-full w-[15rem] shrink-0 overflow-hidden border-r border-[var(--border)] bg-[var(--sidebar-bg,var(--background))] md:flex md:flex-col">
+      <aside className="offeru-sidebar relative hidden h-full w-[var(--ou-sidebar-width)] shrink-0 overflow-hidden border-r border-[var(--border)] bg-[var(--sidebar-bg,var(--background))] md:flex md:flex-col">
         <div className="offeru-sidebar-brand relative z-10 px-4 pb-2 pt-5">
           <Link href="/" className="flex items-center gap-2.5 rounded-md px-1.5 py-1">
             <div className="offeru-sidebar-mark flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-[var(--foreground)] text-[var(--surface)]">

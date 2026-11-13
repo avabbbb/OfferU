@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "../styles/design-tokens.css";
+@import "../styles/components.css";
 @config "../../tailwind.config.js";
 @source "../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
 
@@ -117,7 +118,7 @@ select {
 }
 
 ::selection {
-  background: rgba(31, 31, 29, 0.14);
+  background: var(--ou-selection);
   color: var(--foreground);
 }
 
@@ -131,14 +132,14 @@ select {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(31, 31, 29, 0.16);
+  background: var(--ou-scrollbar);
   border: 2px solid transparent;
   background-clip: content-box;
-  border-radius: 999px;
+  border-radius: var(--ou-radius-pill);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(31, 31, 29, 0.28);
+  background: var(--ou-scrollbar-hover);
   background-clip: content-box;
 }
 
@@ -743,8 +744,7 @@ select {
 
 .offeru-data-row:hover,
 .offeru-data-row:focus-visible {
-  background: color-mix(in srgb, var(--surface-hover) 72%, white);
-  box-shadow: inset 3px 0 0 var(--accent-clay);
+  background: var(--ou-bg-hover);
 }
 
 .offeru-data-row:focus-visible {
@@ -772,7 +772,7 @@ select {
 
 .column-resize-handle:hover::after,
 .column-resize-handle:active::after {
-  background: var(--accent-clay);
+  background: var(--ou-line-strong);
 }
 
 .context-rail {
@@ -906,45 +906,45 @@ select {
    OfferU 外壳皮肤：安静的纸面。
    这里是尚未迁移的存量样式，不作为新增 UI 规范；
    新 UI 使用 docs/design/visual-system.md 与 styles/design-tokens.css。
-   迁移前不得全局替换旧变量以免改变现有页面。
+   2026-11-13 起旧变量全部桥接到 --ou-* 语义 token（色卡 v2），只允许 var() 桥接，不再写字面值。
    ───────────────────────────────────────────── */
 :root {
-  --background: #f7f6f2;
-  --sidebar-bg: #f1efe9;
-  --foreground: #1f1f1d;
-  --foreground-soft: rgba(31, 31, 29, 0.72);
-  --foreground-muted: rgba(31, 31, 29, 0.58);
-  --foreground-faint: rgba(31, 31, 29, 0.42);
-  --surface: #ffffff;
-  --surface-opaque: #ffffff;
-  --surface-muted: rgba(31, 31, 29, 0.045);
-  --surface-hover: rgba(31, 31, 29, 0.07);
-  --status-blush: rgba(192, 57, 43, 0.08);
-  --status-sage: rgba(73, 104, 82, 0.1);
-  --accent-clay: #c0392b;
+  --background: var(--ou-bg-canvas);
+  --sidebar-bg: var(--ou-bg-sidebar);
+  --foreground: var(--ou-text-primary);
+  --foreground-soft: color-mix(in oklab, var(--ou-text-primary) 70%, var(--ou-text-secondary));
+  --foreground-muted: var(--ou-text-secondary);
+  --foreground-faint: var(--ou-text-tertiary);
+  --surface: var(--ou-bg-surface);
+  --surface-opaque: var(--ou-bg-surface);
+  --surface-muted: var(--ou-bg-control);
+  --surface-hover: var(--ou-bg-hover);
+  --status-blush: var(--ou-tone-red-bg);
+  --status-sage: var(--ou-tone-green-bg);
+  --accent-clay: var(--ou-tone-red-text);
   --fabric-base: rgba(225, 228, 222, 0.7);
   --fabric-thread: rgba(25, 25, 25, 0.04);
   --fabric-highlight: rgba(255, 255, 255, 0.48);
-  --focus-ring: rgba(46, 76, 109, 0.4);
+  --focus-ring: var(--ou-focus-ring);
 
-  --primary-red: #c0392b;
-  --primary-yellow: #80632b;
-  --primary-green: #496852;
-  --primary-blue: #2e4c6d;
+  --primary-red: var(--ou-tone-red-text);
+  --primary-yellow: var(--ou-tone-yellow-text);
+  --primary-green: var(--ou-tone-green-text);
+  --primary-blue: var(--ou-tone-blue-text);
   --auxiliary-blue: var(--primary-blue);
   --auxiliary-green: var(--primary-green);
   --accent: var(--foreground);
   --accent-bg: var(--surface-hover);
 
-  --border: rgba(31, 31, 29, 0.09);
-  --border-strong: rgba(31, 31, 29, 0.16);
-  --shadow-soft: rgba(31, 31, 29, 0.05);
-  --shadow-medium: rgba(31, 31, 29, 0.12);
-  --shadow-paper: 0 1px 2px rgba(31, 31, 29, 0.04), 0 1px 0 rgba(31, 31, 29, 0.02);
-  --glass: #f1efe9;
-  --glass-strong: #ffffff;
+  --border: var(--ou-line-separator);
+  --border-strong: var(--ou-line-control);
+  --shadow-soft: color-mix(in oklab, var(--ou-color-ink) 5%, transparent);
+  --shadow-medium: color-mix(in oklab, var(--ou-color-ink) 12%, transparent);
+  --shadow-paper: var(--ou-shadow-1);
+  --glass: var(--ou-bg-sidebar);
+  --glass-strong: var(--ou-bg-surface);
   --grid-size: 32px;
-  --radius-card: 10px;
+  --radius-card: var(--ou-radius-card);
 
   --font-serif: "OfferU Serif SC", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
   --font-mono: "JetBrains Mono", "Sarasa Mono SC", ui-monospace, "Courier New", monospace;
@@ -1085,37 +1085,31 @@ body {
 }
 
 .offeru-nav-link {
-  min-height: 34px;
-  border-radius: 7px !important;
+  min-height: 2.125rem;
+  border-radius: var(--ou-radius-control) !important;
 }
 
 .offeru-nav-link[aria-current="page"] {
-  background: rgba(31, 31, 29, 0.065) !important;
+  background: var(--ou-bg-selected) !important;
   color: var(--foreground) !important;
-}
-
-.offeru-nav-link[aria-current="page"] > span:first-child {
-  background: var(--primary-red) !important;
 }
 
 .offeru-mobile-nav {
   border-top-color: var(--border) !important;
-  background: rgba(247, 246, 242, 0.94) !important;
-  backdrop-filter: blur(16px);
+  background: var(--ou-glass-bg) !important;
+  backdrop-filter: blur(var(--ou-glass-blur));
 }
 
 .offeru-mobile-nav a {
   border-right: 0 !important;
 }
 
-.offeru-mobile-nav a[aria-current="page"] > span:first-child {
-  background: var(--primary-red) !important;
-}
+.offeru-mobile-nav a[aria-current="page"] { color: var(--ou-text-primary) !important; }
 
 .context-rail.offeru-context-rail {
   border-left-color: transparent !important;
   background: var(--sidebar-bg) !important;
-  box-shadow: -12px 0 32px -16px rgba(31, 31, 29, 0.22), -1px 0 0 rgba(31, 31, 29, 0.04) !important;
+  box-shadow: var(--ou-elev-1) !important;
 }
 
 .context-rail-header {
@@ -1131,23 +1125,21 @@ body {
    一个浮起容器（L4），层级只靠字号 / 字重 / 颜色。材质参照 Apple「Popover」：
    半透明底 + 背景模糊 + 多层柔和阴影；不支持 backdrop-filter 时回落为不透明白。 */
 .offeru-command-backdrop {
-  background: rgba(31, 31, 29, 0.18);
+  z-index: var(--ou-layer-command);
+  background: var(--ou-scrim);
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
 
 .offeru-command-surface {
-  border-radius: 14px;
+  border-radius: var(--ou-radius-floating);
   background: var(--surface-opaque);
-  box-shadow:
-    0 0 0 1px rgba(31, 31, 29, 0.06),
-    0 4px 12px rgba(31, 31, 29, 0.06),
-    0 24px 64px rgba(31, 31, 29, 0.16);
+  box-shadow: var(--ou-elev-4);
 }
 
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .offeru-command-surface {
-    background: rgba(255, 255, 255, 0.86);
+    background: var(--ou-glass-bg);
     -webkit-backdrop-filter: saturate(180%) blur(24px);
     backdrop-filter: saturate(180%) blur(24px);
   }
@@ -1180,14 +1172,14 @@ body {
   display: inline-flex;
   flex-shrink: 0;
   padding: 2px;
-  border-radius: 8px;
+  border-radius: var(--ou-radius-control);
   background: var(--surface-muted);
 }
 
 .offeru-command-segment-item {
   height: 1.5rem;
   padding: 0 0.625rem;
-  border-radius: 6px;
+  border-radius: var(--ou-radius-1);
   font-size: 0.75rem;
   color: var(--foreground-muted);
   transition: background-color var(--dur-quick) var(--ease-snap), color var(--dur-quick) var(--ease-snap), box-shadow var(--dur-quick) var(--ease-snap);
@@ -1201,7 +1193,7 @@ body {
   background: var(--surface-opaque);
   color: var(--foreground);
   font-weight: 500;
-  box-shadow: 0 0 0 0.5px rgba(31, 31, 29, 0.08), 0 1px 2px rgba(31, 31, 29, 0.1);
+  box-shadow: var(--ou-elev-2);
 }
 
 .offeru-command-list {
@@ -1224,7 +1216,7 @@ body {
   gap: 0.625rem;
   min-height: 2.25rem;
   padding: 0.375rem 0.625rem;
-  border-radius: 8px;
+  border-radius: var(--ou-radius-control);
   cursor: pointer;
   transition: background-color var(--dur-instant) linear;
 }
@@ -1240,7 +1232,7 @@ body {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--ou-radius-1);
   color: var(--foreground-muted);
   background: var(--surface-muted);
 }
@@ -1248,7 +1240,7 @@ body {
 .offeru-command-item[data-active] .offeru-command-icon {
   color: var(--foreground);
   background: var(--surface-opaque);
-  box-shadow: 0 0 0 0.5px rgba(31, 31, 29, 0.08), 0 1px 2px rgba(31, 31, 29, 0.08);
+  box-shadow: var(--ou-elev-2);
 }
 
 .offeru-command-label {
@@ -1290,7 +1282,7 @@ body {
   justify-content: center;
   margin-right: 2px;
   padding: 0 0.25rem;
-  border-radius: 4px;
+  border-radius: var(--ou-radius-1);
   background: var(--surface-muted);
   font-family: inherit;
   font-size: 0.625rem;
@@ -1481,7 +1473,7 @@ body {
 
 .offeru-agent-panel .agent-md code {
   padding: 0.1em 0.35em;
-  border-radius: 4px;
+  border-radius: var(--ou-radius-1);
   background: var(--surface-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9em;
@@ -1492,7 +1484,7 @@ body {
   padding: 0.6em 0.75em;
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--ou-radius-1);
   background: var(--surface-muted);
   white-space: pre;
 }
@@ -1605,9 +1597,9 @@ body {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--ou-radius-pill);
   background: var(--surface-muted);
-  box-shadow: inset 0 0 0 1px var(--border);
+  border: 1px solid var(--border);
   color: var(--foreground-muted);
 }
 
@@ -2082,12 +2074,12 @@ body {
 
 /* 简历编辑器外壳：和岗位页同一套 Notion 式中性色。底色、文字、细线继承全局；卡片纯白、输入框浅灰、标题无衬线；彩色只留给蓝色主操作和聚焦。 */
 .resume-shell {
-  --surface: rgba(31, 31, 29, 0.07);
-  --card: #ffffff;
-  --field: rgba(31, 31, 29, 0.045);
-  --ink: #2383e2;
-  --shadow-card: 0 1px 2px rgba(31, 31, 29, 0.04);
-  --shadow-raised: 0 0 0 1px rgba(31, 31, 29, 0.05), 0 3px 6px rgba(31, 31, 29, 0.08), 0 9px 24px rgba(31, 31, 29, 0.14);
+  --surface: var(--ou-bg-hover);
+  --card: var(--ou-bg-surface);
+  --field: var(--ou-bg-control);
+  --ink: var(--ou-action-primary);
+  --shadow-card: var(--ou-elev-2);
+  --shadow-raised: var(--ou-elev-3);
   --serif: var(--font-sans);
 }
 .resume-shell h2 { font-family: var(--font-sans); font-weight: 600; }
@@ -2151,9 +2143,9 @@ body {
 .resume-shell .rs-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--foreground); }
 .resume-shell .rs-download {
   flex-shrink: 0; height: 1.75rem; display: inline-flex; align-items: center; padding: 0 0.875rem;
-  border-radius: 0.375rem; background: #2383e2; color: #fff; font-size: 0.8125rem; font-weight: 500;
+  border-radius: var(--ou-radius-control); background: var(--ou-action-primary); color: var(--ou-on-action-primary); font-size: 0.8125rem; font-weight: 500;
 }
-.resume-shell .rs-download:hover { background: #0077d4; }
+.resume-shell .rs-download:hover { background: var(--ou-action-primary-hover); }
 .resume-shell .rs-download-group { position: relative; display: inline-flex; flex: none; }
 .resume-shell .rs-download-main { border-radius: 0.375rem 0 0 0.375rem; }
 .resume-shell .rs-download-caret { padding: 0 0.5rem; border-radius: 0 0.375rem 0.375rem 0; border-left: 1px solid rgba(255, 255, 255, 0.25); }
@@ -2412,12 +2404,41 @@ body {
 .tag-menu [aria-selected="true"] button,
 .tag-menu button:hover { background: var(--surface); }
 
-/* 「增强对比度」打开时，边框和弱文字整体加深一档 */
-@media (prefers-contrast: more) {
-  :root {
-    --border: rgba(31, 31, 29, 0.22);
-    --border-strong: rgba(31, 31, 29, 0.36);
-    --foreground-muted: rgba(31, 31, 29, 0.74);
-    --foreground-faint: rgba(31, 31, 29, 0.6);
-  }
+/* 「增强对比度」由 design-tokens.css 的 prefers-contrast 统一加深，旧变量经 var() 桥接自动跟随。 */
+
+/* ── 色卡 v2：状态 / 标签胶囊（Notion 式「浅底 + 深字 + 同色描边 + 圆点」）──
+   每个色相只取 --ou-tone-*-{bg,border,dot,text} 四级，见 docs/design/visual-system.md §2。 */
+.ou-pill {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.375rem;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0 0.5rem 0 0.4375rem;
+  border-radius: var(--ou-radius-pill);
+  font-size: var(--ou-type-pill);
+  font-weight: 500;
+  line-height: 1.25rem;
+  background: var(--ou-pill-bg);
+  color: var(--ou-pill-text);
+  box-shadow: var(--ou-pill-ring);
 }
+.ou-pill::before {
+  content: "";
+  width: 0.375rem;
+  height: 0.375rem;
+  flex-shrink: 0;
+  border-radius: var(--ou-radius-pill);
+  background: var(--ou-pill-dot);
+}
+.ou-tone-gray { --ou-pill-bg: var(--ou-tone-gray-bg); --ou-pill-border: var(--ou-tone-gray-border); --ou-pill-dot: var(--ou-tone-gray-dot); --ou-pill-text: var(--ou-tone-gray-text); }
+.ou-tone-brown { --ou-pill-bg: var(--ou-tone-brown-bg); --ou-pill-border: var(--ou-tone-brown-border); --ou-pill-dot: var(--ou-tone-brown-dot); --ou-pill-text: var(--ou-tone-brown-text); }
+.ou-tone-orange { --ou-pill-bg: var(--ou-tone-orange-bg); --ou-pill-border: var(--ou-tone-orange-border); --ou-pill-dot: var(--ou-tone-orange-dot); --ou-pill-text: var(--ou-tone-orange-text); }
+.ou-tone-yellow { --ou-pill-bg: var(--ou-tone-yellow-bg); --ou-pill-border: var(--ou-tone-yellow-border); --ou-pill-dot: var(--ou-tone-yellow-dot); --ou-pill-text: var(--ou-tone-yellow-text); }
+.ou-tone-green { --ou-pill-bg: var(--ou-tone-green-bg); --ou-pill-border: var(--ou-tone-green-border); --ou-pill-dot: var(--ou-tone-green-dot); --ou-pill-text: var(--ou-tone-green-text); }
+.ou-tone-blue { --ou-pill-bg: var(--ou-tone-blue-bg); --ou-pill-border: var(--ou-tone-blue-border); --ou-pill-dot: var(--ou-tone-blue-dot); --ou-pill-text: var(--ou-tone-blue-text); }
+.ou-tone-purple { --ou-pill-bg: var(--ou-tone-purple-bg); --ou-pill-border: var(--ou-tone-purple-border); --ou-pill-dot: var(--ou-tone-purple-dot); --ou-pill-text: var(--ou-tone-purple-text); }
+.ou-tone-pink { --ou-pill-bg: var(--ou-tone-pink-bg); --ou-pill-border: var(--ou-tone-pink-border); --ou-pill-dot: var(--ou-tone-pink-dot); --ou-pill-text: var(--ou-tone-pink-text); }
+.ou-tone-red { --ou-pill-bg: var(--ou-tone-red-bg); --ou-pill-border: var(--ou-tone-red-border); --ou-pill-dot: var(--ou-tone-red-dot); --ou-pill-text: var(--ou-tone-red-text); }

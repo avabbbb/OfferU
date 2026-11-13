@@ -178,7 +178,7 @@ export function CommandPalette() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: reduceMotion ? 0 : 0.14 }}
-          className="offeru-command-backdrop fixed inset-0 z-[90]"
+          className="offeru-command-backdrop fixed inset-0"
           onClick={close}
         >
           <motion.div

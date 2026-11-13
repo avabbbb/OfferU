@@ -12,14 +12,15 @@ const STAGE: Record<string, string> = {
 };
 const BUCKETS = [["overdue", "逾期"], ["today", "今天"], ["week", "7 天内"], ["later", "以后"], ["undated", "没定时间"]] as const;
 
-/** 今天：一个下一步、要做的事、最近改动。Agent 的改动每 5 秒出现一次。 */
+/** 今天：一个下一步、要做的事、最近改动。Agent 的改动每 5 秒出现一次。
+ *  布局：外层 wide 容器让看板吃满可用宽度；文字段落限制在阅读宽度（--ou-width-reading），长行不超过约 45 个汉字。 */
 export default function TodayPage() {
   const { data } = useTool<Overview>("overview", {}, 5000);
   if (!data) return null;
   const empty = BUCKETS.every(([key]) => !data.todos[key].length);
   return (
-    <div className="mx-auto max-w-3xl space-y-10 px-6 py-10">
-      <header>
+    <div className="ou-page ou-page-wide space-y-10">
+      <header className="ou-reading">
         <p className="text-[13px] text-[var(--foreground-muted)]">{data.today} · {STAGE[data.stage] ?? data.stage}</p>
         <Link href={data.next_step.link} className="mt-2 block text-[24px] font-semibold tracking-tight text-[var(--foreground)] hover:underline">
           {data.next_step.title}
@@ -29,7 +30,7 @@ export default function TodayPage() {
 
       <JobBoard />
 
-      <section>
+      <section className="ou-reading">
         <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">要做的事</h2>
         {empty && <p className="mt-2 text-[13.5px] text-[var(--foreground-muted)]">还没有。截止、笔试、面试都可以记在这里，也可以让 Agent 帮你记。</p>}
         {BUCKETS.map(([key, name]) => data.todos[key].length > 0 && (
@@ -41,7 +42,7 @@ export default function TodayPage() {
         <AddEvent />
       </section>
 
-      <RecentChanges items={data.recent_changes} />
+      <div className="ou-reading"><RecentChanges items={data.recent_changes} /></div>
     </div>
   );
 }

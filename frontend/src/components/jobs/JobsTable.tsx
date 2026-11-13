@@ -17,21 +17,13 @@ import { FieldsPanel, Popover, ghost, type Patch } from "./ViewPanels";
 // 分组时组头是「▸ 胶囊 数量」，组间留白；每组末尾一行灰色「+ 新建」在该组加一条（预填组的值），按状态分组时最下面「+ 新建分组」。
 // 勾选框悬停才出现；主字段悬停出「打开」；勾选列 + 主字段冻结在左；拖表头右缘改列宽；双击（状态、标签单击）改单元格；勾选后底部出批量栏。
 
-// 标签照 Notion 深色系：深底 + 浅字 + 左侧亮色小圆点的圆角胶囊。
-// 状态只用灰蓝黄绿红五色；单选 / 标签按文字哈希取九色之一，同一个值永远同一个色。
-const TONE: Record<string, string> = {
-  gray: "bg-[#3a3a3a] text-[#e3e3e3] before:bg-[#9b9b9b]",
-  brown: "bg-[#4a3228] text-[#ecd9cf] before:bg-[#ba856f]",
-  orange: "bg-[#5a3a22] text-[#f6d5b8] before:bg-[#e07b2a]",
-  yellow: "bg-[#56452a] text-[#f5e3ae] before:bg-[#d4a12a]",
-  green: "bg-[#25402f] text-[#cbe8d6] before:bg-[#3aa36f]",
-  blue: "bg-[#1f3c5a] text-[#cfe2f7] before:bg-[#3b8de0]",
-  purple: "bg-[#3d2e4d] text-[#e4d5f3] before:bg-[#a274d9]",
-  pink: "bg-[#4f2d3e] text-[#f4d3e3] before:bg-[#dc6aa6]",
-  red: "bg-[#55302b] text-[#f7d2cc] before:bg-[#e8675a]",
-};
+// 标签与状态：色卡 v2「浅底 + 深字 + 同色 1px 描边 + 小圆点」，颜色全部来自 --ou-tone-*（docs/design/visual-system.md §2）。
+// 状态只用灰蓝黄橙绿红六色；单选 / 标签按文字哈希取九色之一，同一个值永远同一个色。
+const TONE: Record<string, string> = Object.fromEntries(
+  ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"].map((tone) => [tone, `ou-tone-${tone}`]),
+);
 const OPTION_TONES = ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"];
-const PILL = "inline-flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-2 text-[12.5px] leading-5 before:h-1.5 before:w-1.5 before:shrink-0 before:rounded-full before:content-[''] ";
+const PILL = "ou-pill ";
 
 export function optionTone(text: string): string {
   let h = 0;

@@ -1,5 +1,5 @@
 /* OfferU editorial workspace tokens. New UI uses --ou-*; legacy variables are migrated page-by-page.
- * Importing these tokens MUST NOT recolor existing pages by itself.
+ * Palette v2 (2026-11-13): legacy variables in app/globals.css bridge to these via var().
  * Color references: Zapier brand palette, adapted to OfferU semantic roles.
  */
 :root {
@@ -51,9 +51,89 @@
   --ou-layer-overlay: 30;
   --ou-layer-modal: 40;
   --ou-layer-toast: 50;
+  /* ⌘K sits above every legacy layer (legacy z-index values go up to 80 until migrated). */
+  --ou-layer-command: 90;
 
   --ou-glass-bg: rgba(255, 255, 255, 0.88);
   --ou-glass-blur: 12px;
+
+  /* Warm neutral ramp N1–N12 (OKLCH hue 55). Pick a step by its role, not by eye — see docs/design/visual-system.md §2. */
+  --ou-neutral-1: #fffcf9; /* canvas */
+  --ou-neutral-2: #fcf6f1; /* sidebar / content-subtle */
+  --ou-neutral-3: #f6efeb; /* control bg */
+  --ou-neutral-4: #f1e9e4; /* hover */
+  --ou-neutral-5: #ece3de; /* selected */
+  --ou-neutral-6: #e3dad5; /* separator */
+  --ou-neutral-7: #d7cec8; /* control border */
+  --ou-neutral-8: #c4bab4; /* strong border / focus */
+  --ou-neutral-9: #928a85; /* placeholder */
+  --ou-neutral-10: #827a75; /* icon */
+  --ou-neutral-11: #69625d; /* secondary text */
+  --ou-neutral-12: #231d19; /* primary text */
+  /* Status + tag tones: bg (step 3) / border (6) / dot (9) / text (11). Text on bg ≥ 5.7:1. */
+  --ou-tone-gray-bg: #f1f0ee; --ou-tone-gray-border: #d7d3d1; --ou-tone-gray-dot: #9e9691; --ou-tone-gray-text: #605955;
+  --ou-tone-brown-bg: #f8eee8; --ou-tone-brown-border: #e3d0c4; --ou-tone-brown-dot: #b68f75; --ou-tone-brown-text: #72533f;
+  --ou-tone-orange-bg: #ffeadd; --ou-tone-orange-border: #fac8ae; --ou-tone-orange-dot: #e1773b; --ou-tone-orange-text: #913f01;
+  --ou-tone-yellow-bg: #f9efdb; --ou-tone-yellow-border: #e6d2a9; --ou-tone-yellow-dot: #bd9121; --ou-tone-yellow-text: #775400;
+  --ou-tone-green-bg: #e5f5e8; --ou-tone-green-border: #bedec3; --ou-tone-green-dot: #63ab74; --ou-tone-green-text: #2e693e;
+  --ou-tone-blue-bg: #e3f2ff; --ou-tone-blue-border: #bad8f7; --ou-tone-blue-dot: #5b9ddf; --ou-tone-blue-text: #275e91;
+  --ou-tone-purple-bg: #f1edff; --ou-tone-purple-border: #d6cef5; --ou-tone-purple-dot: #9e88da; --ou-tone-purple-text: #5f4e8e;
+  --ou-tone-pink-bg: #ffe9f3; --ou-tone-pink-border: #f1c6d9; --ou-tone-pink-dot: #cf78a3; --ou-tone-pink-text: #844063;
+  --ou-tone-red-bg: #ffe8e5; --ou-tone-red-border: #fec4be; --ou-tone-red-dot: #e66e68; --ou-tone-red-text: #953734;
+
+  /* Semantic surfaces (palette v2, 2026-11-13). Components use these, not neutral steps directly. */
+  --ou-bg-canvas: var(--ou-neutral-1);      /* L0 page canvas */
+  --ou-bg-sidebar: var(--ou-neutral-2);     /* app sidebar, agent rail */
+  --ou-bg-surface: var(--ou-color-surface); /* L1–L4 content surfaces */
+  --ou-bg-control: var(--ou-neutral-3);
+  --ou-bg-hover: var(--ou-neutral-4);
+  --ou-bg-selected: var(--ou-neutral-5);
+  --ou-line-separator: var(--ou-neutral-6);
+  --ou-line-control: var(--ou-neutral-7);
+  --ou-line-strong: var(--ou-neutral-8);
+  --ou-text-primary: var(--ou-neutral-12);
+  --ou-text-secondary: var(--ou-neutral-11);
+  --ou-text-tertiary: var(--ou-neutral-10);
+  --ou-text-placeholder: var(--ou-neutral-9);
+  --ou-action-primary: var(--ou-neutral-12); /* primary button = ink; orange is never a button fill in-app */
+  --ou-action-primary-hover: var(--ou-neutral-11);
+  --ou-on-action-primary: var(--ou-color-surface);
+  --ou-focus-ring: var(--ou-neutral-8);
+  --ou-selection: color-mix(in oklab, var(--ou-color-ink) 14%, transparent);
+  --ou-scrollbar: color-mix(in oklab, var(--ou-color-ink) 16%, transparent);
+  --ou-scrollbar-hover: color-mix(in oklab, var(--ou-color-ink) 28%, transparent);
+  --ou-scrim: color-mix(in oklab, var(--ou-color-ink) 18%, transparent);
+  --ou-shadow-color: color-mix(in oklab, var(--ou-color-ink) 10%, transparent);
+
+  /* Elevation L0–L4: every level is a border + shadow pair (Apple/Feishu style, never shadow alone). */
+  --ou-elev-0: none;
+  --ou-elev-1: 0 0 0 1px var(--ou-line-separator);
+  --ou-elev-2: 0 0 0 1px var(--ou-line-separator), 0 1px 2px color-mix(in oklab, var(--ou-color-ink) 6%, transparent);
+  --ou-elev-2-hover: 0 0 0 1px var(--ou-line-control), 0 4px 12px color-mix(in oklab, var(--ou-color-ink) 9%, transparent);
+  --ou-elev-3: 0 0 0 1px var(--ou-line-control), 0 8px 24px color-mix(in oklab, var(--ou-color-ink) 12%, transparent);
+  --ou-elev-4: 0 0 0 1px var(--ou-line-control), 0 24px 60px color-mix(in oklab, var(--ou-color-ink) 20%, transparent);
+
+  --ou-radius-pill: 999px;
+  --ou-radius-control: var(--ou-radius-1);
+  --ou-radius-card: var(--ou-radius-2);
+  --ou-radius-floating: var(--ou-radius-3);
+
+  /* Fluid layout: page containers by page type; gutters scale 390 → 1920. */
+  --ou-gutter: clamp(1rem, 0.6rem + 1.6vw, 2.5rem);
+  --ou-width-reading: 46rem;  /* forms, settings, job detail text */
+  --ou-width-page: 72rem;     /* Today, lists */
+  --ou-width-wide: 100rem;    /* tables, kanban, gantt */
+  --ou-kanban-column: clamp(16rem, 18vw + 4rem, 22rem);
+  --ou-sidebar-width: clamp(13.5rem, 10rem + 4vw, 16rem);
+
+  --ou-ring-hover: 0 0 0 1px var(--ou-line-control);
+  --ou-ring-focus: 0 0 0 1px var(--ou-line-strong), 0 0 0 3px var(--ou-bg-selected);
+  --ou-pill-ring: inset 0 0 0 1px var(--ou-pill-border, transparent);
+  --ou-type-pill: 0.78125rem; /* 12.5px */
+
+  --ou-motion-fast: 120ms;
+  --ou-motion-base: 200ms;
+  --ou-ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Prospective dark tokens for migrated surfaces. No existing dark styles are overridden. */
@@ -75,6 +155,46 @@
   --ou-color-warning: #f0c57e;
   --ou-color-success: #9cd4b0;
   --ou-glass-bg: rgba(36, 32, 39, 0.90);
+  /* Dark neutral ramp + tones (prospective). */
+  --ou-neutral-1: #120f0c;
+  --ou-neutral-2: #191513;
+  --ou-neutral-3: #211d1b;
+  --ou-neutral-4: #272320;
+  --ou-neutral-5: #2d2926;
+  --ou-neutral-6: #342f2d;
+  --ou-neutral-7: #413c39;
+  --ou-neutral-8: #534f4c;
+  --ou-neutral-9: #75706d;
+  --ou-neutral-10: #8a8582;
+  --ou-neutral-11: #b5b0ac;
+  --ou-neutral-12: #f3ede9;
+  --ou-tone-gray-bg: #2d2b29; --ou-tone-gray-border: #454240; --ou-tone-gray-dot: #a59d97; --ou-tone-gray-text: #d5d0cd; /* 9.2:1 */
+  --ou-tone-brown-bg: #342921; --ou-tone-brown-border: #4e3f35; --ou-tone-brown-dot: #bc957b; --ou-tone-brown-text: #e3ccbd; /* 9.2:1 */
+  --ou-tone-orange-bg: #402313; --ou-tone-orange-border: #5f3621; --ou-tone-orange-dot: #e87e42; --ou-tone-orange-text: #ffc1a2; /* 9.1:1 */
+  --ou-tone-yellow-bg: #36290e; --ou-tone-yellow-border: #51401a; --ou-tone-yellow-dot: #c3972a; --ou-tone-yellow-text: #e7ce9b; /* 9.3:1 */
+  --ou-tone-green-bg: #1d3121; --ou-tone-green-border: #2f4a34; --ou-tone-green-dot: #69b27a; --ou-tone-green-text: #b6ddbc; /* 9.3:1 */
+  --ou-tone-blue-bg: #1b2d40; --ou-tone-blue-border: #2b445e; --ou-tone-blue-dot: #61a3e6; --ou-tone-blue-text: #b1d5fb; /* 9.2:1 */
+  --ou-tone-purple-bg: #2d273e; --ou-tone-purple-border: #443d5c; --ou-tone-purple-dot: #a48fe1; --ou-tone-purple-text: #d3c9f9; /* 9.2:1 */
+  --ou-tone-pink-bg: #3b222e; --ou-tone-pink-border: #583646; --ou-tone-pink-dot: #d67ea9; --ou-tone-pink-text: #f4c0d7; /* 9.2:1 */
+  --ou-tone-red-bg: #42201e; --ou-tone-red-border: #613330; --ou-tone-red-dot: #ed756e; --ou-tone-red-text: #ffbcb6; /* 9.0:1 */
+  --ou-bg-surface: var(--ou-neutral-3);
+}
+
+/* Increase Contrast: separators and secondary text step one level darker. */
+@media (prefers-contrast: more) {
+  :root {
+    --ou-line-separator: var(--ou-neutral-8);
+    --ou-line-control: var(--ou-neutral-9);
+    --ou-text-secondary: var(--ou-neutral-12);
+    --ou-text-tertiary: var(--ou-neutral-11);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ou-motion-fast: 0ms;
+    --ou-motion-base: 0ms;
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {
