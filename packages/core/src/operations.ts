@@ -52,14 +52,140 @@ const oneOf = (value: unknown, allowed: Record<string, string>, name: string): v
 
 const stringValue = (value: unknown): string => (typeof value === "string" ? value : "");
 
-function checkTags(value: unknown): void {
+export const RESUME_TEMPLATE: Record<string, string> = { classic: "经典", clear: "清晰", kami: "留白", compact: "紧凑" };
+export const RESUME_FONT: Record<string, string> = { sans: "黑体", serif: "宋体", kai: "楷体" };
+/** Old docs carry doc.template; still accepted on save until the editor writes style. */
+export const LEGACY_TEMPLATE: Record<string, Json> = {
+  single: { template: "clear" },
+  compact: { template: "compact" },
+  photo: { template: "clear", photo: true },
+};
+export const STYLE_RANGE: Record<string, [number, number]> = {
+  bodySize: [8, 14], lineHeight: [1.0, 2.0], sectionGap: [0, 30], itemGap: [0, 20],
+};
+export const MARGIN_RANGE: [number, number] = [3, 30];
+export const STYLE_KEYS = ["template", "font", ...Object.keys(STYLE_RANGE), "margin", "accent", "photo", "logo"];
+/** 经历性质：简历上全职和实习分节写、全日制和非全日制要写明。 */
+export const MEMORY_MODE: Record<string, string[]> = { experience: ["全职", "实习", "兼职"], education: ["全日制", "非全日制"] };
+export const MEMORY_SOURCE: Record<string, string> = { user: "用户说的", resume: "用户简历原文", agent: "Agent 推断" };
+export const USER_ACTOR = "你";
+export const MAIL_ACTOR = "邮箱";
+export const REVIEW_QUESTION_KEYS = ["question", "answer", "reflection", "reaction"];
+export const ASK_FIELDS = ["old", "why", "question"];
+
+const isPlainObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
+const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const fmt = (value: number) => (Number.isInteger(value) ? value.toFixed(1) : String(value));
+
+/** doc.style: unknown keys and out-of-range values are errors, never clamped. Mirrors Python check_style. */
+export function checkStyle(style: unknown): void {
+  if (!isPlainObject(style)) throw new CoreError("doc.style 要是对象");
+  const unknown = Object.keys(style).filter((key) => !STYLE_KEYS.includes(key)).sort();
+  if (unknown.length) throw new CoreError(`doc.style 没有 ${unknown.join(", ")}；可用：${STYLE_KEYS.join(", ")}`);
+  const number = (key: string, value: unknown, low: number, high: number) => {
+    if (!isNumber(value) || value < low || value > high) {
+      // Python formats float bounds (1.0–2.0) and int bounds (8–14) differently.
+      const show = (bound: number) => (key === "lineHeight" ? fmt(bound) : String(bound));
+      throw new CoreError(`doc.style.${key} 要在 ${show(low)}–${show(high)} 之间`);
+    }
+  };
+  for (const [key, value] of Object.entries(style)) {
+    if (value === null || value === undefined) continue;
+    if (key === "template" && !(typeof value === "string" && value in RESUME_TEMPLATE)) {
+      throw new CoreError(`doc.style.template 只能是 ${Object.keys(RESUME_TEMPLATE).join(", ")}`);
+    }
+    if (key === "font" && !(typeof value === "string" && value in RESUME_FONT)) {
+      throw new CoreError(`doc.style.font 只能是 ${Object.keys(RESUME_FONT).join(", ")}`);
+    }
+    if (key in STYLE_RANGE) number(key, value, ...STYLE_RANGE[key]);
+    if (key === "margin") {
+      if (!isPlainObject(value) || Object.keys(value).some((side) => !["top", "right", "bottom", "left"].includes(side))) {
+        throw new CoreError("doc.style.margin 是 {top, right, bottom, left}，单位 mm");
+      }
+      for (const [side, mm] of Object.entries(value)) number(`margin.${side}`, mm, ...MARGIN_RANGE);
+    }
+    if (key === "accent" && !(typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value))) {
+      throw new CoreError("doc.style.accent 要是 #RRGGBB");
+    }
+    if (key === "photo" && typeof value !== "boolean") throw new CoreError("doc.style.photo 是 true / false");
+    if (key === "logo" && !(typeof value === "string" && value && !/[\\/]/.test(value) && value !== "." && value !== "..")) {
+      throw new CoreError("doc.style.logo 是上传（POST /api/files）返回的文件名");
+    }
+  }
+}
+
+/** doc.questions（面试复盘的题）：数组，每项 {question, answer, reflection, reaction} 都是字符串。 */
+export function checkQuestions(questions: unknown): void {
+  if (!Array.isArray(questions) || questions.length > 60) throw new CoreError("doc.questions 要是数组，最多 60 道题");
+  questions.forEach((item, index) => {
+    if (!isPlainObject(item) || Object.keys(item).some((key) => !REVIEW_QUESTION_KEYS.includes(key))) {
+      throw new CoreError(`doc.questions[${index}] 只能有 ${REVIEW_QUESTION_KEYS.join(", ")}`);
+    }
+    if (!Object.values(item).every((value) => typeof value === "string")) {
+      throw new CoreError(`doc.questions[${index}] 的值要是字符串`);
+    }
+  });
+}
+
+/** job.tags：最多 12 个不重复的短词，每个 1–20 字，前后不带空格。 */
+export function checkTags(value: unknown, field = "job.tags"): void {
+  // Python reuses check_tags for auto_tags with the job.tags wording; keep that text.
+  void field;
   if (!Array.isArray(value) || value.length > 12) throw new CoreError("job.tags 要是数组，最多 12 个");
   for (const tag of value) {
-    if (typeof tag !== "string" || tag.length < 1 || tag.length > 20 || tag.trim() !== tag) {
+    if (typeof tag !== "string" || [...tag].length < 1 || [...tag].length > 20 || tag.trim() !== tag) {
       throw new CoreError("job.tags 的每个标签是 1–20 字的字符串，前后不带空格");
     }
   }
   if (new Set(value).size !== value.length) throw new CoreError("job.tags 有重复标签");
+}
+
+/** doc.pending_asks（改写时追问成果、还没回答的句子）：最多 3 项，每项 {old, why, question} 都是字符串。 */
+export function checkAsks(asks: unknown): void {
+  if (!Array.isArray(asks) || asks.length > 3) throw new CoreError("doc.pending_asks 要是数组，最多 3 项");
+  asks.forEach((item, index) => {
+    if (!isPlainObject(item) || Object.keys(item).some((key) => !ASK_FIELDS.includes(key))
+      || !Object.values(item).every((value) => typeof value === "string")) {
+      throw new CoreError(`doc.pending_asks[${index}] 只能有 ${ASK_FIELDS.join(", ")}，值是字符串`);
+    }
+  });
+}
+
+/**
+ * 把 Agent 自动标签并进 job.tags：用户手打的（不在旧 auto_tags 里的）一个不动，
+ * 用户删过的（tags_muted）不再加回。Mirrors Python merge_auto_tags.
+ */
+export function mergeAutoTags(prev: Json | null | undefined, auto: string[]): { tags: string[] | null; auto_tags: string[] | null } {
+  const before = prev ?? {};
+  const strings = (value: unknown) => (Array.isArray(value) ? value.filter((t): t is string => typeof t === "string") : []);
+  const oldAuto = strings(before.auto_tags);
+  const mine = strings(before.tags).filter((tag) => !oldAuto.includes(tag));
+  const muted = new Set(strings(before.tags_muted));
+  const fresh = [...new Set(auto)].filter((tag) => !muted.has(tag) && !mine.includes(tag)).slice(0, Math.max(0, 12 - mine.length));
+  const tags = [...mine, ...fresh];
+  return { tags: tags.length ? tags : null, auto_tags: fresh.length ? fresh : null };
+}
+
+/** 库里已有的岗位标签，用得多的在前，给模型当词表。 */
+export async function knownTags(store: CoreStore): Promise<string[]> {
+  const counts = new Map<string, number>();
+  for (const job of await store.all("job")) {
+    for (const tag of Array.isArray(job.tags) ? job.tags : []) {
+      if (typeof tag === "string") counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  // Stable sort by count desc keeps first-seen order on ties, like Python sorted().
+  return [...counts.keys()].sort((a, b) => counts.get(b)! - counts.get(a)!);
+}
+
+function isIsoDateTime(value: string): boolean {
+  // Python datetime.fromisoformat: YYYY-MM-DD[(T| )HH[:MM[:SS[.ffffff]]][offset]]
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2})(?::(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.exec(value);
+  if (!match) return false;
+  const [, y, m, d, hh = "0", mm = "0", ss = "0"] = match;
+  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  return date.getUTCMonth() === Number(m) - 1 && date.getUTCDate() === Number(d)
+    && Number(hh) < 24 && Number(mm) < 60 && Number(ss) < 60;
 }
 
 async function checkRecord(type: RecordType, data: Json, creating: boolean, store: CoreStore): Promise<void> {
@@ -69,10 +195,16 @@ async function checkRecord(type: RecordType, data: Json, creating: boolean, stor
       throw new CoreError("岗位至少要有 company 或 title");
     }
     if (data.tags !== undefined && data.tags !== null) checkTags(data.tags);
+    if (data.auto_tags !== undefined && data.auto_tags !== null) checkTags(data.auto_tags, "job.auto_tags");
+    const muted = data.tags_muted;
+    if (muted !== undefined && muted !== null
+      && (!Array.isArray(muted) || muted.length > 100 || !muted.every((tag) => typeof tag === "string" && tag))) {
+      throw new CoreError("job.tags_muted 要是非空字符串数组，最多 100 个");
+    }
   } else if (type === "event") {
     oneOf(data.kind, EVENT_KIND, "event.kind");
     if (creating && !stringValue(data.title)) throw new CoreError("事项要有 title");
-    if (typeof data.at === "string" && data.at && Number.isNaN(Date.parse(data.at))) {
+    if (data.at !== undefined && data.at !== null && data.at !== "" && !(typeof data.at === "string" && isIsoDateTime(data.at))) {
       throw new CoreError("event.at 要是 YYYY-MM-DD 或 YYYY-MM-DDTHH:MM");
     }
     if (data.done !== undefined && data.done !== null && typeof data.done !== "boolean") {
@@ -80,12 +212,26 @@ async function checkRecord(type: RecordType, data: Json, creating: boolean, stor
     }
   } else if (type === "doc") {
     oneOf(data.kind, DOC_KIND, "doc.kind");
+    oneOf(data.template, Object.fromEntries(Object.keys(LEGACY_TEMPLATE).map((key) => [key, key])), "doc.template");
+    if (data.style !== undefined && data.style !== null) checkStyle(data.style);
+    if (data.questions !== undefined && data.questions !== null) checkQuestions(data.questions);
+    if (data.pending_asks !== undefined && data.pending_asks !== null) checkAsks(data.pending_asks);
     if (creating && !stringValue(data.kind)) throw new CoreError("文档要有 kind");
   } else if (type === "memory") {
     oneOf(data.kind, MEMORY_KIND, "memory.kind");
     if (creating && !stringValue(data.title) && !stringValue(data.body)) throw new CoreError("记忆要有 title 或 body");
+    if (data.said_at && !(typeof data.said_at === "string" && /^\d{4}-\d{2}-\d{2}$/.test(data.said_at))) {
+      throw new CoreError("memory.said_at 是 YYYY-MM-DD");
+    }
+    oneOf(data.source, MEMORY_SOURCE, "memory.source");
     if (data.confirmed !== undefined && data.confirmed !== null && typeof data.confirmed !== "boolean") {
       throw new CoreError("memory.confirmed 只能是 true 或 false");
+    }
+    if (data.mode !== undefined && data.mode !== null) {
+      const allowed = MEMORY_MODE[stringValue(data.kind)] ?? Object.values(MEMORY_MODE).flat();
+      if (typeof data.mode !== "string" || !allowed.includes(data.mode)) {
+        throw new CoreError(`memory.mode 只能是 ${allowed.join("/")}`);
+      }
     }
   }
   if (data.job_id !== undefined && data.job_id !== null) {
@@ -102,6 +248,11 @@ export function jobUrlKey(value: unknown): string {
     const host = url.hostname.toLowerCase().replace(/^www\./, "");
     if (!host) return "";
     const path = url.pathname.replace(/\/+$/, "");
+    // BOSS 链接里的 lid、securityId 每次打开都不一样，按 job_detail 里的岗位编号认；小红书按笔记编号认。
+    const boss = host.endsWith("zhipin.com") ? /job_detail.([0-9A-Za-z_~-]+)/.exec(path) : null;
+    if (boss) return `boss:${boss[1]}`;
+    const xhs = host.endsWith("xiaohongshu.com") ? /(?:explore|item).([0-9A-Za-z]+)/.exec(path) : null;
+    if (xhs) return `xhs:${xhs[1]}`;
     const tracking: Record<string, true> = {
       lid: true, securityid: true, ka: true, spm: true, from: true, share: true,
       sessionid: true, xsec_token: true, xsec_source: true, share_from_user_hidden: true,
@@ -117,20 +268,21 @@ export function jobUrlKey(value: unknown): string {
   }
 }
 
-async function findJobByUrl(store: CoreStore, url: unknown): Promise<StoredRecord | null> {
+export async function findJobByUrl(store: CoreStore, url: unknown): Promise<StoredRecord | null> {
   const key = jobUrlKey(url);
   if (!key) return null;
   return (await store.all("job")).find((job) => jobUrlKey(job.url) === key) ?? null;
 }
 
-function mergeSavedJob(existing: StoredRecord, data: Json): Json {
+/** 重复存同一个岗位：只补原来空着的字段，JD 更长才换；不动投递状态。 */
+export function mergeSavedJob(existing: Json, data: Json): Json {
   const out: Json = {};
   for (const [key, value] of Object.entries(data)) {
     if (key === "status" || key === "applied_at" || value === null || value === "" || (Array.isArray(value) && !value.length)) continue;
     const old = existing[key];
     if (old === null || old === undefined || old === "" || (Array.isArray(old) && !old.length)) out[key] = value;
     else if (key === "jd" && String(value).length > String(old).length) out[key] = value;
-    else if (key === "tags" || key === "auto_tags") out[key] = value;
+    else if ((key === "tags" || key === "auto_tags") && stable(value) !== stable(old)) out[key] = value;
   }
   return out;
 }
@@ -186,12 +338,29 @@ export type SaveResult = {
   open_events?: number;
 };
 
-/** All-or-nothing: the record write and its change-log row commit together. */
-export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext): Promise<SaveResult> {
-  return store.transaction(() => saveRecordUnsafe(store, args, ctx));
+export type SaveOptions = {
+  /** Memories split out of the user's own resume: source=resume, confirmed=true (Python from_resume). */
+  fromResume?: boolean;
+};
+
+/**
+ * Resume docs keep doc.resume as the source of truth and derive body from it
+ * (Python `_with_resume`). The resume model lives in the resume domain; it
+ * registers itself here so save stays the single write path. Until it does,
+ * resume docs are stored as given.
+ */
+export type ResumeDocNormalizer = (data: Json, existingKind: string | undefined) => Json;
+let resumeDocNormalizer: ResumeDocNormalizer | null = null;
+export function setResumeDocNormalizer(fn: ResumeDocNormalizer | null): void {
+  resumeDocNormalizer = fn;
 }
 
-async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext): Promise<SaveResult> {
+/** All-or-nothing: the record write and its change-log row commit together. */
+export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext, options: SaveOptions = {}): Promise<SaveResult> {
+  return store.transaction(() => saveRecordUnsafe(store, args, ctx, options));
+}
+
+async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext, options: SaveOptions): Promise<SaveResult> {
   const type = recordType(args.type);
   let data = objectArg(args.data ?? {}, "data");
   let id = args.id === undefined || args.id === null ? undefined : numberArg(args.id, "id");
@@ -214,17 +383,22 @@ async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext):
 
   await checkRecord(type, data, id === undefined, store);
 
-  if (type === "memory") {
-    if (ctx.actor !== "你") {
+  if (type === "memory" && options.fromResume) {
+    data = { ...data, source: "resume", confirmed: true };
+  } else if (type === "memory") {
+    if (ctx.actor !== USER_ACTOR) {
       if (data.confirmed === true) throw new CoreError("只有用户能确认记忆：Agent 存的记忆是待确认", "forbidden");
       if (data.source === "user") throw new CoreError("memory.source 不能由 Agent 记成 user", "forbidden");
     }
     if (id === undefined) {
-      data = { source: ctx.actor === "你" ? "user" : "agent", confirmed: ctx.actor === "你", ...data };
+      data = { source: ctx.actor === USER_ACTOR ? "user" : "agent", confirmed: ctx.actor === USER_ACTOR, ...data };
     }
   }
 
   const existing = id !== undefined ? (await store.get(type, id)) : null;
+  if (type === "doc" && resumeDocNormalizer) {
+    data = resumeDocNormalizer(data, typeof existing?.kind === "string" ? existing.kind : undefined);
+  }
   const verb = type === "event" && data.done === true && id !== undefined ? "完成" : id === undefined ? "新建" : "更新";
   const statusNote = type === "job" && id !== undefined && typeof data.status === "string"
     ? `：${JOB_STATUS[data.status as JobStatus]}`
@@ -237,7 +411,7 @@ async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext):
   ) {
     data.applied_at = ctx.today;
   }
-  if (type === "job" && id !== undefined && typeof data.status === "string" && ctx.actor !== "你") {
+  if (type === "job" && id !== undefined && typeof data.status === "string" && ctx.actor !== USER_ACTOR) {
     const error = statusMoveError(existing?.status as JobStatus | undefined, data.status as JobStatus);
     if (error) throw new CoreError(error, "forbidden");
   }
@@ -255,6 +429,7 @@ async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext):
   }
   const note = openEvents ? `，还有 ${openEvents} 件未完成事项` : "";
   const summary = `${verb}${TYPE_LABEL[type]}「${label(preview)}」${statusNote}${note}`;
+  if (id !== undefined && !existing) throw new CoreError(`${type} #${id} 不存在`, "not_found");
   const before = plain(existing);
   const jobId = typeof data.job_id === "number" || data.job_id === null
     ? (data.job_id as number | null)
@@ -378,12 +553,11 @@ export async function changesView(store: CoreStore, limit = 20): Promise<{ items
 }
 
 export async function searchRecords(store: CoreStore, args: Args): Promise<{ items: Array<{ type: RecordType; id: number; label: string; snippet: string }> }> {
-  const query = typeof args.query === "string" ? args.query.trim() : "";
-  if (!query) throw new CoreError("query 不能为空");
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const types = Array.isArray(args.types)
-    ? args.types.filter(isRecordType)
-    : (["profile", "memory", "job", "event", "doc"] as RecordType[]);
+  if (typeof args.query !== "string" || !args.query) throw new CoreError("query 不能为空");
+  const terms = args.query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return { items: [] };
+  const picked = Array.isArray(args.types) ? args.types.filter(isRecordType) : [];
+  const types = picked.length ? picked : (["profile", "memory", "job", "event", "doc"] as RecordType[]);
   const limit = Math.max(1, Math.min(100, typeof args.limit === "number" ? args.limit : 20));
   const hits: Array<{ score: number; item: { type: RecordType; id: number; label: string; snippet: string } }> = [];
   for (const type of types) {
@@ -419,6 +593,16 @@ export type Overview = {
   recent_changes: ChangeView[];
   mail: { today_changes: number; last_change_at: string | null };
 };
+
+/** 邮箱同步的每日进度：今天邮箱写了几条改动、最后一条是什么时候。 */
+async function mailToday(store: CoreStore, today: string): Promise<Overview["mail"]> {
+  if (store.changeStats) {
+    const stats = await store.changeStats(MAIL_ACTOR, today);
+    return { today_changes: stats.count, last_change_at: stats.last };
+  }
+  const rows = (await store.changes(1000)).filter((row) => row.actor === MAIL_ACTOR && row.at >= today);
+  return { today_changes: rows.length, last_change_at: rows.reduce<string | null>((last, row) => (!last || row.at > last ? row.at : last), null) };
+}
 
 export async function overview(store: CoreStore, ctx: CoreContext): Promise<Overview> {
   const jobs = await store.all("job");
@@ -502,6 +686,6 @@ export async function overview(store: CoreStore, ctx: CoreContext): Promise<Over
     todos,
     jobs: Object.fromEntries(Object.keys(JOB_STATUS).map((status) => [status, statuses[status as JobStatus].length])) as Record<JobStatus, number>,
     recent_changes: (await changesView(store, 5)).items,
-    mail: { today_changes: 0, last_change_at: null },
+    mail: await mailToday(store, ctx.today),
   };
 }
