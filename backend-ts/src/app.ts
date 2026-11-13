@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type CoreErrorCode, type CoreStore } from "@offeru/core";
+import { isCoreError, type CoreErrorCode, type CoreStore, type FileStore, type LlmClient, type PageRenderer } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
 import { callTool, SUPPORTED_TOOLS } from "./tools";
@@ -16,6 +16,12 @@ export interface AppDeps {
   pairingToken?: () => string;
   runtime: "node" | "worker";
   storage: "sqlite" | "none";
+  /** Model for tailor / impact; absent = "没配模型". */
+  llm?: LlmClient | null;
+  /** Uploads (<data>/files on the companion); absent on the stateless Worker. */
+  files?: FileStore | null;
+  /** HTML → PDF/PNG/page count (Playwright on the companion); absent elsewhere. */
+  renderer?: PageRenderer | null;
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };
