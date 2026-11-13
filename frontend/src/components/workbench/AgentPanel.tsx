@@ -49,6 +49,8 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 import { AgentConnectionStatus } from "./AgentConnectionPanel";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { SHOWCASE } from "@/lib/showcase";
+import { contextUsageFromEvent, type AgentContextUsage } from "@/lib/agentContextUsage";
+import { ContextUsageRing } from "@/components/ui/agent/ContextUsageRing";
 import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";
@@ -247,6 +249,8 @@ export function AgentPanel() {
   const [progressText, setProgressText] = useState("");
   const [error, setError] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [contextUsage, setContextUsage] = useState<AgentContextUsage | null>(null);
+  useEffect(() => setContextUsage(null), [conversationId]);
   const [conversationTitle, setConversationTitle] = useState("新对话");
   const [resumeCandidate, setResumeCandidate] = useState<ResumeCandidate | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -481,6 +485,8 @@ export function AgentPanel() {
           const eventRunId = String(data?.run_id || "");
           if (eventRunId) setActiveRunId(eventRunId);
           const progress = progressForEvent(event, data?.payload?.operation);
+          const usage = contextUsageFromEvent(data);
+          if (usage) setContextUsage(usage);
           const delta = event === "assistant.delta" || event === "message.delta"
             ? String(data?.payload?.delta || "")
             : "";
@@ -1353,6 +1359,10 @@ export function AgentPanel() {
               <Plus size={16} strokeWidth={2} />
             </button>
             <AgentComposerControls options={composerOptions} onChange={setComposerOptions} />
+            {contextUsage && (
+              <ContextUsageRing used={contextUsage.used} limit={contextUsage.window}
+                nearAt={Math.round((contextUsage.compactAt / contextUsage.window) * 100)} />
+            )}
             <button
               type="button"
               aria-label="发送"
