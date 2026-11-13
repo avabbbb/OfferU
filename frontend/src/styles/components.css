@@ -387,6 +387,9 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
   scroll-snap-type: x proximity;
   scroll-padding-inline: var(--ou-gutter);
   overscroll-behavior-x: contain;
+  /* 右缘轻轻渐隐：放不下时提示还能往右滚，而不是一刀切断。 */
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--ou-space-6)), transparent);
+  mask-image: linear-gradient(to right, black calc(100% - var(--ou-space-6)), transparent);
 }
 .ou-kanban-column {
   display: flex;
