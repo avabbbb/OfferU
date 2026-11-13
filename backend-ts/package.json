@@ -11,8 +11,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.19",
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "@offeru/core": "file:../packages/core"
+    "@offeru/core": "file:../packages/core",
+    "hono": "^4.13.18"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

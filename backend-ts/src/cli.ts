@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { runMcpServer } from "./mcp";
 import { dbPath } from "./paths";
 import { startHttpServer } from "./server";
-import { openStore, callTool, SUPPORTED_TOOLS } from "./tools";
+import { callTool, SUPPORTED_TOOLS } from "./tools";
+import { openStore } from "./store";
 
 const HELP = `OfferU TS CLI
 

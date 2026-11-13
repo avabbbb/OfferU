@@ -220,3 +220,7 @@ export class SqliteCoreStore implements CoreStore {
     return Number(row.m ?? 0) + 1;
   }
 }
+
+export function openStore(path: string): SqliteCoreStore {
+  return new SqliteCoreStore(path);
+}

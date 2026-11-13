@@ -13,7 +13,6 @@ import {
 import { CoreError } from "@offeru/core";
 import type { CoreContext, CoreStore } from "@offeru/core";
 
-import { SqliteCoreStore } from "./store";
 
 export const SUPPORTED_TOOLS = [
   "overview",
@@ -54,6 +53,3 @@ export async function callTool(name: string, rawArgs: unknown, store: CoreStore,
   }
 }
 
-export function openStore(path: string): SqliteCoreStore {
-  return new SqliteCoreStore(path);
-}
