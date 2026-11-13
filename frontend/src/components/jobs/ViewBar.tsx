@@ -31,8 +31,8 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
   const view = state.views[state.active];
   const n = activeCounts(view);
   const table = state.active === "table";
-  // 看板自带标签筛选，只有表格和甘特用这排工具；字段和行高只对表格有意义。
-  const listing = state.active !== "board";
+  // 看板自带标签筛选、日历按周看事项，只有表格和甘特用这排工具；字段和行高只对表格有意义。
+  const listing = state.active === "table" || state.active === "gantt";
   const [searching, setSearching] = useState(false);
   const showSearch = searching || search.length > 0;
   return (

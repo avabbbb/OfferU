@@ -203,6 +203,24 @@
   --ou-tag-dot: 0.5rem;
   --ou-check-size: 1.125rem;
   --ou-radius-check: 0.3125rem;
+
+  /* Event / job swatches (ref Inspora · sam "Event Swatch"): pastel tone face, inset white rim,
+   * slightly darker bottom edge for thickness; hover lifts + scales on a spring, drag tilts. */
+  --ou-radius-swatch: 1rem;
+  --ou-swatch-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --ou-swatch-edge: 0.1875rem; /* 3px darker bottom edge */
+  --ou-swatch-shadow: 0 1px 2px rgba(60, 50, 80, 0.06), 0 8px 18px rgba(60, 50, 80, 0.10);
+  --ou-swatch-shadow-hover: 0 2px 4px rgba(60, 50, 80, 0.07), 0 18px 32px rgba(60, 50, 80, 0.16);
+  --ou-swatch-shadow-drag: 0 4px 8px rgba(60, 50, 80, 0.08), 0 28px 48px rgba(60, 50, 80, 0.24);
+  --ou-swatch-mix: 58%; /* how much of the tone's light bg vs. its mid border the face takes */
+  --ou-swatch-scale: 1.04;
+  --ou-swatch-tilt: -5deg;
+  --ou-line-faint: rgba(60, 50, 80, 0.05);
+  /* Week calendar */
+  --ou-cal-hour: 3.25rem;    /* 52px per hour */
+  --ou-cal-gutter: 3.5rem;
+  --ou-cal-day-min: 7.5rem;
+  --ou-kanban-column-min: 12.5rem;
 }
 
 /* Prospective dark tokens for migrated surfaces. No existing dark styles are overridden. */
@@ -229,6 +247,9 @@
   --ou-glass-subtle: rgba(255, 255, 255, 0.04);
   --ou-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --ou-glass-menu: rgba(36, 32, 42, 0.8);
+  --ou-swatch-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --ou-swatch-mix: 80%;
+  --ou-line-faint: rgba(255, 255, 255, 0.05);
   --ou-elev-menu: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 24px 60px rgba(0, 0, 0, 0.5);
   --ou-wash-cool: #1d2436;
   --ou-wash-warm: #2e231d;
