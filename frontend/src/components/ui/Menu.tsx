@@ -5,15 +5,16 @@ import type { ReactNode } from "react";
 export type MenuItem = { label: ReactNode; icon?: ReactNode; shortcut?: string; danger?: boolean; disabled?: boolean; onSelect: () => void } | "separator";
 
 // open / onOpenChange 可选：受控时由调用方决定什么时候打开（例如拖拽把手：拖动是排序，单击才开菜单）。
-export function Menu({ trigger, items, align = "end", side, open, onOpenChange }: {
+// onCloseAutoFocus：菜单关掉时默认把焦点还给触发器；某一项要把焦点放到别处（如新建的块）时在这里 preventDefault。
+export function Menu({ trigger, items, align = "end", side, open, onOpenChange, onCloseAutoFocus }: {
   trigger: ReactNode; items: MenuItem[]; align?: "start" | "center" | "end"; side?: "top" | "right" | "bottom" | "left";
-  open?: boolean; onOpenChange?: (open: boolean) => void;
+  open?: boolean; onOpenChange?: (open: boolean) => void; onCloseAutoFocus?: (event: Event) => void;
 }) {
   return (
     <Dropdown.Root open={open} onOpenChange={onOpenChange}>
       <Dropdown.Trigger asChild>{trigger}</Dropdown.Trigger>
       <Dropdown.Portal>
-        <Dropdown.Content align={align} side={side} sideOffset={4} className="ou-floating ou-menu">
+        <Dropdown.Content align={align} side={side} sideOffset={4} className="ou-floating ou-menu" onCloseAutoFocus={onCloseAutoFocus}>
           {items.map((item, index) =>
             item === "separator" ? (
               <Dropdown.Separator key={`sep-${index}`} className="ou-menu-separator" />

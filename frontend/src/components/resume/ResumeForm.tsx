@@ -126,6 +126,7 @@ function Bullets({ bullets, onChange }: { bullets: string[]; onChange: (next: st
   const [menuFor, setMenuFor] = useState(-1);
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  const keepFocus = useRef(false); // 菜单里选了「在下面加一条」：关菜单时别把焦点抢回把手
   const go = (i: number) => setFocus((f) => ({ i, n: f.n + 1 }));
   const set = (i: number, value: string) => onChange(bullets.map((b, k) => (k === i ? value : b)));
   const insert = (i: number) => { onChange([...bullets.slice(0, i), "", ...bullets.slice(i)]); go(i); };
@@ -167,6 +168,7 @@ function Bullets({ bullets, onChange }: { bullets: string[]; onChange: (next: st
               <Glyph name="plus" />
             </button>
             <Menu align="start" side="bottom" open={menuFor === i} onOpenChange={(open) => setMenuFor(open ? i : -1)}
+              onCloseAutoFocus={(e) => { if (keepFocus.current) { e.preventDefault(); keepFocus.current = false; } }}
               trigger={
                 <button type="button" className="rf-gutter-btn rf-grip" aria-label={"要点 " + (i + 1) + "：拖动排序，单击更多操作"}
                   title="拖动排序 · 单击更多" onPointerDown={(e) => grab(i, e)}>
@@ -176,7 +178,7 @@ function Bullets({ bullets, onChange }: { bullets: string[]; onChange: (next: st
               items={[
                 { label: "上移", icon: <Glyph name="up" />, disabled: i === 0, onSelect: () => onChange(move(bullets, i, i - 1)) },
                 { label: "下移", icon: <Glyph name="down" />, disabled: i === bullets.length - 1, onSelect: () => onChange(move(bullets, i, i + 1)) },
-                { label: "在下面加一条", icon: <Glyph name="plus" />, onSelect: () => insert(i + 1) },
+                { label: "在下面加一条", icon: <Glyph name="plus" />, onSelect: () => { keepFocus.current = true; insert(i + 1); } },
                 "separator",
                 { label: "删除要点", icon: <Glyph name="trash" />, danger: true, onSelect: () => remove(i) },
               ]} />

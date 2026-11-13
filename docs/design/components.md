@@ -34,7 +34,7 @@
 
 「更多」、行操作、状态切换。每项 = 16px 图标 + 文字 + 可选快捷键；高亮是半透明墨圆角底，不加描边；危险项放最后、红字（`--ou-tone-red-text`），中间用分隔线。浮层是 L3 磨砂（白 90% + 模糊，16px 圆角）。
 
-可选 `side`，以及受控的 `open / onOpenChange`：调用方自己决定何时打开。例：简历要点的「⋮⋮」把手——按下后移动是拖动排序，没移动松手才开菜单；触发器的 `onPointerDown` 里 `preventDefault()` 就能跳过 Radix 默认的「按下即开」，键盘 Enter / Space 仍由 Radix 打开。
+可选 `side`，以及受控的 `open / onOpenChange`：调用方自己决定何时打开。例：简历要点的「⋮⋮」把手——按下后移动是拖动排序，没移动松手才开菜单；触发器的 `onPointerDown` 里 `preventDefault()` 就能跳过 Radix 默认的「按下即开」，键盘 Enter / Space 仍由 Radix 打开。可选 `onCloseAutoFocus`：某一项要把焦点放到别处（如「在下面加一条」后的新块）时在这里 `preventDefault()`，否则关菜单会把焦点还给触发器。
 
 ## Popover（Radix Popover）
 
