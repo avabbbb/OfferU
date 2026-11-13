@@ -45,6 +45,7 @@ const MINUTES = ["00", "15", "30", "45"];
 
 export function DatePicker({
   value, onChange, withTime = false, placeholder, id, "aria-label": ariaLabel, size, className, defaultTime = "09:00",
+  defaultOpen = false, onOpenChange,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -58,9 +59,14 @@ export function DatePicker({
   className?: string;
   /** 只选了日期时补的时间。 */
   defaultTime?: string;
+  /** 挂载即打开：表格单元格双击进入编辑时用。 */
+  defaultOpen?: boolean;
+  /** 浮层开合（含选完日期自动关）都会通知；单元格据此退出编辑态。 */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const { date, time } = parseDateValue(value);
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(defaultOpen);
+  const setOpen = (next: boolean) => { setOpenState(next); onOpenChange?.(next); };
   const [cursor, setCursor] = useState<Date>(() => date ?? new Date());
   const gridRef = useRef<HTMLDivElement>(null);
   const today = ymd(new Date());

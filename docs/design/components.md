@@ -44,8 +44,10 @@
 - 浮层同 Popover 的浅色玻璃：「2026 年 11 月」+ ‹ ›（`.ou-button-group`）→ 周一开头的 6×7 日期格（`.ou-date-day`，圆形；非本月浅色；**今天橙字**、选中墨黑实心，今天又被选中时橙底墨字——与周日历一致）→ `withTime` 时「时间」一行两个 `Select`（时 00–23、分 00/15/30/45）→ 底部「清除」「今天」（ghost），`withTime` 再加「完成」。
 - 只选日期时点一下就关；带时间时选日期不关，接着调时间。键盘：打开后焦点在当前日期，←→ 一天、↑↓ 一周、PageUp / PageDown 换月，回车选中，Esc 关并把焦点还给触发器。
 - 纯逻辑 `parseDateValue / monthGrid / formatDateValue` 有 vitest（`ui.test.ts`）。
+- 表格单元格就地编辑：`defaultOpen` 挂载即打开，`onOpenChange(false)`（选完、清除、Esc、点别处都会触发）时退出编辑态；值在 `onChange` 里即存，不等失焦。
+- 放进自己处理 Esc 的容器（抽屉、行内表单）时，容器先看 `event.defaultPrevented`：Radix 关浮层时会 `preventDefault`，这样 Esc 只关浮层。行内表单「失焦即关」要放过焦点进出 `[data-radix-popper-content-wrapper]`（浮层 portal 在 body 上，但 React 事件仍冒泡回表单）。
 
-看：今天页「要做的事」底部「加一件事」的时间胶囊；`#/jobs?view=calendar` 右上 + →「时间」；面试复盘页的「面试日期」。
+看：今天页「要做的事」底部「加一件事」的时间胶囊；`#/jobs?view=calendar` 右上 + →「时间」；面试复盘页的「面试日期」；岗位表格「投递日」双击；岗位详情抽屉「投递日」。
 
 ## Menu（Radix DropdownMenu）
 
