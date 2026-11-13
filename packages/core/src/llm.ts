@@ -1,0 +1,213 @@
+// LLM access for core tools. Runtime-agnostic: no node:*, no DOM.
+//
+// Tools never build HTTP requests to a model themselves; they receive an
+// `LlmClient`. The browser builds one from the user's own key (BYOK, direct to
+// the provider), the Node companion builds one from its settings, tests pass a
+// fake. `createOpenAiLlm` is the stock OpenAI-compatible implementation and
+// only needs an injected `fetch`.
+//
+// Semantics mirror Python `app.agents.llm.chat_completion`:
+//   - returns the text, or `null` when the model gave nothing usable
+//     (timeout, transient upstream failure, empty answer);
+//   - throws `CoreError(code="forbidden")` for a rejected key, so the user
+//     sees "fix your key" instead of a silent empty result;
+//   - throws `CoreError(code="unsupported")` when no model is configured.
+
+import { CoreError } from "./types";
+
+export type LlmRole = "system" | "user" | "assistant";
+export type LlmMessage = { role: LlmRole; content: string };
+/** Model tier, same names as Python `resolve_model_for_tier`. */
+export type LlmTier = "fast" | "standard" | "premium";
+
+export type LlmChatOptions = {
+  /** Default 0.3, like Python. */
+  temperature?: number;
+  /** Ask for a JSON object (response_format=json_object when supported). */
+  json?: boolean;
+  /** Default 4096, like Python. */
+  maxTokens?: number;
+  /** Default "standard". */
+  tier?: LlmTier;
+  signal?: AbortSignal;
+};
+
+export interface LlmClient {
+  /** One chat completion. `null` = no usable answer (see module doc). */
+  chat(messages: LlmMessage[], options?: LlmChatOptions): Promise<string | null>;
+}
+
+export type FetchLike = (input: string, init?: {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  signal?: AbortSignal;
+}) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+
+/** Throw the standard "no model" error when a tool needs an LLM and none was injected. */
+export function requireLlm(llm: LlmClient | null | undefined, message = "没配模型，没法调用模型"): LlmClient {
+  if (!llm) throw new CoreError(message, "unsupported");
+  return llm;
+}
+
+/**
+ * Pull a JSON object out of model output: plain JSON, a ```json fenced block,
+ * or the first complete {...} object in surrounding prose. Mirrors Python
+ * `extract_json`. Returns null when nothing parses to an object.
+ */
+export function extractJson(text: string | null | undefined): Record<string, unknown> | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  const asObject = (value: unknown) =>
+    typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  try {
+    const direct = JSON.parse(trimmed);
+    // Python returns whatever json.loads gives; callers only use dicts.
+    if (asObject(direct)) return asObject(direct);
+  } catch { /* fall through */ }
+  const fenced = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(trimmed);
+  if (fenced) {
+    try {
+      const value = asObject(JSON.parse(fenced[1]));
+      if (value) return value;
+    } catch { /* fall through */ }
+  }
+  for (let start = trimmed.indexOf("{"); start >= 0; start = trimmed.indexOf("{", start + 1)) {
+    const end = matchingBrace(trimmed, start);
+    if (end < 0) continue;
+    try {
+      const value = asObject(JSON.parse(trimmed.slice(start, end + 1)));
+      if (value) return value;
+    } catch { /* try next brace */ }
+  }
+  return null;
+}
+
+function matchingBrace(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") i += 1;
+      else if (ch === "\"") inString = false;
+      continue;
+    }
+    if (ch === "\"") inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** chat() + extractJson(); null when the model returned nothing or no JSON object. */
+export async function chatJson(
+  llm: LlmClient,
+  messages: LlmMessage[],
+  options: LlmChatOptions = {},
+): Promise<Record<string, unknown> | null> {
+  return extractJson(await llm.chat(messages, { ...options, json: true }));
+}
+
+export type OpenAiLlmConfig = {
+  /** e.g. https://api.openai.com/v1 or https://api.deepseek.com/v1 (".../chat/completions" is appended). */
+  baseUrl: string;
+  apiKey?: string;
+  /** Default model; `models` overrides it per tier. */
+  model: string;
+  models?: Partial<Record<LlmTier, string>>;
+  /** Local / gateways that reject response_format set this false. Default true. */
+  supportsJsonMode?: boolean;
+  /** Per attempt. Default 120000 ms. */
+  timeoutMs?: number;
+  fetch: FetchLike;
+  extraHeaders?: Record<string, string>;
+  /** Wait between retries; injectable for tests. */
+  sleep?: (ms: number) => Promise<void>;
+};
+
+class HttpFailure extends Error {
+  constructor(readonly status: number, readonly body: string) {
+    super(`HTTP ${status}`);
+  }
+}
+
+/** OpenAI-compatible /chat/completions client over an injected fetch. */
+export function createOpenAiLlm(config: OpenAiLlmConfig): LlmClient {
+  const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const sleep = config.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const timeoutMs = config.timeoutMs ?? 120_000;
+
+  async function post(body: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    for (let attempt = 0; ; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const onAbort = () => controller.abort();
+      signal?.addEventListener("abort", onAbort);
+      try {
+        const response = await config.fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+            ...config.extraHeaders,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        const text = await response.text();
+        if (!response.ok) throw new HttpFailure(response.status, text);
+        return JSON.parse(text) as Record<string, unknown>;
+      } catch (cause) {
+        const status = cause instanceof HttpFailure ? cause.status : 0;
+        const retryable = status === 408 || status === 429 || status >= 500;
+        if (!retryable || attempt === 2 || signal?.aborted) throw cause;
+        await sleep(500 * 2 ** attempt);
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+      }
+    }
+  }
+
+  return {
+    async chat(messages, options = {}) {
+      if (!messages.length) throw new CoreError("消息不能为空");
+      const tier = options.tier ?? "standard";
+      const model = config.models?.[tier] || config.model;
+      const maxTokens = options.maxTokens ?? 4096;
+      let sent = messages;
+      const body: Record<string, unknown> = { model, temperature: options.temperature ?? 0.3 };
+      if (options.json && config.supportsJsonMode !== false) {
+        body.response_format = { type: "json_object" };
+        // Some gateways only accept json_object when the prompt says "json".
+        if (!messages.map((m) => m.content).join(" ").toLowerCase().includes("json")) {
+          const last = messages[messages.length - 1];
+          sent = [...messages.slice(0, -1), { ...last, content: `${last.content}\n\nReturn JSON only.` }];
+        }
+      }
+      body.messages = sent;
+      try {
+        let data: Record<string, unknown>;
+        try {
+          // Reasoning models spend max_tokens on thinking; give a total budget, fall back for old endpoints.
+          data = await post({ ...body, max_completion_tokens: maxTokens * 3 }, options.signal);
+        } catch (cause) {
+          if (!(cause instanceof HttpFailure) || !cause.body.toLowerCase().includes("max_completion_tokens")) throw cause;
+          data = await post({ ...body, max_tokens: maxTokens }, options.signal);
+        }
+        const choices = data.choices as Array<{ message?: { content?: unknown } }> | undefined;
+        const content = choices?.[0]?.message?.content;
+        return typeof content === "string" && content ? content : null;
+      } catch (cause) {
+        if (cause instanceof HttpFailure && (cause.status === 401 || cause.status === 403)) {
+          throw new CoreError(`模型 API Key 无效或没有权限（${model}，HTTP ${cause.status}）；请在设置里检查 Key`, "forbidden");
+        }
+        return null;
+      }
+    },
+  };
+}
