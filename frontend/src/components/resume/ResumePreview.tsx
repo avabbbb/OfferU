@@ -10,14 +10,24 @@ import type { Resume } from "@/lib/resumeModel";
 
 const A4_W = 794; // 210mm @ 96dpi
 
-// 只注入预览 iframe（导出的 PDF 不带）：悬停的块画蓝色虚线框（和主按钮同色），左上角标「点击编辑此模块」。
+// 只注入预览 iframe（导出的 PDF 不带）：悬停的块画一圈墨色细框，左上角一枚小标签「点击编辑」。
+// iframe 里读不到外层的 --ou-* 变量，载入时把外层算好的值抄进 iframe 的 :root（见 hintVars）。
 const HOVER_CSS = `
-.resume .item, .resume h1, .resume p.contact, .resume section > h2 { position: relative; cursor: pointer; border-radius: 2px; }
+.resume .item, .resume h1, .resume p.contact, .resume section > h2 { position: relative; cursor: pointer; border-radius: var(--ou-radius-1); }
 .resume .item:hover, .resume h1:hover, .resume p.contact:hover, .resume section > h2:hover {
-  outline: 1px dashed #2383e2; outline-offset: 2px; background: rgba(35, 131, 226, 0.05); }
+  outline: 1px solid var(--ou-line-strong); outline-offset: 3px; background: var(--ou-bg-hover); }
 .resume .item:hover::before, .resume section > h2:hover::before {
-  content: "点击编辑此模块"; position: absolute; left: -3px; bottom: 100%; margin-bottom: 2px; padding: 1px 6px; border-radius: 3px 3px 0 0;
-  background: #2383e2; color: #fff; font: 500 9px/1.6 system-ui, sans-serif; letter-spacing: 0; white-space: nowrap; z-index: 1; }`;
+  content: "点击编辑"; position: absolute; left: -4px; bottom: 100%; margin-bottom: 4px; padding: 1px 7px; border-radius: var(--ou-radius-pill);
+  background: var(--ou-action-primary); color: var(--ou-on-action-primary); font: 500 9px/1.6 system-ui, sans-serif; white-space: nowrap; }`;
+const HINT_VARS = ["--ou-radius-1", "--ou-radius-pill", "--ou-line-strong", "--ou-bg-hover", "--ou-action-primary", "--ou-on-action-primary"];
+function hintVars() {
+  const root = getComputedStyle(document.documentElement);
+  return ":root{" + HINT_VARS.map((name) => name + ":" + root.getPropertyValue(name).trim()).join(";") + "}";
+}
+
+// 缩放：「适应」随画布宽度铺满；也可以固定倍率，像「预览」App 一样。
+const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5];
+type Zoom = "fit" | number;
 
 export type PreviewHandle = { measure: (style: ResumeStyle) => number };
 
@@ -32,7 +42,14 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
   locate.current = onLocate;
   const [html, setHtml] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [scale, setScale] = useState(1);
+  const [fitScale, setFitScale] = useState(1);
+  const [zoom, setZoom] = useState<Zoom>("fit");
+  const scale = zoom === "fit" ? fitScale : zoom;
+  const step = (dir: 1 | -1) => setZoom((z) => {
+    const now = z === "fit" ? fitScale : z;
+    const next = dir > 0 ? ZOOMS.find((v) => v > now + 0.001) : [...ZOOMS].reverse().find((v) => v < now - 0.001);
+    return next ?? z;
+  });
   const [height, setHeight] = useState(PAGE_PX);
   const styleKey = JSON.stringify(style);
 
@@ -65,7 +82,7 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
     const el = box.current;
     if (!el) return;
     // 按画布宽度铺满，允许放大到 1.35 倍，两侧只留 16px。
-    const ro = new ResizeObserver(() => setScale(Math.min(1.35, Math.max(0.3, (el.clientWidth - 32) / A4_W))));
+    const ro = new ResizeObserver(() => setFitScale(Math.min(1.35, Math.max(0.3, (el.clientWidth - 48) / A4_W))));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -96,7 +113,7 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
     if (!doc || !main) return;
     setHeight(Math.max(PAGE_PX, Math.ceil(main.scrollHeight)));
     const hint = doc.createElement("style");
-    hint.textContent = HOVER_CSS;
+    hint.textContent = hintVars() + HOVER_CSS;
     doc.head.appendChild(hint);
     doc.addEventListener("click", (event) => {
       const block = (event.target as Element | null)?.closest?.("[data-path]");
@@ -105,19 +122,30 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
   };
 
   return (
-    <div ref={box} className="rp-canvas min-w-0 flex-1 overflow-auto px-4 pb-6 pt-3">
+    <>
+    <div ref={box} className="rp-canvas min-w-0 flex-1 overflow-auto px-6 pb-16 pt-4">
       {toolbar && <div className="rp-toolbar">{toolbar}</div>}
-      {error && <p role="alert" className="mx-auto mb-3 max-w-[794px] text-[12.5px] text-[var(--primary-red)]">{error}</p>}
+      {error && <p role="alert" className="rp-error">{error}</p>}
       <div className="relative mx-auto" style={{ width: A4_W * scale, height: height * scale }}>
         <iframe ref={frame} title="简历预览（和导出的 PDF 一致）" srcDoc={html} sandbox="allow-same-origin" onLoad={loaded}
-          style={{ width: A4_W, height, transform: "scale(" + scale + ")", transformOrigin: "0 0", border: 0, background: "#fff" }}
+          style={{ width: A4_W, height, transform: "scale(" + scale + ")", transformOrigin: "0 0", border: 0 }}
           className="rp-paper absolute left-0 top-0" />
         {height > PAGE_PX && (
-          <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[var(--border-strong)]" style={{ top: PAGE_PX * scale }}>
-            <span className="absolute -top-5 right-0 text-[11px] text-[var(--foreground-muted)]">第一页到这</span>
+          <div className="rp-break" style={{ top: PAGE_PX * scale }}>
+            <span>第 1 页到这</span>
           </div>
         )}
       </div>
     </div>
+    {/* 缩放胶囊放在画布外：画布自己是横向滚动容器，贴底要跟着整页滚动走。 */}
+    <div className="rp-zoom-dock">
+        <div className="rp-zoom" role="group" aria-label="预览缩放">
+          <button type="button" aria-label="缩小" title="缩小" disabled={scale <= ZOOMS[0] + 0.001} onClick={() => step(-1)}>−</button>
+          <span className="rp-zoom-value" aria-live="polite">{Math.round(scale * 100)}%</span>
+          <button type="button" aria-label="放大" title="放大" disabled={scale >= ZOOMS[ZOOMS.length - 1] - 0.001} onClick={() => step(1)}>+</button>
+          <button type="button" aria-pressed={zoom === "fit"} title="按画布宽度铺满" onClick={() => setZoom("fit")}>适应</button>
+        </div>
+      </div>
+    </>
   );
 });
