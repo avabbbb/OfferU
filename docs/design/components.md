@@ -90,6 +90,10 @@ L2：白 84%、**无描边**、`--ou-elev-2`（0 12 32 / 10%）、18px 圆角；
 | `.ou-fade-bottom` | 底部渐隐遮罩 | 卡片放不下的文字 |
 | `.ou-jobs-sheet` | 岗位表格的大圆角实白纸 | JobsTable |
 
+## 简历编辑器三栏（v3.1，2026-11-14，参考 offershow）
+
+左栏 `ModuleList`（`.rm-*`：把手 · 名字 · … · Switch，选中白胶囊）· 中 `ResumePreview` · 右栏 `.ou-segment` 标签 + `ModuleEditor`（`.re-item`：条目头「名称 N · 删除 · 虚线 · ↓ ↑」+ `.re-fields` 两列 `Field / Input / Select` + 带常驻格式条的 `RichText toolbar`）/ `StyleTab` / `TemplateTab`；顶栏 `ResumeActions`（保存 · 导出 ▾ 主按钮 · 分享 ▾，菜单都是 `Menu`）。样式在 `styles/resume-editor.css`，规格见 DESIGN.md「简历编辑器」。
+
 ## 文档视图（简历编辑器，v3）
 
 参照 Bleep 文档视图 / Notion：一张半透明白纸，模块是 20px 粗体标题，正文 16px / 1.6 直接写在纸上（`RichText` 无框无聚焦环，空块只在聚焦时显示占位）；属性（公司 / 职位 / 城市 / 时间、联系方式）是「灰色小标签 + 纸上的值」，悬停浅底、聚焦浅灰底。要点一行一块，左侧留白里悬停出「+」和「⋮⋮」（拖动排序 / 单击开 `Menu`），绝对定位、不占正文宽度。低频操作悬停或键盘聚焦才出现。样式在 `globals.css` 的 `.resume-shell .rf-*` / `.rt-*`。

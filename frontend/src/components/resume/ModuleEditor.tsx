@@ -200,7 +200,7 @@ export function ModuleEditor({ resume, onChange, selected, doc, canPolish, focus
   const section = resume.sections.find((s) => s.id === selected);
 
   // 切模块回到顶上；预览里点到的条目滚过去、闪一下，并把光标放进第一个输入框。
-  useEffect(() => { root.current?.closest(".re-editor")?.scrollTo({ top: 0 }); }, [selected]);
+  useEffect(() => { root.current?.closest(".re-tabpanel, .re-editor")?.scrollTo({ top: 0 }); }, [selected]);
   useEffect(() => {
     if (!focus?.itemId) return;
     const id = focus.itemId;

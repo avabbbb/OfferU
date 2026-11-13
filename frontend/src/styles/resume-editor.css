@@ -25,9 +25,18 @@
   border-radius: var(--ou-radius-panel); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-2);
 }
 .re-rail { grid-area: rail; padding: var(--ou-space-4) var(--ou-space-3); }
-.re-editor { grid-area: editor; }
+/* 右栏：标签条固定在顶上（不浮在内容上），下面的内容自己滚。 */
+.re-editor { grid-area: editor; display: flex; flex-direction: column; overflow: hidden; }
+.re-tabs { display: flex; flex: none; margin: var(--ou-space-3) var(--ou-space-4) 0; }
+.re-tabs .ou-segment-item { flex: 1; justify-content: center; }
+.re-tabpanel { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .re-preview { grid-area: preview; display: flex; min-width: 0; min-height: 0; flex-direction: column; }
 .re-preview .rp-canvas { padding-top: 0; }
+
+/* ── 顶栏：返回 · 简历名 · 保存状态 ……… 保存 · 导出 · 分享 ── */
+.re-back { margin-left: calc(-1 * var(--ou-space-2)); }
+.re-actions { display: flex; flex: none; align-items: center; gap: var(--ou-space-2); margin-left: auto; }
+.re-actions-status { color: var(--ou-text-secondary); font-size: var(--ou-type-xs); white-space: nowrap; }
 
 /* ── 右栏：编辑内容（一次一个模块）── */
 .re-module { display: flex; flex-direction: column; gap: var(--ou-space-4); padding: var(--ou-space-4) var(--ou-space-6) var(--ou-space-8); }
@@ -128,7 +137,7 @@ input.re-module-title:focus { background: var(--ou-bg-field); }
 .resume-shell.re-shell { container-type: inline-size; container-name: re; }
 @container re (max-width: 66rem) {
   .re-grid { flex: none; grid-template-columns: minmax(10.5rem, 12rem) minmax(0, 1fr); grid-template-areas: "rail editor" "preview preview"; }
-  .re-rail, .re-editor { overflow: visible; align-self: start; }
+  .re-rail, .re-editor, .re-tabpanel { overflow: visible; align-self: start; }
   .re-preview { height: 85dvh; }
   .resume-shell.re-shell .rs-head { flex-wrap: wrap; }
 }
@@ -139,6 +148,43 @@ input.re-module-title:focus { background: var(--ou-bg-field); }
 @container re (max-width: 40rem) {
   .re-module { padding-inline: var(--ou-space-4); }
 }
-@media (prefers-reduced-motion: reduce) { .rm-row, .rm-more, .re-item { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .rm-row, .rm-more, .re-item, .re-swatch, .re-template { transition: none; } }
 .re-editor .rt .rt-edit { width: 100%; }
+
+/* ── 右栏：排版美化 ── */
+.re-style { gap: var(--ou-space-6); }
+.re-style-group { display: flex; flex-direction: column; gap: var(--ou-space-3); }
+.re-style-heading { margin: 0; color: var(--ou-text-primary); font-size: var(--ou-type-body); font-weight: 600; }
+.re-fit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2) var(--ou-space-3); }
+.re-fit-note { flex: 1; min-width: 10rem; margin: 0; color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
+.re-stepper { display: flex; align-items: center; gap: var(--ou-space-1); }
+.re-stepper .ou-input { min-width: 0; text-align: center; font-variant-numeric: tabular-nums; }
+.re-stepper .ou-icon-button { width: 1.75rem; height: 1.75rem; }
+.re-stepper .ou-icon-button:disabled { opacity: 0.3; cursor: default; }
+.re-swatches { display: flex; flex-wrap: wrap; gap: var(--ou-space-3); }
+/* 色点是简历纸面的主题色（用户文档，不是应用配色）：选中时外面一圈墨色环。 */
+.re-swatch { width: 1.75rem; height: 1.75rem; border-radius: var(--ou-radius-pill); box-shadow: var(--ou-capsule-shadow); transition: transform var(--ou-motion-fast) var(--ou-ease-spring-soft); }
+.re-swatch:hover { transform: scale(1.08); }
+.re-swatch[aria-checked="true"] { box-shadow: var(--ou-ring-focus); }
+.re-swatch:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+
+/* ── 右栏：更换模版（两列卡片，缩略图是用自己的内容渲染的第一页）── */
+.re-tab-lead { margin: 0; color: var(--ou-text-secondary); font-size: var(--ou-type-sm); }
+.re-templates { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: var(--ou-space-4); }
+.re-template {
+  display: flex; flex-direction: column; gap: var(--ou-space-1); padding: var(--ou-space-2); border-radius: var(--ou-radius-card); text-align: left;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.re-template:hover { background: var(--ou-bg-hover); }
+.re-template[aria-checked="true"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+.re-template:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.re-thumb {
+  position: relative; display: block; overflow: hidden; aspect-ratio: 210 / 297; margin-bottom: var(--ou-space-1);
+  border-radius: var(--ou-radius-1); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-elev-1); pointer-events: none;
+}
+.re-template[aria-checked="true"] .re-thumb { box-shadow: var(--ou-elev-2), var(--ou-ring-focus); }
+.re-thumb-frame { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; }
+.re-thumb-empty { display: flex; height: 100%; align-items: center; justify-content: center; color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
+.re-template-name { display: inline-flex; align-items: center; gap: var(--ou-space-1); color: var(--ou-text-primary); font-size: var(--ou-type-body); font-weight: 600; }
+.re-template-note { color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
 .re-bullets .rt .rt-edit { font-size: var(--ou-type-body); line-height: 1.6; }
