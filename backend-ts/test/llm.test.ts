@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CoreError, createOpenAiLlm, extractJson, type FetchLike } from "@offeru/core";
+import { CoreError, createOpenAiLlm, extractJson, isLocalLlmUrl, streamOrChat, type FetchLike } from "@offeru/core";
 
 function fakeFetch(replies: Array<{ status: number; body: unknown }>, seen: Array<Record<string, unknown>> = []): FetchLike {
   return async (_url, init) => {
@@ -48,5 +48,25 @@ describe("createOpenAiLlm", () => {
 
     const bad = createOpenAiLlm({ baseUrl: "https://x", model: "m", sleep, fetch: fakeFetch([{ status: 401, body: "" }]) });
     await expect(bad.chat([{ role: "user", content: "q" }])).rejects.toBeInstanceOf(CoreError);
+  });
+});
+
+describe("chatStream", () => {
+  it("parses SSE deltas and falls back to chat in streamOrChat", async () => {
+    const sse = 'data: {"choices":[{"delta":{"content":"你"}}]}\n\ndata: {"choices":[{"delta":{"content":"好"}}]}\n\ndata: [DONE]\n\n';
+    const fetch: FetchLike = async () => ({
+      ok: true, status: 200, text: async () => sse,
+      body: new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(sse)); c.close(); } }),
+    });
+    const llm = createOpenAiLlm({ baseUrl: "http://127.0.0.1:11434/v1", model: "m", fetch });
+    expect(llm.local).toBe(true);
+    const parts: string[] = [];
+    for await (const part of llm.chatStream!([{ role: "user", content: "q" }])) parts.push(part);
+    expect(parts.join("")).toBe("你好");
+    const plain = { chat: async () => "整段" };
+    const out: string[] = [];
+    for await (const part of streamOrChat(plain, [{ role: "user", content: "q" }])) out.push(part);
+    expect(out).toEqual(["整段"]);
+    expect(isLocalLlmUrl("https://api.deepseek.com/v1")).toBe(false);
   });
 });

@@ -35,6 +35,29 @@ export type LlmChatOptions = {
 export interface LlmClient {
   /** One chat completion. `null` = no usable answer (see module doc). */
   chat(messages: LlmMessage[], options?: LlmChatOptions): Promise<string | null>;
+  /**
+   * Optional token stream (Python `chat_completion_stream`). Yields text
+   * deltas; ends early (no throw) on timeout/transient failure, throws
+   * CoreError("forbidden") on a rejected key. Use `streamOrChat` to fall back
+   * to one chunk when a client has no stream.
+   */
+  chatStream?(messages: LlmMessage[], options?: LlmChatOptions): AsyncIterable<string>;
+  /**
+   * True when the model runs on this machine (Ollama, LM Studio...). Tools
+   * skip PII desensitization only for local models, like Python
+   * `endpoint_is_local`. Absent = remote.
+   */
+  readonly local?: boolean;
+}
+
+/** Stream when the client can, otherwise yield the whole answer as one chunk. */
+export async function* streamOrChat(llm: LlmClient, messages: LlmMessage[], options: LlmChatOptions = {}): AsyncIterable<string> {
+  if (llm.chatStream) {
+    yield* llm.chatStream(messages, options);
+    return;
+  }
+  const text = await llm.chat(messages, options);
+  if (text) yield text;
 }
 
 export type FetchLike = (input: string, init?: {
@@ -42,7 +65,13 @@ export type FetchLike = (input: string, init?: {
   headers?: Record<string, string>;
   body?: string;
   signal?: AbortSignal;
-}) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+}) => Promise<{
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+  /** Needed only for chatStream. */
+  body?: ReadableStream<Uint8Array> | null;
+}>;
 
 /** Throw the standard "no model" error when a tool needs an LLM and none was injected. */
 export function requireLlm(llm: LlmClient | null | undefined, message = "没配模型，没法调用模型"): LlmClient {
@@ -135,18 +164,29 @@ class HttpFailure extends Error {
   }
 }
 
+/** True for loopback / LAN model endpoints (Python `_is_local_llm`). */
+export function isLocalLlmUrl(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "::1" || host.endsWith(".local")
+      || /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host === "0.0.0.0" || host === "host.docker.internal";
+  } catch {
+    return false;
+  }
+}
+
+type Response = Awaited<ReturnType<FetchLike>>;
+
 /** OpenAI-compatible /chat/completions client over an injected fetch. */
 export function createOpenAiLlm(config: OpenAiLlmConfig): LlmClient {
   const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
   const sleep = config.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const timeoutMs = config.timeoutMs ?? 120_000;
 
-  async function post(body: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  /** POST with retry on 408/429/5xx; returns the open response (body unread on success). */
+  async function post(body: Record<string, unknown>, signal: AbortSignal): Promise<Response> {
     for (let attempt = 0; ; attempt += 1) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const onAbort = () => controller.abort();
-      signal?.addEventListener("abort", onAbort);
       try {
         const response = await config.fetch(url, {
           method: "POST",
@@ -156,57 +196,129 @@ export function createOpenAiLlm(config: OpenAiLlmConfig): LlmClient {
             ...config.extraHeaders,
           },
           body: JSON.stringify(body),
-          signal: controller.signal,
+          signal,
         });
-        const text = await response.text();
-        if (!response.ok) throw new HttpFailure(response.status, text);
-        return JSON.parse(text) as Record<string, unknown>;
+        if (!response.ok) throw new HttpFailure(response.status, await response.text());
+        return response;
       } catch (cause) {
         const status = cause instanceof HttpFailure ? cause.status : 0;
         const retryable = status === 408 || status === 429 || status >= 500;
-        if (!retryable || attempt === 2 || signal?.aborted) throw cause;
+        if (!retryable || attempt === 2 || signal.aborted) throw cause;
         await sleep(500 * 2 ** attempt);
-      } finally {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
       }
     }
   }
 
-  return {
-    async chat(messages, options = {}) {
-      if (!messages.length) throw new CoreError("消息不能为空");
-      const tier = options.tier ?? "standard";
-      const model = config.models?.[tier] || config.model;
-      const maxTokens = options.maxTokens ?? 4096;
-      let sent = messages;
-      const body: Record<string, unknown> = { model, temperature: options.temperature ?? 0.3 };
-      if (options.json && config.supportsJsonMode !== false) {
-        body.response_format = { type: "json_object" };
-        // Some gateways only accept json_object when the prompt says "json".
-        if (!messages.map((m) => m.content).join(" ").toLowerCase().includes("json")) {
-          const last = messages[messages.length - 1];
-          sent = [...messages.slice(0, -1), { ...last, content: `${last.content}\n\nReturn JSON only.` }];
-        }
+  function request(messages: LlmMessage[], options: LlmChatOptions): { body: Record<string, unknown>; model: string; maxTokens: number } {
+    if (!messages.length) throw new CoreError("消息不能为空");
+    const model = config.models?.[options.tier ?? "standard"] || config.model;
+    let sent = messages;
+    const body: Record<string, unknown> = { model, temperature: options.temperature ?? 0.3 };
+    if (options.json && config.supportsJsonMode !== false) {
+      body.response_format = { type: "json_object" };
+      // Some gateways only accept json_object when the prompt says "json".
+      if (!messages.map((m) => m.content).join(" ").toLowerCase().includes("json")) {
+        const last = messages[messages.length - 1];
+        sent = [...messages.slice(0, -1), { ...last, content: `${last.content}\n\nReturn JSON only.` }];
       }
-      body.messages = sent;
+    }
+    body.messages = sent;
+    return { body, model, maxTokens: options.maxTokens ?? 4096 };
+  }
+
+  /** Reasoning models spend max_tokens on thinking: send a total budget, fall back for old endpoints. */
+  async function open(body: Record<string, unknown>, maxTokens: number, signal: AbortSignal): Promise<Response> {
+    try {
+      return await post({ ...body, max_completion_tokens: maxTokens * 3 }, signal);
+    } catch (cause) {
+      if (!(cause instanceof HttpFailure) || !cause.body.toLowerCase().includes("max_completion_tokens")) throw cause;
+      return post({ ...body, max_tokens: maxTokens }, signal);
+    }
+  }
+
+  function authError(cause: unknown, model: string): CoreError | null {
+    return cause instanceof HttpFailure && (cause.status === 401 || cause.status === 403)
+      ? new CoreError(`模型 API Key 无效或没有权限（${model}，HTTP ${cause.status}）；请在设置里检查 Key`, "forbidden")
+      : null;
+  }
+
+  function deadline(signal?: AbortSignal): { signal: AbortSignal; done(): void } {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const onAbort = () => controller.abort();
+    signal?.addEventListener("abort", onAbort);
+    return {
+      signal: controller.signal,
+      done() {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+      },
+    };
+  }
+
+  return {
+    local: isLocalLlmUrl(config.baseUrl),
+
+    async chat(messages, options = {}) {
+      const { body, model, maxTokens } = request(messages, options);
+      const timer = deadline(options.signal);
       try {
-        let data: Record<string, unknown>;
-        try {
-          // Reasoning models spend max_tokens on thinking; give a total budget, fall back for old endpoints.
-          data = await post({ ...body, max_completion_tokens: maxTokens * 3 }, options.signal);
-        } catch (cause) {
-          if (!(cause instanceof HttpFailure) || !cause.body.toLowerCase().includes("max_completion_tokens")) throw cause;
-          data = await post({ ...body, max_tokens: maxTokens }, options.signal);
-        }
-        const choices = data.choices as Array<{ message?: { content?: unknown } }> | undefined;
-        const content = choices?.[0]?.message?.content;
+        const response = await open(body, maxTokens, timer.signal);
+        const data = JSON.parse(await response.text()) as { choices?: Array<{ message?: { content?: unknown } }> };
+        const content = data.choices?.[0]?.message?.content;
         return typeof content === "string" && content ? content : null;
       } catch (cause) {
-        if (cause instanceof HttpFailure && (cause.status === 401 || cause.status === 403)) {
-          throw new CoreError(`模型 API Key 无效或没有权限（${model}，HTTP ${cause.status}）；请在设置里检查 Key`, "forbidden");
-        }
+        const auth = authError(cause, model);
+        if (auth) throw auth;
         return null;
+      } finally {
+        timer.done();
+      }
+    },
+
+    async *chatStream(messages, options = {}) {
+      const { body, model, maxTokens } = request(messages, options);
+      const timer = deadline(options.signal);
+      try {
+        const response = await open({ ...body, stream: true }, maxTokens, timer.signal);
+        if (!response.body) {
+          // Endpoint ignored stream=true: treat the whole reply as one chunk.
+          const data = JSON.parse(await response.text()) as { choices?: Array<{ message?: { content?: unknown } }> };
+          const content = data.choices?.[0]?.message?.content;
+          if (typeof content === "string" && content) yield content;
+          return;
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let newline: number;
+            while ((newline = buffer.indexOf("\n")) >= 0) {
+              const line = buffer.slice(0, newline).trim();
+              buffer = buffer.slice(newline + 1);
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (payload === "[DONE]") return;
+              try {
+                const chunk = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: unknown } }> };
+                const text = chunk.choices?.[0]?.delta?.content;
+                if (typeof text === "string" && text) yield text;
+              } catch { /* keep-alive or partial line */ }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      } catch (cause) {
+        const auth = authError(cause, model);
+        if (auth) throw auth;
+        // Timeout / upstream failure: end the stream like Python does.
+      } finally {
+        timer.done();
       }
     },
   };
