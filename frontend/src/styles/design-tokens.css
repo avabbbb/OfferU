@@ -221,6 +221,9 @@
   --ou-cal-gutter: 3.5rem;
   --ou-cal-day-min: 7.5rem;
   --ou-kanban-column-min: 12.5rem;
+  /* Scroll-edge fades (useScrollEdges): wide on horizontal tracks so "more to the right" reads at a glance. */
+  --ou-scroll-fade-x: 5rem;
+  --ou-scroll-fade-y: 2rem;
   /* Agent composer (ref Inspora · Seb Cornelius "composer mockup"): one rounded glass card; whole-card rings. */
   --ou-radius-composer: 1.625rem; /* 26px */
   --ou-elev-composer: 0 1px 2px rgba(60, 50, 80, 0.05), 0 10px 30px rgba(60, 50, 80, 0.12);

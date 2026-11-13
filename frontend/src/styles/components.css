@@ -85,6 +85,7 @@
   transform: translateX(calc(-2 * var(--ou-nudge)));
   transition: transform var(--ou-motion-slow) var(--ou-ease-spring-soft), opacity var(--ou-motion-fast) var(--ou-ease-standard);
 }
+.ou-menu .ou-menu-item:has(.ou-menu-description) { padding-block: var(--ou-space-1); }
 .ou-menu .ou-menu-item[data-highlighted] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
 .ou-menu .ou-menu-item[data-highlighted] .ou-menu-text { opacity: 1; transform: translateX(var(--ou-nudge)); }
 .ou-menu .ou-menu-item[data-highlighted] .ou-menu-icon { opacity: var(--ou-alpha-soft); }
@@ -347,6 +348,12 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 .ou-chip[aria-pressed="true"] .ou-chip-check { background: var(--ou-action-primary); box-shadow: none; }
 
 /* 卡片底部文字渐隐，代替硬裁切：内容「溶」掉，说明下面还有。 */
+/* 滚动容器边缘渐隐：useScrollEdges() 挂 data-more-start / -end，只在那一侧还有内容时渐隐，滚到头就消失。
+   -x：看板轨道（右缘宽渐隐，一眼看出还能横滚）；-y：LabelPicker 等浮层里的长列表（底部渐隐，不硬切半行）。 */
+.ou-scroll-fade-x[data-more-end] { -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--ou-scroll-fade-x)), transparent); mask-image: linear-gradient(to right, black calc(100% - var(--ou-scroll-fade-x)), transparent); }
+.ou-scroll-fade-x[data-more-start] { -webkit-mask-image: linear-gradient(to right, transparent, black var(--ou-scroll-fade-y)); mask-image: linear-gradient(to right, transparent, black var(--ou-scroll-fade-y)); }
+.ou-scroll-fade-x[data-more-start][data-more-end] { -webkit-mask-image: linear-gradient(to right, transparent, black var(--ou-scroll-fade-y), black calc(100% - var(--ou-scroll-fade-x)), transparent); mask-image: linear-gradient(to right, transparent, black var(--ou-scroll-fade-y), black calc(100% - var(--ou-scroll-fade-x)), transparent); }
+.ou-scroll-fade-y[data-more-end] { -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--ou-scroll-fade-y)), transparent); mask-image: linear-gradient(to bottom, black calc(100% - var(--ou-scroll-fade-y)), transparent); }
 .ou-fade-bottom { -webkit-mask-image: linear-gradient(to bottom, black 62%, transparent); mask-image: linear-gradient(to bottom, black 62%, transparent); }
 
 .ou-button-group > div > [role="dialog"] { border-color: transparent; border-radius: var(--ou-radius-floating); background: var(--ou-bg-floating); -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); }
@@ -404,9 +411,7 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
   scroll-snap-type: x proximity;
   scroll-padding-inline: var(--ou-gutter);
   overscroll-behavior-x: contain;
-  /* 右缘轻轻渐隐：放不下时提示还能往右滚，而不是一刀切断。 */
-  -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--ou-space-6)), transparent);
-  mask-image: linear-gradient(to right, black calc(100% - var(--ou-space-6)), transparent);
+  /* 放不下时（开着 Agent 栏、窄窗口）两侧渐隐见下方 .ou-scroll-fade-x。 */
 }
 .ou-kanban-column {
   display: flex;
