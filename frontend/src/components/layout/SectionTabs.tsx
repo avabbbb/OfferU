@@ -13,20 +13,11 @@ export function SectionTabs() {
   if (pathname.startsWith("/jobs/") || pathname.startsWith("/interview/ai") || pathname.startsWith("/interview/pose")) return null;
   const current = activeTab(primary, pathname);
   return (
-    <nav aria-label={`${primary.label}分区`} className="mb-4 flex gap-1 border-b border-[var(--border)]">
+    <nav aria-label={`${primary.label}分区`} className="ou-segment mb-5">
       {primary.tabs.map((tab) => {
         const active = tab === current;
         return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            aria-current={active ? "page" : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition-colors ${
-              active
-                ? "border-[var(--foreground)] text-[var(--foreground)]"
-                : "border-transparent text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
-            }`}
-          >
+          <Link key={tab.href} href={tab.href} aria-current={active ? "page" : undefined} className="ou-segment-item">
             {tab.label}
           </Link>
         );

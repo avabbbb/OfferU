@@ -18,12 +18,39 @@ from app.agent.loop import (
     ToolExecutionResult,
     run_agent_loop,
 )
-from app.agent.messages import convert_to_llm, create_text_message
+from app.agent.messages import convert_to_llm, create_text_message, estimate_tokens
 from app.agent.provider import LlmStreamProvider
 from app.agent.types import AgentMessage, AssistantMessage, CancelToken, CompactionSummaryMessage, TextContent, ToolResultMessage
 from app.services.agent_files import atomic_write_bytes
 from app.core.agent import step_budget
 from app.services.security_redaction import redact_secret_value, safe_error_message
+
+# 上下文窗口：超过 window - reserve 就压缩。前端 Context Meter 按同一个数显示用量。
+# 事件字段名避开 "token"，否则安全脱敏会把整段抹掉。
+CONTEXT_WINDOW_TOKENS = 64000
+CONTEXT_RESERVE_TOKENS = 8000
+
+
+def context_usage(event: dict[str, Any]) -> dict[str, Any]:
+    """turn_end 时本 Run 上下文占用：优先用模型回传的 input_tokens，网关不回传时按消息估算并标 estimated。"""
+    message = event.get("message")
+    usage = getattr(message, "usage", None)
+    reported_input = int(getattr(usage, "input_tokens", 0) or 0) if usage else 0
+    reported_output = int(getattr(usage, "output_tokens", 0) or 0) if usage else 0
+    estimated = bool(getattr(usage, "estimated", False)) if usage else True
+    if reported_input > 0 and not estimated:
+        used = reported_input + reported_output
+    else:
+        context = event.get("context")
+        messages = list(getattr(context, "messages", None) or [])
+        used = estimate_tokens(messages) if messages else 0
+        estimated = True
+    return {
+        "used": used,
+        "window": CONTEXT_WINDOW_TOKENS,
+        "compact_at": CONTEXT_WINDOW_TOKENS - CONTEXT_RESERVE_TOKENS,
+        "estimated": estimated,
+    }
 
 PROTOCOL_VERSION = "offeru.python-agent.v1"
 SESSION_VERSION = 1
@@ -192,7 +219,9 @@ class EmbeddedAgentWorker:
                 "description": description,
                 "result": result.model_dump(mode="json") if hasattr(result, "model_dump") else result,
                 "is_error": bool(event.get("is_error"))})
-        elif kind in {"agent_start", "agent_end", "turn_start", "turn_end"}:
+        elif kind == "turn_end":
+            await self._emit("kernel.turn_end", {"context_usage": context_usage(event)})
+        elif kind in {"agent_start", "agent_end", "turn_start"}:
             await self._emit(f"kernel.{kind}", {})
 
     async def _compact(self, context: AgentContext, instructions: str = "") -> AgentContext:
@@ -212,7 +241,7 @@ class EmbeddedAgentWorker:
 
     async def _prepare_next_turn(self, payload: dict[str, Any]) -> dict[str, Any]:
         context = payload["context"]
-        if should_compact(context.messages, context_window=64000, reserve_tokens=8000):
+        if should_compact(context.messages, context_window=CONTEXT_WINDOW_TOKENS, reserve_tokens=CONTEXT_RESERVE_TOKENS):
             context = await self._compact(context)
         return {"context": context}
 

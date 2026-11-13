@@ -1,6 +1,6 @@
 # AGENTS.md
 
-给在这个仓库里写代码的 Agent 看的。产品以 `docs/PRD.md` 为准，架构以 `docs/DESIGN.md` 为准；`docs/archive/` 只作考古，不覆盖当前文档。
+给在这个仓库里写代码的 Agent 看的。产品以 `docs/PRD.md` 为准，架构以 `docs/DESIGN.md` 为准，**新增/迁移 UI 的视觉与交互以 `docs/design/visual-system.md` 为准**；`docs/archive/` 只作考古，不覆盖当前文档。
 
 ## 产品
 
@@ -25,20 +25,37 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
 
 - 测试环境的情况，没有真实用户，旧代码和旧数据可以直接删，不写迁移和兼容层。
 - 不写防御性代码和只为覆盖率的测试。每个新工具一条走真实 HTTP / MCP 的端到端测试。
-- 视觉：黑白灰；字号走 CSS 变量 + clamp()，正文约 13–15px，间距用 em / rem，不写死 px；不用徽章、统计卡、彩色按钮、网格背景、超大衬线标题。
-- 改了界面，说清楚改了哪里、怎么点能看到。用户说自己验收时就不跑 Playwright。
+- 视觉：参照 `docs/design/visual-system.md`（v3 Glass，2026-11-13 起，参考 Inspora · Bleep App）：冷暖渐变画布（只此一处渐变）+ 磨砂玻璃侧栏 + 半透明白纸面，几乎不用 1px 描边（靠透明度和柔和大阴影分层），大圆角，悬停 / 选中是白胶囊；**墨黑胶囊主按钮**，橙色只表示紧急 / 委托给 Agent，紫色只属于 Agent；状态 / 标签是浅底深字胶囊。新 UI 只用 `frontend/src/styles/design-tokens.css` 的语义 Token（`--ou-bg-*`、`--ou-glass-*`、`--ou-capsule-*`、`--ou-text-*`、`--ou-line-*`、`--ou-tone-*`、`--ou-elev-*`、`--ou-radius-*`），不自行写新色值、字体 px、阴影、圆角或 z-index。正文约 13–15px，文档视图 16px；不用 KPI 卡堆砌、彩色大底、卡片 / 按钮渐变和超大衬线标题。
+- **先找参考**：做新界面、改版或新动效之前，先读 `docs/design/DESIGN.md`，再按 `docs/design/references.md` 在 Inspora / Awwwards / GSAP Showcase / Refero 找 2–3 个参考，把链接和「借什么」写进 PR 描述的「参考」一节。动效落地用 CSS + `--ou-motion-*` Token，不随手引入动画库。
+- **组件**：新 UI 只组合 `frontend/src/components/ui/`（Button、Field、Select、Menu、Popover、Dialog、Panel、Pill，行为基于 Radix Primitives），规格见 `docs/design/components.md`。缺组件就先在 `components/ui` 加组件并写进 components.md，再在页面里用；禁止裸 `<select>`、手写菜单 / 弹层 / 阴影（`design:audit` 的 `raw-control` 规则会拦）。容器层级按 L0–L4，页面宽度用 `.ou-page-reading / -default / -wide`。
+- 新 UI 首先明确任务、状态、主操作和渐进式披露；对照 `visual-system.md` 检查窄窗口、中文长文本、侧栏、浮层、IME、键盘焦点与错误恢复。改了界面要提供验证路径；有稳定测试夹具时跑 Playwright，用户明确要求手工验收时也要说明未覆盖的自动化项。
 - 自动化测试（Playwright、脚本请求）只用公开的官方招聘页（如飞书招聘）。
 - 公开版不碰 BOSS 直聘、小红书等风控平台：不自动打招呼、不后台爬取、不绕反爬。这类页面由用户在自己登录的浏览器里手动操作；插件只做当前页/选中文字的「存为岗位」。
 - 官网网申表单的填写助手可以做（飞书招聘、Moka、北森等公开官网）：逐字段灰色预览、一键填入、批量填写、回读和撤销；提交按钮永远由用户点，不填密码/证件号/文件上传。
 - 仓库里可能有未跟踪的本地实验目录（如 `internal/`），不要用 `git add -f` 把它们推上来；公开版能力以本文件和 PRD 为准。
 
+- UI 提交前在 `frontend/` 执行 `npm run design:audit`、`npm run design:audit:test`、`npm run typecheck`、`npm test`、`npm run build`；`design:audit` 只阻止新增违规，历史报告不等于验收通过。不要通过放宽审计规则来跳过问题。
+
 ## 提交和合并
 
-- `main`：review之后可以提交
-- required checks 在 `.github/workflows/build.yml`：`backend-tests`（pytest 全量）、`frontend-quality`（typecheck + vitest + build）。不要绕过 required checks 直接 push `main`；红了先修。
-- `test`：没有保护，不用等 CI，可以直接合进去试。
-- 用户在对话里同意合并后再合；合完同步本地 `main`。
-- 不要碰用户自己没提交的改动；需要干净工作区时用 `git worktree`。
+目标：多数 PR 当天合进 `main`，最多一个人参与（可以就是作者自己）；靠小改动、本地验证和快速回滚兜底，而不是靠等。参考 Anthropic Claude Code 团队的做法（claude.dev《How the Claude Code team does code review》，2026-10-15）。
+
+1. **开 PR 前先自证**：Agent 自己跑完相关检查并贴出结果（前端 `npm run typecheck` + `npm run design:audit` + 相关 vitest；后端相关 pytest；UI 改动附截图或写明怎么看），再用新上下文做一次自审（只看 diff：有没有 bug、能不能更简单）。
+2. **PR 要小**：一天内能合完的大小。大功能拆小、新行为先放在开关后面合进去。
+3. **按风险分档，看改动不看人**（写进 PR 模板的「风险」）：
+
+   | 档 | 典型改动 | 合并方式 |
+   | --- | --- | --- |
+   | 低 | 文档、文案、样式 / Token、`docs/design`、测试、开关后面的新增功能 | required checks 绿了就合（开 auto-merge），不等人 |
+   | 中 | 普通前后端功能和修复 | 作者自审后自己合，合完自己盯 |
+   | 高 | `.github/workflows/`、打包与自动更新（`frontend/src-tauri/`、安装包脚本）、BOSS 登录 / keyring / 凭据、`security_redaction`、数据库迁移与删除数据、发布脚本 | **必须等 @avabbbb 在对话或 PR 里点头** |
+
+   拿不准就往高一档算。
+4. **required checks**（`.github/workflows/build.yml`，按改动路径触发，一般 1–3 分钟）：`Backend tests`、`Frontend typecheck and build`、`Browser extension typecheck, test and build`、`Agent runtime install and audit`。红了先修，不绕过，不直接 push `main`。
+5. **重活不挡合并**：Windows / macOS 安装包、安装后冒烟、跨进程恢复每晚 02:00 CST 跑一次（`schedule`），打 `v*` tag 和手动触发时也跑；成功后发布 rolling nightly。nightly 红了，第二天第一件事是修或 revert。
+6. **你合的你负责**：合进去出问题，作者优先修；修不了就直接 revert（`git revert` 走低档 PR），不追责。
+7. `test` 分支：没有保护，不用等 CI，可以直接合进去试。
+8. 不要碰用户自己没提交的改动；需要干净工作区时用 `git worktree`。合完同步本地 `main`。
 
 ## 文档
 

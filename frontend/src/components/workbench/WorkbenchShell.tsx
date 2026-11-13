@@ -94,7 +94,7 @@ function useFocusAgentOpen() {
   return agentOpen;
 }
 
-function FocusAgentDrawer({ open }: { open: boolean }) {
+function FocusAgentDrawer({ open, belowBar = false }: { open: boolean; belowBar?: boolean }) {
   return (
     <AnimatePresence>
       {open && (
@@ -103,10 +103,11 @@ function FocusAgentDrawer({ open }: { open: boolean }) {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 24 }}
           transition={{ type: "spring", stiffness: 400, damping: 34 }}
-          className="offeru-focus-agent fixed bottom-4 right-4 top-14 z-50 w-[min(92vw,340px)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--background)] shadow-[0_12px_36px_var(--shadow-medium)]"
+          className="offeru-focus-agent ou-glass fixed overflow-hidden"
+          data-below-bar={belowBar || undefined}
         >
           <Suspense fallback={null}>
-            <AgentPanel />
+            <AgentPanel onClose={toggleAgentDrawer} />
           </Suspense>
         </motion.div>
       )}
@@ -170,7 +171,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
             {children}
           </main>
         </div>
-        <FocusAgentDrawer open={agentOpen} />
+        <FocusAgentDrawer open={agentOpen} belowBar />
         <ReviewDock />
       </>
     );
@@ -184,7 +185,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
           <div className="mx-auto max-w-[1600px]">
             <DemoModeBar />
             <SectionTabs />
-            {children}
+            <div key={pathname} className="ou-page-enter">{children}</div>
           </div>
         </main>
         {pathname !== "/settings" && <div className="fixed bottom-[72px] left-4 z-40 max-w-[calc(100vw-2rem)] md:hidden">

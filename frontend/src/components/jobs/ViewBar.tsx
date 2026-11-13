@@ -9,7 +9,7 @@ import { VIEW_KINDS, VIEW_NAME, activeCounts, type ViewKind, type ViewState } fr
 import { FieldsPanel, FilterPanel, GroupPanel, Popover, RowHeightPanel, SortPanel, ctl, ghost, type Patch } from "./ViewPanels";
 
 // 顶栏（Notion 式）：左边视图 tab，选中的是浅灰圆角底；右边一排灰色图标（筛选、分组、排序、搜索、字段、行高、重置），
-// 生效的图标变深并带计数；搜索点了才展开输入框；最右蓝色「添加岗位」。
+// 生效的图标变深并带计数；搜索点了才展开输入框；最右墨黑主按钮「添加岗位」（全站唯一实心按钮样式，见 components/ui/Button）。
 const icon = (Icon: typeof Search, name: string, count = 0): ReactNode => (
   <span title={name} aria-label={count ? count + " " + name : name} className="flex items-center gap-1">
     <Icon size={16} strokeWidth={1.75} aria-hidden />
@@ -31,23 +31,21 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
   const view = state.views[state.active];
   const n = activeCounts(view);
   const table = state.active === "table";
-  // 看板自带标签筛选，只有表格和甘特用这排工具；字段和行高只对表格有意义。
-  const listing = state.active !== "board";
+  // 看板自带标签筛选、日历按周看事项，只有表格和甘特用这排工具；字段和行高只对表格有意义。
+  const listing = state.active === "table" || state.active === "gantt";
   const [searching, setSearching] = useState(false);
   const showSearch = searching || search.length > 0;
   return (
     <div className="flex flex-wrap items-center gap-x-1 gap-y-2 pb-1">
-      <div role="tablist" aria-label="视图" className="flex items-center gap-1">
+      <div role="tablist" aria-label="视图" className="ou-segment">
         {VIEW_KINDS.map((k) => (
           <button key={k} type="button" role="tab" aria-selected={state.active === k} onClick={() => setActive(k)}
-            className={"rounded-full px-3 py-1 text-[13.5px] " + (state.active === k
-              ? "bg-[var(--surface-hover)] font-medium text-[var(--foreground)]"
-              : "text-[var(--foreground-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]")}>
+            className="ou-segment-item">
             {VIEW_NAME[k]}
           </button>
         ))}
       </div>
-      <div className="ml-auto flex flex-wrap items-center gap-0.5">
+      <div className="ou-button-group ml-auto flex-wrap">
         {listing && (
           <>
             <Popover label={icon(ListFilter, "筛选", n.filter)} active={n.filter > 0} width={480}><FilterPanel view={view} jobs={jobs} patch={patch} /></Popover>
@@ -63,7 +61,7 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
             <button type="button" className={ghost} onClick={reset} title="恢复这个视图默认的筛选、分组、排序、字段和列宽">{icon(RotateCcw, "重置")}</button>
           </>
         )}
-        <button type="button" onClick={onAdd} className="ml-2 rounded-md bg-[#2383e2] px-3 py-1 text-[13.5px] font-medium text-white hover:bg-[#0077d4]">
+        <button type="button" onClick={onAdd} className="ou-button ou-button-primary ml-2">
           {adding ? "收起" : "添加岗位"}
         </button>
       </div>

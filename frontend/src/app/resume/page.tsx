@@ -12,6 +12,7 @@ import { type PreviewHandle, ResumePreview } from "@/components/resume/ResumePre
 import { ResumeSwitcher } from "@/components/resume/ResumeSwitcher";
 import { StylePanel } from "@/components/resume/StylePanel";
 import { TailorBar } from "@/components/resume/TailorBar";
+import { Button } from "@/components/ui";
 import { type Doc, type Job, type Memory, type Profile, tool, useTool, write } from "@/lib/core";
 import { resumeFromProfile } from "@/lib/resumeDraft";
 import { emptyResume, locatePath, normalizeResume, type Resume } from "@/lib/resumeModel";
@@ -94,22 +95,21 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
 
   const job = jobs.find((j) => j.id === doc.job_id);
   const school = resume.sections.find((s) => s.type === "education")?.items[0]?.title.trim() ?? "";
-  const link = "text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]";
   return (
-    <div className="resume-shell flex min-w-0 flex-1 flex-col bg-[var(--background)]">
+    <div className="resume-shell flex min-w-0 flex-1 flex-col">
       <header className="rs-head">
         <ResumeSwitcher docs={docs} current={doc} jobs={jobs} title={title} onRename={rename} onCreate={onCreate} onCopy={copy}
           onDelete={(d) => void remove(d)} />
-        {job && <Link href={"/jobs/" + job.id} className={link + " shrink-0"}>{job.label}</Link>}
-        <span className="rs-saved">{saved && styleSaved ? "已保存" : "保存中…"}</span>
+        {job && <Link href={"/jobs/" + job.id} className="rs-joblink">{job.label}</Link>}
+        <span className="rs-saved" data-pending={saved && styleSaved ? undefined : ""} aria-live="polite">{saved && styleSaved ? "已保存" : "保存中…"}</span>
         <StylePanel style={style} onChange={changeStyle} onFit={() => void fit()} fitting={fitting} notice={notice} />
         <DownloadButton docId={doc.id} />
       </header>
-      <div className="flex min-h-0 flex-1">
+      <div className="rs-body">
         <ResumeForm resume={resume} onChange={changeResume} focus={focus} readOnly={tailoring}
           basicsExtra={<BasicsMedia style={style} onStyle={changeStyle} photo={photo} school={school}
             onPhoto={() => void mutate((k) => Array.isArray(k) && k[0] === "tool")} />} />
-        <div className="flex w-[56%] min-w-[420px] shrink-0 flex-col bg-[var(--background)]">
+        <div className="rs-preview">
           <ResumePreview ref={preview} resume={resume} style={style}
             toolbar={<TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved} onRunning={setTailoring}
               onDone={async (id) => { await mutate((k) => Array.isArray(k) && k[0] === "tool"); if (id !== doc.id) router.push("/resume/" + id); }} />}
@@ -154,20 +154,20 @@ export default function ResumePage() {
 
   if (!current) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">简历</h1>
-        <p className="mt-1 text-[13.5px] text-[var(--foreground-muted)]">先有一份主简历，再按岗位复制一份改。左边按块写，右边就是导出的 PDF。</p>
-        <div className="mt-6 flex gap-3">
-          <button type="button" onClick={() => void create(true)} style={{ fontSize: 13 }} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)]">从档案生成</button>
-          <button type="button" onClick={() => void create(false)} style={{ fontSize: 13 }} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-[var(--surface)]">空白开始</button>
+      <div className="ou-page ou-page-default">
+        <h1 className="rs-empty-title">简历</h1>
+        <p className="rs-empty-lead">先有一份主简历，再按岗位复制一份改。左边按块写，右边就是导出的 PDF。</p>
+        <div className="rs-empty-actions">
+          <Button variant="primary" onClick={() => void create(true)}>从档案生成</Button>
+          <Button variant="secondary" onClick={() => void create(false)}>空白开始</Button>
         </div>
-        <p className="mt-4 text-[13px] text-[var(--foreground-muted)]">档案还空着？先去 <Link href="/profile" className="underline">档案</Link> 填经历，或者导入旧简历。</p>
+        <p className="rs-empty-note">档案还空着？先去 <Link href="/profile" className="underline">档案</Link> 填经历，或者导入旧简历。</p>
       </div>
     );
   }
 
   return (
-    <div className="resume-shell flex h-full min-h-0 bg-[var(--background)]">
+    <div className="resume-shell flex h-full min-h-0">
       <Editor key={current.id} doc={current} docs={docs} jobs={jobs} photo={profileData?.record?.photo} onCopy={copy}
         onCreate={(fromProfile) => void create(fromProfile)} />
     </div>

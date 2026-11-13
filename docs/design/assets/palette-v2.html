@@ -1,0 +1,54 @@
+<!doctype html><html><head><meta charset=utf-8><style>
+body{margin:0;background:#fffcf9;font-family:"PingFang SC","Noto Sans CJK SC","Inter",sans-serif;color:#231d19;}
+.wrap{width:1520px;padding:56px 64px;box-sizing:border-box}
+h1{font-size:30px;margin:0 0 6px;font-weight:650;letter-spacing:-.01em} .sub{color:#69625d;font-size:15px;margin-bottom:40px}
+h2{font-size:17px;font-weight:600;margin:36px 0 14px} h2 small{font-weight:400;color:#69625d;font-size:13px;margin-left:10px}
+.row{display:flex;gap:10px} .sw{flex:1;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.chip{height:64px;border-radius:10px;box-shadow:inset 0 0 0 1px rgba(35,29,25,.08);margin-bottom:6px}
+.sw span{color:#69625d} code{font-family:"SF Mono",Menlo,monospace;font-size:11px;color:#69625d}
+.brand{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+.b{border-radius:14px;padding:18px;height:110px;display:flex;flex-direction:column;justify-content:space-between;font-size:14px;box-shadow:inset 0 0 0 1px rgba(35,29,25,.08)}
+.b small{opacity:.8;font-size:12px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:999px;font-size:13px;font-weight:500;line-height:20px}
+.pill i{width:7px;height:7px;border-radius:50%}
+.tags{display:grid;grid-template-columns:repeat(5,1fr);gap:16px 14px} .tg{display:flex;flex-direction:column;gap:5px;align-items:flex-start} .tg small{font-size:11px;color:#69625d}
+.cols{display:grid;grid-template-columns:1.25fr 1fr;gap:28px}
+.mock{display:flex;height:330px;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px #e3dad5,0 8px 26px rgba(35,29,25,.08)}
+.side{width:190px;background:#fcf6f1;border-right:1px solid #e3dad5;padding:18px 12px;font-size:14px}
+.side div{padding:7px 10px;border-radius:8px;color:#69625d} .side .on{background:#ece3de;color:#231d19;font-weight:550}
+.main{flex:1;background:#fff;padding:22px 26px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px} .top b{font-size:22px}
+.btn{background:#231d19;color:#fff;border-radius:8px;padding:7px 14px;font-size:13.5px;font-weight:550}
+table{width:100%;border-collapse:collapse;font-size:14px} td,th{text-align:left;padding:9px 6px;border-bottom:1px solid #e3dad5} th{color:#69625d;font-weight:500;font-size:13px}
+.today{color:#ff4f00;font-weight:600}
+.elev{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;background:#fffcf9;padding:22px;border-radius:14px;box-shadow:inset 0 0 0 1px #e3dad5}
+.e{height:110px;border-radius:12px;padding:12px;font-size:13px;display:flex;flex-direction:column;justify-content:space-between} .e small{color:#69625d;font-size:11.5px}
+.rules{font-size:14px;line-height:1.75;color:#231d19;margin:0;padding-left:20px} .rules li span{color:#69625d}
+</style></head><body><div class=wrap>
+<h1>OfferU 色卡 v2</h1><div class=sub>一条暖中性色阶撑起 90% 界面 · 墨黑做主操作 · 橙色只标「紧急」· 紫色只属于 Agent · 状态与标签全部「浅底 + 深字」</div>
+<h2>暖中性色阶 Neutral 1–12<small>按用途取级，不按深浅随手取（参考 Radix 12 级用途表）</small></h2><div class=row><div class="sw"><div class="chip" style="background:#fffcf9"></div><b>1</b><span>画布 L0</span><code>#fffcf9</code></div><div class="sw"><div class="chip" style="background:#fcf6f1"></div><b>2</b><span>侧栏 / 内容面</span><code>#fcf6f1</code></div><div class="sw"><div class="chip" style="background:#f6efeb"></div><b>3</b><span>控件底</span><code>#f6efeb</code></div><div class="sw"><div class="chip" style="background:#f1e9e4"></div><b>4</b><span>悬停</span><code>#f1e9e4</code></div><div class="sw"><div class="chip" style="background:#ece3de"></div><b>5</b><span>选中</span><code>#ece3de</code></div><div class="sw"><div class="chip" style="background:#e3dad5"></div><b>6</b><span>分隔线</span><code>#e3dad5</code></div><div class="sw"><div class="chip" style="background:#d7cec8"></div><b>7</b><span>控件边框</span><code>#d7cec8</code></div><div class="sw"><div class="chip" style="background:#c4bab4"></div><b>8</b><span>强边框 / 焦点</span><code>#c4bab4</code></div><div class="sw"><div class="chip" style="background:#928a85"></div><b>9</b><span>占位符</span><code>#928a85</code></div><div class="sw"><div class="chip" style="background:#827a75"></div><b>10</b><span>图标</span><code>#827a75</code></div><div class="sw"><div class="chip" style="background:#69625d"></div><b>11</b><span>次要文字</span><code>#69625d</code></div><div class="sw"><div class="chip" style="background:#231d19"></div><b>12</b><span>主文字</span><code>#231d19</code></div></div>
+<h2>品牌角色<small>每个颜色只表达一种意思（Apple HIG）</small></h2>
+<div class=brand>
+<div class=b style="background:#fff3e6"><b>Paper #FFF3E6</b><small>只用于官网 / 空状态插画，不做应用画布</small></div>
+<div class=b style="background:#231d19;color:#fff"><b>Ink #231D19</b><small>主按钮「添加岗位」、主文字</small></div>
+<div class=b style="background:#ff4f00;color:#231d19"><b>Orange #FF4F00</b><small>唯一强调：今天线、截止、未读</small></div>
+<div class=b style="background:#2b2358;color:#fff"><b>Agent Purple #2B2358</b><small>只用于 Agent 面板与 AI 动作</small></div>
+<div class=b style="background:#c1b7ff"><b>Lilac #C1B7FF</b><small>Agent 运行中 / 选中高亮</small></div></div>
+<h2>投递状态 6 色<small>浅底 3 级 + 1px 边 6 级 + 圆点 9 级 + 文字 11 级</small></h2><div class=row style="gap:12px"><span class="pill" style="background:#f1f0ee;color:#605955;box-shadow:inset 0 0 0 1px #d7d3d1"><i style="background:#9e9691"></i>想投</span><span class="pill" style="background:#e3f2ff;color:#275e91;box-shadow:inset 0 0 0 1px #bad8f7"><i style="background:#5b9ddf"></i>已投递</span><span class="pill" style="background:#f9efdb;color:#775400;box-shadow:inset 0 0 0 1px #e6d2a9"><i style="background:#bd9121"></i>笔试/测评</span><span class="pill" style="background:#ffeadd;color:#913f01;box-shadow:inset 0 0 0 1px #fac8ae"><i style="background:#e1773b"></i>面试中</span><span class="pill" style="background:#e5f5e8;color:#2e693e;box-shadow:inset 0 0 0 1px #bedec3"><i style="background:#63ab74"></i>Offer</span><span class="pill" style="background:#ffe8e5;color:#953734;box-shadow:inset 0 0 0 1px #fec4be"><i style="background:#e66e68"></i>未通过</span></div>
+<h2>标签 9 色（按名称哈希分配）<small>文字在底色上全部 ≥ 4.5:1（WCAG AA）</small></h2><div class=tags><div class="tg"><span class="pill" style="background:#f1f0ee;color:#605955;box-shadow:inset 0 0 0 1px #d7d3d1"><i style="background:#9e9691"></i>gray</span><code>#f1f0ee / #605955</code><small>对比度 6.03:1</small></div><div class="tg"><span class="pill" style="background:#f8eee8;color:#72533f;box-shadow:inset 0 0 0 1px #e3d0c4"><i style="background:#b68f75"></i>brown</span><code>#f8eee8 / #72533f</code><small>对比度 6.08:1</small></div><div class="tg"><span class="pill" style="background:#ffeadd;color:#913f01;box-shadow:inset 0 0 0 1px #fac8ae"><i style="background:#e1773b"></i>orange</span><code>#ffeadd / #913f01</code><small>对比度 6.2:1</small></div><div class="tg"><span class="pill" style="background:#f9efdb;color:#775400;box-shadow:inset 0 0 0 1px #e6d2a9"><i style="background:#bd9121"></i>yellow</span><code>#f9efdb / #775400</code><small>对比度 6.03:1</small></div><div class="tg"><span class="pill" style="background:#e5f5e8;color:#2e693e;box-shadow:inset 0 0 0 1px #bedec3"><i style="background:#63ab74"></i>green</span><code>#e5f5e8 / #2e693e</code><small>对比度 5.79:1</small></div><div class="tg"><span class="pill" style="background:#e3f2ff;color:#275e91;box-shadow:inset 0 0 0 1px #bad8f7"><i style="background:#5b9ddf"></i>blue</span><code>#e3f2ff / #275e91</code><small>对比度 5.95:1</small></div><div class="tg"><span class="pill" style="background:#f1edff;color:#5f4e8e;box-shadow:inset 0 0 0 1px #d6cef5"><i style="background:#9e88da"></i>purple</span><code>#f1edff / #5f4e8e</code><small>对比度 6.17:1</small></div><div class="tg"><span class="pill" style="background:#ffe9f3;color:#844063;box-shadow:inset 0 0 0 1px #f1c6d9"><i style="background:#cf78a3"></i>pink</span><code>#ffe9f3 / #844063</code><small>对比度 6.29:1</small></div><div class="tg"><span class="pill" style="background:#ffe8e5;color:#953734;box-shadow:inset 0 0 0 1px #fec4be"><i style="background:#e66e68"></i>red</span><code>#ffe8e5 / #953734</code><small>对比度 6.24:1</small></div></div>
+<div class=cols><div><h2>组合示例：侧栏 + 表格</h2>
+<div class=mock><div class=side><div>今天</div><div class=on>岗位</div><div>简历</div><div>面试</div><div>设置</div></div>
+<div class=main><div class=top><b>岗位</b><span class=btn>添加岗位</span></div>
+<table><tr><th>公司</th><th>岗位</th><th>状态</th><th>标签</th><th>截止</th></tr>
+<tr><td>字节跳动</td><td>后端开发实习生</td><td><span class="pill" style="background:#ffeadd;color:#913f01;box-shadow:inset 0 0 0 1px #fac8ae"><i style="background:#e1773b"></i>面试中</span></td><td><span class="pill" style="background:#e3f2ff;color:#275e91;box-shadow:inset 0 0 0 1px #bad8f7"><i style="background:#5b9ddf"></i>互联网</span></td><td class=today>今天</td></tr>
+<tr><td>蚂蚁集团</td><td>AI 应用开发</td><td><span class="pill" style="background:#e3f2ff;color:#275e91;box-shadow:inset 0 0 0 1px #bad8f7"><i style="background:#5b9ddf"></i>已投递</span></td><td><span class="pill" style="background:#f9efdb;color:#775400;box-shadow:inset 0 0 0 1px #e6d2a9"><i style="background:#bd9121"></i>实习</span></td><td>11-20</td></tr>
+<tr><td>小红书</td><td>服务端开发</td><td><span class="pill" style="background:#f1f0ee;color:#605955;box-shadow:inset 0 0 0 1px #d7d3d1"><i style="background:#9e9691"></i>想投</span></td><td><span class="pill" style="background:#ffe9f3;color:#844063;box-shadow:inset 0 0 0 1px #f1c6d9"><i style="background:#cf78a3"></i>社区</span></td><td>11-28</td></tr>
+<tr><td>腾讯</td><td>后台开发</td><td><span class="pill" style="background:#ffe8e5;color:#953734;box-shadow:inset 0 0 0 1px #fec4be"><i style="background:#e66e68"></i>未通过</span></td><td><span class="pill" style="background:#f1edff;color:#5f4e8e;box-shadow:inset 0 0 0 1px #d6cef5"><i style="background:#9e88da"></i>后台</span></td><td>—</td></tr></table></div></div></div>
+<div><h2>层级 L0–L4<small>每级一对 边框 + 阴影</small></h2><div class=elev>
+<div class=e style="background:#fffcf9;box-shadow:inset 0 0 0 1px #e3dad5">L0 画布<small>无阴影</small></div>
+<div class=e style="background:#fff;box-shadow:0 0 0 1px #e3dad5">L1 内容面<small>1px 分隔</small></div>
+<div class=e style="background:#fff;box-shadow:0 0 0 1px #e3dad5,0 1px 2px rgba(35,29,25,.06)">L2 卡片<small>悬停升到 L2+</small></div>
+<div class=e style="background:#fff;box-shadow:0 0 0 1px #d7cec8,0 8px 24px rgba(35,29,25,.12)">L3 浮层<small>菜单 / ⌘K</small></div>
+<div class=e style="background:#fff;box-shadow:0 0 0 1px #d7cec8,0 24px 60px rgba(35,29,25,.20)">L4 弹窗<small>+ 遮罩</small></div></div>
+<h2>规则</h2><ol class=rules><li>中性色 ≈ 90%，墨黑 ≈ 8%，橙/紫 ≤ 2% <span>（Figma 60/30/10 的克制版）</span></li><li>蓝色退出品牌，只留作「已投递」状态色</li><li>侧栏 = N2，画布 = N1，内容 = 白；靠层级区分，不换色相</li><li>颜色永远配文字或图标，不单靠颜色表达状态</li></ol></div></div>
+</div></body></html>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { JobsCalendar } from "@/components/jobs/JobsCalendar";
 import { JobsGantt } from "@/components/jobs/JobsGantt";
 import { JobsTable } from "@/components/jobs/JobsTable";
 import { RecordDrawer } from "@/components/jobs/RecordDrawer";
@@ -9,18 +10,9 @@ import { ViewBar } from "@/components/jobs/ViewBar";
 import { JobBoard } from "@/components/today/JobBoard";
 import { type Event, JOB_STATUS, type Job, refreshAll, useTool, write } from "@/lib/core";
 import { evaluateJobs } from "@/lib/evaluate";
-import { applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
+import { VIEW_KINDS, applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
 
 const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
-
-export function StatusSelect({ job }: { job: Job }) {
-  return (
-    <select value={job.status} aria-label="投递状态" style={{ fontSize: 13 }} className={field + " py-1"}
-      onChange={(e) => void write("save", { type: "job", id: job.id, data: { status: e.target.value } })}>
-      {Object.entries(JOB_STATUS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-    </select>
-  );
-}
 
 // 添加岗位：贴链接或 JD 让后端抓正文、拆字段（抓不到就报错，不存空壳）；也能手动填。
 function AddJob() {
@@ -91,7 +83,13 @@ export default function JobsPage() {
   const [rankProgress, setRankProgress] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => { setState(loadViews()); setLoaded(true); }, []);
+  useEffect(() => {
+    const saved = loadViews();
+    // #/jobs?view=calendar（以及旧的 #/calendar）直接打开对应视图。
+    const want = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("view");
+    setState(VIEW_KINDS.includes(want as ViewKind) ? { ...saved, active: want as ViewKind } : saved);
+    setLoaded(true);
+  }, []);
   useEffect(() => { if (loaded) saveViews(state); }, [state, loaded]);
 
   const view = state.views[state.active];
@@ -125,13 +123,13 @@ export default function JobsPage() {
   };
 
   return (
-    <div className="space-y-4 px-6 py-8">
+    <div className="ou-page ou-page-wide space-y-4">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">岗位</h1>
         {unscored > 0 && (
           <span className="flex items-center gap-2 text-[13px] text-[var(--foreground-muted)]">
             {unscored} 个岗位还没评估
-            <button type="button" onClick={() => void rank()} disabled={ranking} className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">{ranking ? (rankProgress ? `正在评估 ${rankProgress}…` : "正在评估…") : "评估未评估的"}</button>
+            <button type="button" onClick={() => void rank()} disabled={ranking} className="ou-button ou-button-secondary ou-button-sm">{ranking ? (rankProgress ? `正在评估 ${rankProgress}…` : "正在评估…") : "评估未评估的"}</button>
           </span>
         )}
         {error && <span role="alert" className="text-[12.5px] text-[var(--foreground)]">{error}</span>}
@@ -147,6 +145,7 @@ export default function JobsPage() {
           : <JobsTable jobs={shown} view={view} patch={patch} openId={openId} onOpen={setOpenId} onAdd={() => setAdding(true)} />
       )}
       {state.active === "board" && <JobBoard embedded />}
+      {state.active === "calendar" && <JobsCalendar events={events} />}
       {state.active === "gantt" && <JobsGantt jobs={shown} events={events} view={view} openId={openId} onOpen={setOpenId} />}
 
       {open && (

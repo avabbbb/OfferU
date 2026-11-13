@@ -35,7 +35,7 @@ export function OfferURoutes() {
         <Route path="/interview/review" element={<InterviewReviewPage />} />
         <Route path="/interview/ai" element={<AIInterviewPage />} />
         <Route path="/interview/pose" element={<PoseInterviewPage />} />
-        <Route path="/calendar" element={<Navigate replace to="/" />} />
+        <Route path="/calendar" element={<Navigate replace to="/jobs?view=calendar" />} />
         
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/settings" element={<SettingsPage />} />

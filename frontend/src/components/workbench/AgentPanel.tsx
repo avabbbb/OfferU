@@ -17,16 +17,24 @@ import {
   Briefcase,
   ClipboardCheck,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
+  ArrowUp,
+  History,
+  ListTodo,
   Loader2,
+  Mail,
+  MoreHorizontal,
+  PenLine,
   Plus,
   RefreshCw,
-  Send,
   Sparkles,
   Square,
   Trash2,
   Wrench,
+  X,
 } from "lucide-react";
+import { Menu } from "@/components/ui";
 import {
   agentSupportApi,
   hostedExecutorApi,
@@ -50,6 +58,8 @@ import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { SHOWCASE } from "@/lib/showcase";
 import { getBridgeState, subscribeBridge } from "@/lib/bridge";
 import { DemoAgentPanel } from "./DemoAgentPanel";
+import { contextUsageFromEvent, type AgentContextUsage } from "@/lib/agentContextUsage";
+import { ContextUsageRing } from "@/components/ui/agent/ContextUsageRing";
 import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";
@@ -230,19 +240,19 @@ function progressForEvent(event: string, operation: unknown): string | null {
   }
 }
 
-export function AgentPanel() {
+export function AgentPanel({ onClose }: { onClose?: () => void } = {}) {
   const bridge = useSyncExternalStore(subscribeBridge, getBridgeState, getBridgeState);
-  return SHOWCASE && !bridge.active ? <DemoAgentPanel /> : <BackendAgentPanel />;
+  return SHOWCASE && !bridge.active ? <DemoAgentPanel /> : <BackendAgentPanel onClose={onClose} />;
 }
 
-function BackendAgentPanel() {
+function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const [messages, setMessages] = useState<PanelMessage[]>([
     {
       id: "welcome",
       role: "assistant",
       content: SHOWCASE
         ? "这是 OfferU 网页演示 Agent。它只使用演示数据，不连接你电脑里的 Coding Agent；真实本地数据与外置 Agent 请在本机安装 OfferU。"
-        : "在这里查看 OfferU 任务与确认请求。需要时可从「接入与同步」连接本机 Coding Agent，把当前工作交给它。",
+        : "改简历、排待办、读邮件里的邀约都可以直接说。要用本机的 Coding Agent，去「接入与同步」连上。",
     },
   ]);
   const [input, setInput] = useState("");
@@ -253,6 +263,8 @@ function BackendAgentPanel() {
   const [progressText, setProgressText] = useState("");
   const [error, setError] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [contextUsage, setContextUsage] = useState<AgentContextUsage | null>(null);
+  useEffect(() => setContextUsage(null), [conversationId]);
   const [conversationTitle, setConversationTitle] = useState("新对话");
   const [resumeCandidate, setResumeCandidate] = useState<ResumeCandidate | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -289,6 +301,19 @@ function BackendAgentPanel() {
   const runNeedsUser = Boolean(interruptedRunId) || reviewPending > 0;
   // 每次发送都开一个新 Run，可与其他 Run 并发；超过设置里的并发上限时后端直接报错。
   const loading = inFlightTurns.length > 0 || runActionPending;
+  // 输入框：能发就是「发送」胶囊；正在跑又没东西可发时，发送键收成一个小像素格加载（参考 Inspora「composer mockup」）。
+  const canSend = (Boolean(input.trim()) || composerAttachments.readyCount > 0) && !composerAttachments.uploading;
+  const working = loading;
+  const [sentPulse, setSentPulse] = useState(false);
+  const pulseTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (pulseTimer.current) window.clearTimeout(pulseTimer.current); }, []);
+  const sendFromComposer = () => {
+    if (!canSend) return;
+    setSentPulse(true);
+    if (pulseTimer.current) window.clearTimeout(pulseTimer.current);
+    pulseTimer.current = window.setTimeout(() => setSentPulse(false), 520);
+    void sendMessage();
+  };
 
   const latestResponse = useMemo(() => {
     return [...messages].reverse().find((message) => message.response)?.response;
@@ -487,6 +512,8 @@ function BackendAgentPanel() {
           const eventRunId = String(data?.run_id || "");
           if (eventRunId) setActiveRunId(eventRunId);
           const progress = progressForEvent(event, data?.payload?.operation);
+          const usage = contextUsageFromEvent(data);
+          if (usage) setContextUsage(usage);
           const delta = event === "assistant.delta" || event === "message.delta"
             ? String(data?.payload?.delta || "")
             : "";
@@ -602,7 +629,7 @@ function BackendAgentPanel() {
       {
         id: `welcome-${Date.now()}`,
         role: "assistant",
-        content: "新对话已开始。直接描述你的求职任务。",
+        content: "新对话已开始，直接描述你的求职任务。",
       },
     ]);
   };
@@ -876,54 +903,47 @@ function BackendAgentPanel() {
 
   return (
     <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
-      <div className="agent-bar flex items-center justify-between gap-2 px-3 py-2">
+      <div className="agent-head">
+        <span className="agent-head-mark" aria-hidden><Sparkles size={14} strokeWidth={2} /></span>
         <button
           type="button"
           onClick={() => setHistoryOpen((value) => !value)}
-          className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[length:var(--agent-fs-sm)] font-medium text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)]"
+          className="agent-head-title"
           title="历史对话"
+          aria-expanded={historyOpen}
         >
           <span className="truncate">{conversationTitle || "新对话"}</span>
-          <ChevronDown
-            size={13}
-            className={"shrink-0 text-[var(--foreground-muted)] transition-transform duration-[var(--dur-quick)] " + (historyOpen ? "rotate-180" : "")}
-          />
+          <ChevronDown size={13} className={"agent-head-chevron" + (historyOpen ? " is-open" : "")} />
         </button>
-        <div className="flex shrink-0 items-center gap-0.5">
-          {hostedSessions.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setHostedOpen((value) => !value)}
-              aria-label="外部执行器"
-              title="外部执行器会话"
-              className="rounded-md p-1.5 text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-            >
-              <Activity size={13} />
+        <div className="agent-head-actions">
+          <Menu align="end" label="对话操作" items={[
+            { label: "新对话", icon: <Plus size={15} />, onSelect: startNewConversation },
+            { label: "历史对话", icon: <History size={15} />, onSelect: () => { void refreshConversations(); setHistoryOpen(true); } },
+            ...(hostedSessions.length > 0 ? [{ label: "外部执行器会话", icon: <Activity size={15} />, onSelect: () => setHostedOpen((value) => !value) }] : []),
+          ]} trigger={
+            <button type="button" className="agent-head-button" aria-label="更多" title="更多">
+              <MoreHorizontal size={16} strokeWidth={2} />
+            </button>
+          } />
+          {onClose && (
+            <button type="button" className="agent-head-button" aria-label="收起 OfferU" title="收起" onClick={onClose}>
+              <X size={16} strokeWidth={2} />
             </button>
           )}
-          <button
-            type="button"
-            onClick={startNewConversation}
-            aria-label="新对话"
-            title="新对话"
-            className="rounded-md p-1.5 text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-          >
-            <Plus size={14} />
-          </button>
         </div>
       </div>
 
       {historyOpen && (
         <>
         <div className="fixed inset-0 z-20" aria-hidden onClick={() => setHistoryOpen(false)} />
-        <div className="absolute left-2 right-2 top-11 z-30 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-[0_12px_32px_rgba(31,31,29,0.14)]">
+        <div className="agent-history">
           <div className="mb-2 flex items-center justify-between">
             <p className="px-1 text-[length:var(--agent-fs-xs)] font-medium text-[var(--foreground-muted)]">历史对话</p>
             <div className="flex items-center gap-0.5">
               <button
                 type="button"
                 onClick={startNewConversation}
-                className="bauhaus-button bauhaus-button-sm"
+                className="ou-button ou-button-secondary ou-button-sm"
               >
                 <Plus size={12} />
                 新建
@@ -937,11 +957,8 @@ function BackendAgentPanel() {
             {conversations.map((conversation) => (
               <div
                 key={conversation.id}
-                className={`flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors duration-[var(--dur-quick)] ${
-                  conversation.id === conversationId
-                    ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
-                    : "hover:bg-[var(--surface-hover)]"
-                }`}
+                className="agent-history-row"
+                data-current={conversation.id === conversationId || undefined}
               >
                 <button
                   type="button"
@@ -971,7 +988,7 @@ function BackendAgentPanel() {
       )}
 
       {resumeCandidate && !conversationId && (
-        <div role="status" className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
+        <div role="status" className="agent-notice px-3 py-2.5">
           <p className="text-[12px] font-semibold text-[var(--foreground)]">上次任务仍在等待处理</p>
           <p className="mt-0.5 text-[11px] leading-4 text-[var(--foreground-soft)]">
             {resumeCandidate.conversationTitle} · {resumeCandidate.status}。你可以先继续查看，也可以留到稍后。
@@ -999,7 +1016,7 @@ function BackendAgentPanel() {
       )}
 
       {hostedOpen && (
-        <section className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
+        <section className="agent-notice px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
             <div>
               <p className="text-[12px] font-semibold text-[var(--foreground)]">外部执行器</p>
@@ -1156,7 +1173,8 @@ function BackendAgentPanel() {
       <div ref={scrollRef} className="agent-thread custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3.5 py-4">
         <div className="space-y-4">
           {messages.map((message) => (
-            <PanelMessageBubble key={message.id} message={message} showGuidance={message.id === guidanceMessageId} onSuggestion={sendMessage} />
+            <PanelMessageBubble key={message.id} message={message} showGuidance={message.id === guidanceMessageId} onSuggestion={sendMessage}
+              alone={messages.length === 1 && inFlightTurns.length === 0} />
           ))}
           {inFlightTurns.map((turn) => (
             <div key={turn.id} id={"agent-turn-" + turn.id} data-testid="agent-inflight-turn" className="space-y-2">
@@ -1166,24 +1184,18 @@ function BackendAgentPanel() {
                 </div>
               )}
               <ToolExecutionList executions={turn.toolStream.toolExecutions} />
-              <div className="inline-flex items-center gap-1.5 px-0.5 text-[12px] text-[var(--foreground-muted)]">
-                <Loader2 size={12} className="animate-spin" />
-                {turn.progressText}
-              </div>
+              <AgentRunPill text={turn.progressText} steps={Object.keys(turn.toolStream.toolExecutions).length} />
             </div>
           ))}
           {inFlightTurns.length === 0 && <ToolExecutionList executions={toolStream.toolExecutions} />}
           {runActionPending && (
-            <div className="inline-flex items-center gap-1.5 px-0.5 text-[12px] text-[var(--foreground-muted)]">
-              <Loader2 size={12} className="animate-spin" />
-              {progressText}
-            </div>
+            <AgentRunPill text={progressText} />
           )}
         </div>
       </div>
 
       {interruptedRunId && (
-        <div className="border-t border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
+        <div className="agent-notice px-3 py-2.5">
           <p className="text-[12px] font-semibold text-[var(--foreground)]">检测到中断的 Agent Run</p>
           <p className="mt-1 text-[11.5px] leading-5 text-[var(--foreground-soft)]">
             OfferU 不会自动重放工具。你可以从已保存的 Agent 会话恢复，或取消本次任务。
@@ -1208,7 +1220,7 @@ function BackendAgentPanel() {
       )}
 
       {pendingActionCount > 0 && (
-        <div className="border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-2.5">
+        <div className="agent-notice agent-notice-warn px-3 py-2.5">
           <p className="text-[12px] font-semibold text-[var(--foreground)]">有 {pendingActionCount} 步不可撤销的操作等你确认</p>
           <p className="mt-1 text-[11px] leading-4 text-[var(--foreground-soft)]">助手没有停下来等；你确认后才会执行，结果会在下一轮告诉它。</p>
           <Button
@@ -1231,16 +1243,16 @@ function BackendAgentPanel() {
 
 
       {error && (
-        <div role="alert" className="space-y-2 border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-3 text-[12px]">
+        <div role="alert" className="agent-notice agent-notice-warn space-y-2 px-3 py-3 text-[length:var(--ou-type-xs)]">
           <p className="font-semibold text-[var(--foreground)]">{agentRecovery(error).title}</p>
           <p className="break-words text-[var(--primary-red)]">{error}</p>
           <p className="text-[var(--foreground-muted)]">{agentRecovery(error).hint}</p>
-          {agentRecovery(error).configure && <Link href={MODEL_SETTINGS_ROUTE} style={{ background: "var(--foreground)", color: "#ffffff" }} className="inline-flex rounded-md px-3 py-2 font-medium no-underline transition-opacity hover:opacity-90 focus-visible:ring-2">配置内置 Agent</Link>}
+          {agentRecovery(error).configure && <Link href={MODEL_SETTINGS_ROUTE} className="ou-button ou-button-primary ou-button-sm no-underline">配置内置 Agent</Link>}
         </div>
       )}
 
       {(parkedRuns.length > 0 || inFlightTurns.length > 1) && (
-        <div data-testid="agent-task-strip" className="border-t border-[var(--border)] px-3 py-2">
+        <div data-testid="agent-task-strip" className="agent-notice px-3 py-2">
           <p className="mb-1 px-1 text-[11px] font-semibold text-[var(--foreground-muted)]">
             任务 · {inFlightTurns.length + parkedRuns.length}
           </p>
@@ -1286,10 +1298,11 @@ function BackendAgentPanel() {
       )}
 
       {/* 输入区 */}
-      <footer className="agent-bar px-3 pb-3 pt-1.5">
+      <footer className="agent-foot">
         <div
           className={dragActive ? "agent-composer is-drag-active" : "agent-composer"}
           data-testid="agent-composer"
+          data-sent={sentPulse || undefined}
           onDragEnter={(event) => {
             if (!hasDraggedFiles(event.dataTransfer.types)) return;
             event.preventDefault();
@@ -1314,7 +1327,6 @@ function BackendAgentPanel() {
             composerAttachments.addFiles(event.dataTransfer.files);
           }}
         >
-          <AgentAttachmentTray items={composerAttachments.items} onRemove={composerAttachments.remove} />
           <Textarea
             value={input}
             onValueChange={setInput}
@@ -1335,12 +1347,14 @@ function BackendAgentPanel() {
               composerAttachments.addFiles(files);
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
-                sendMessage();
+                sendFromComposer();
               }
             }}
           />
+          <AgentAttachmentTray items={composerAttachments.items} onRemove={composerAttachments.remove} />
+          {dragActive && <span className="agent-drop-hint" aria-hidden>松开即可添加图片、PDF 或 PPT</span>}
           <div className="agent-composer-controls">
             <input
               ref={attachmentInputRef}
@@ -1365,14 +1379,26 @@ function BackendAgentPanel() {
               <Plus size={16} strokeWidth={2} />
             </button>
             <AgentComposerControls options={composerOptions} onChange={setComposerOptions} />
+            {contextUsage && (
+              <ContextUsageRing used={contextUsage.used} limit={contextUsage.window}
+                nearAt={Math.round((contextUsage.compactAt / contextUsage.window) * 100)} />
+            )}
             <button
               type="button"
-              aria-label="发送"
-              onClick={() => sendMessage()}
-              disabled={(!input.trim() && composerAttachments.readyCount === 0) || composerAttachments.uploading}
+              aria-label={working && !canSend ? "OfferU 正在处理" : "发送"}
+              onClick={() => sendFromComposer()}
+              disabled={!canSend}
+              data-working={working && !canSend ? "" : undefined}
               className="agent-composer-send"
             >
-              <Send size={16} strokeWidth={2} />
+              {working && !canSend ? (
+                <PixelLoader />
+              ) : (
+                <>
+                  <span>发送</span>
+                  <ArrowUp size={15} strokeWidth={2.2} aria-hidden />
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -1385,20 +1411,19 @@ function PanelMessageBubble({
   message,
   showGuidance,
   onSuggestion,
+  alone = false,
 }: {
   message: PanelMessage;
   showGuidance: boolean;
   onSuggestion: (prompt: string) => void;
+  /** 对话里只有这条欢迎语：画成完整的空状态（问候 + 建议胶囊）。 */
+  alone?: boolean;
 }) {
   const isUser = message.role === "user";
   const response = message.response;
 
   if (!isUser && message.id.startsWith("welcome")) {
-    return (
-      <p className="px-2 pt-8 text-center text-[12px] leading-5 text-[var(--foreground-muted)] opacity-80">
-        {message.content}
-      </p>
-    );
+    return alone ? <AgentEmptyState note={message.content} onSuggestion={onSuggestion} /> : <p className="agent-welcome-note">{message.content}</p>;
   }
 
   return (
@@ -1435,6 +1460,42 @@ function PanelMessageBubble({
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** 5×5 像素格加载：亮着的格子按固定顺序游走，一步一格（steps），不是平滑渐变。 */
+const PIXEL_ORDER = [0, 1, 2, 3, 4, 9, 14, 19, 24, 23, 22, 21, 20, 15, 10, 5, 6, 7, 8, 13, 18, 17, 16, 11, 12];
+function PixelLoader() {
+  return (
+    <span className="agent-pixel" aria-hidden>
+      {Array.from({ length: 25 }, (_, cell) => <i key={cell} style={{ ["--p" as string]: PIXEL_ORDER.indexOf(cell) }} />)}
+    </span>
+  );
+}
+
+// 空状态：一句问候 + 几颗和 OfferU 主线相关的建议胶囊，点一下就发出去（参考 Inspora「composer mockup」）。
+const EMPTY_SUGGESTIONS: Array<{ icon: typeof Sparkles; label: string; prompt: string }> = [
+  { icon: PenLine, label: "把字节那段实习写得更量化", prompt: "把我简历里字节跳动那段实习改写得更量化：每条要点都带上数字和结果，先给我看改前改后" },
+  { icon: ListTodo, label: "今天有哪些要做的事", prompt: "按截止时间帮我列出今天要做的事，每件说明为什么现在做" },
+  { icon: Mail, label: "帮我整理最近的面试邀约", prompt: "帮我整理最近收到的笔试和面试邀约：时间、岗位、要准备什么，并把还没记的加进日程" },
+  { icon: Briefcase, label: "我收藏的岗位先投哪个", prompt: "对比我收藏但还没投的岗位，按匹配度排个先后，说明理由" },
+];
+
+function AgentEmptyState({ note, onSuggestion }: { note: string; onSuggestion: (prompt: string) => void }) {
+  return (
+    <div className="agent-empty" data-testid="agent-empty">
+      <span className="agent-empty-mark" aria-hidden><Sparkles size={18} strokeWidth={1.9} /></span>
+      <p className="agent-empty-title">今天想让 OfferU 帮你做什么？</p>
+      <p className="agent-empty-note">{note}</p>
+      <div className="agent-empty-chips" role="list" aria-label="试试这些">
+        {EMPTY_SUGGESTIONS.map(({ icon: Icon, label, prompt }, i) => (
+          <button key={label} type="button" role="listitem" className="agent-chip ou-enter" style={{ ["--i" as string]: i }} onClick={() => onSuggestion(prompt)}>
+            <Icon size={14} strokeWidth={1.9} aria-hidden />
+            <span className="truncate">{label}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -1538,19 +1599,63 @@ function JobCardList({ jobs }: { jobs: AgentJobCard[] }) {
   );
 }
 
+/**
+ * 运行中：一个胶囊 = 呼吸的紫点 + 扫光的一行步骤（换字时就地淡入）+ 已用时间 / 步数。
+ * 参考 Inspora「agent dashboard」的运行胶囊和 Motif 的 thinking-block。
+ */
+function AgentRunPill({ text, steps = 0 }: { text: string; steps?: number }) {
+  const [startedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(startedAt);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const label = (text || "正在思考").replace(/\.{3}$|…$/, "");
+  return (
+    <div className="ou-run-pill" role="status" aria-live="polite">
+      <span className="ou-run-dot" aria-hidden />
+      <span key={label} className="ou-swap min-w-0 truncate">
+        <span className="ou-shimmer">{label}</span>
+      </span>
+      <span className="ou-run-meta">
+        {steps > 0 ? `${steps} 步 · ` : ""}
+        {seconds}s
+      </span>
+    </div>
+  );
+}
+
 function ToolCallList({ calls }: { calls: AgentResponse["tool_calls"] }) {
+  return (
+    <details className="ou-activity">
+      <summary>
+        <ChevronRight size={12} className="ou-chevron" aria-hidden />
+        已处理 · {calls.length} 次工具调用
+      </summary>
+      <ToolCallRows calls={calls} />
+    </details>
+  );
+}
+
+function ToolCallRows({ calls }: { calls: AgentResponse["tool_calls"] }) {
   return (
     <div className="agent-tool-group" role="list" aria-label="本轮工具调用">
       {calls.map((call, index) => {
         const presentation = presentAgentToolCall(call);
         return (
-          <details key={call.tool + "-" + index} role="listitem" className="group">
+          <details key={call.tool + "-" + index} role="listitem" className="group ou-enter" style={{ ["--i" as string]: index }}>
             <summary className="agent-tool-row cursor-pointer list-none">
-              <Wrench size={11} className="shrink-0 text-[var(--foreground-muted)]" />
+              <span className="agent-tool-node" aria-hidden>
+                <Wrench size={9} strokeWidth={2} />
+              </span>
               <span className="shrink-0 font-mono text-[11px] text-[var(--foreground)]">{call.tool}</span>
               {presentation && (
                 <span className="min-w-0 flex-1 truncate text-[var(--foreground-muted)]">{presentation}</span>
               )}
+              <span className="agent-tool-index" aria-label={`第 ${index + 1} 步，共 ${calls.length} 步`}>
+                {index + 1}/{calls.length}
+              </span>
               <ChevronDown size={11} className="ml-auto shrink-0 text-[var(--foreground-muted)] transition-transform duration-[var(--dur-quick)] group-open:rotate-180" />
             </summary>
             <div className="agent-tool-detail space-y-1">

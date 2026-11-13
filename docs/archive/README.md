@@ -129,3 +129,5 @@ Read [发展历史](./development-history.md) for the distilled timeline. Curren
 On 2026-10-05 the latter four source documents were preserved, their relative Markdown links rebased and trailing whitespace normalized. Compatibility pointers remain at the two old architecture paths. Root STATUS/HANDOFF now describe the reviewed checkout and outstanding evidence instead of repeating the September branch snapshot. Original contents remain recoverable from Git; no dated result was rewritten to make it current.
 
 2026-10-05 对四份过时检查点保留正文、修正相对链接并规范行尾空白；旧架构路径保留短入口。原始测试数字仍属于原日期，未据此提升当前发布状态。
+
+2026-11-13：设计规范 v2 Minimal 被 v3 Glass（参考 Inspora · Bleep App）取代，原文归档在 [docs/design/archive/visual-system-v2.md](../design/archive/visual-system-v2.md)（与 v1 同目录）。

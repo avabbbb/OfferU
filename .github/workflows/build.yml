@@ -6,6 +6,9 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  # 重活（安装包、安装后冒烟、跨进程恢复）不再跟每次 main 推送跑，改为每晚 02:00 CST 一次 + 打 tag + 手动触发。
+  schedule:
+    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       publish_candidate:
@@ -139,6 +142,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Design audit must compare the full PR against its base.
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -158,6 +163,16 @@ jobs:
       - name: Run frontend tests
         working-directory: frontend
         run: npm test
+
+      - name: Test visual design audit rules
+        working-directory: frontend
+        run: npm run design:audit:test
+
+      - name: Gate newly introduced UI style debt
+        working-directory: frontend
+        env:
+          DESIGN_AUDIT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: npm run design:audit
 
       - name: Build frontend
         working-directory: frontend
@@ -439,7 +454,7 @@ jobs:
           if-no-files-found: ignore
 
   reliability-failure-recovery:
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) }}
     name: Cross-process provider failure and restart recovery
     runs-on: ubuntu-latest
     needs: [backend-tests]
@@ -730,7 +745,7 @@ jobs:
     # Every push to main builds installers once the fast checks pass. The slow
     # browser matrices still gate tagged releases (see `release`), but a flaky
     # browser test no longer stops testers from getting a build.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.backend-tests.result == 'success' && needs.frontend-quality.result == 'success' && needs.agent-runtime-quality.result == 'success' }}
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) && needs.backend-tests.result == 'success' && needs.frontend-quality.result == 'success' && needs.agent-runtime-quality.result == 'success' }}
     name: Windows desktop package
     runs-on: windows-latest
     needs: [backend-tests, frontend-quality, agent-runtime-quality]
@@ -877,13 +892,13 @@ jobs:
           if-no-files-found: error
 
   macos-package:
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) }}
     needs: [backend-tests, frontend-quality, extension-quality]
     uses: ./.github/workflows/macos-package.yml
     secrets: inherit
 
   desktop-installed-smoke:
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.desktop-package.result == 'success' }}
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) && needs.desktop-package.result == 'success' }}
     name: Windows installed-app and sidecar smoke
     runs-on: windows-latest
     needs: [desktop-package]
@@ -1211,7 +1226,7 @@ jobs:
 
   nightly:
     name: Publish rolling nightly build
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.desktop-installed-smoke.result == 'success' && needs.macos-package.result == 'success' }}
+    if: ${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && needs.desktop-installed-smoke.result == 'success' && needs.macos-package.result == 'success' }}
     needs: [desktop-installed-smoke, macos-package]
     runs-on: ubuntu-latest
     permissions:

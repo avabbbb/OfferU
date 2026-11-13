@@ -148,7 +148,7 @@ export function ContextRail() {
           aria-label="打开 OfferU 助手"
           title="OfferU 助手"
           onClick={() => setRailOpen(true)}
-          className="fixed right-3 top-3 z-40 hidden h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)] md:flex"
+          className="offeru-rail-toggle ou-icon-button ou-glass hidden md:flex"
         >
           <Bot size={15} strokeWidth={1.75} />
         </button>
@@ -166,7 +166,7 @@ export function ContextRail() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, pointerEvents: "none" }}
             transition={{ duration: 0.16, ease: [0.2, 0.85, 0.25, 1] }}
-            className="fixed inset-y-0 left-60 right-0 z-40 hidden cursor-default border-0 bg-[var(--shadow-medium)] p-0 md:block xl:hidden"
+            className="offeru-rail-scrim fixed inset-y-0 left-60 right-0 hidden cursor-default border-0 p-0 md:block xl:hidden"
           />
         )}
         {railOpen && (
@@ -177,7 +177,7 @@ export function ContextRail() {
             exit={{ width: 0, opacity: 0, pointerEvents: "none" }}
             // 拖动时宽度直接跟手，不走弹簧，否则会拖出延迟感。
             transition={resizing ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 36 }}
-            className="context-rail offeru-context-rail fixed inset-y-0 right-0 z-50 hidden min-h-0 shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-12px_0_32px_var(--shadow-medium)] md:block xl:relative xl:inset-auto xl:z-auto xl:shadow-none"
+            className="context-rail offeru-context-rail ou-glass fixed hidden min-h-0 shrink-0 overflow-hidden md:block xl:relative"
           >
             <div
               role="separator"
@@ -195,8 +195,9 @@ export function ContextRail() {
               className="context-rail-resizer absolute inset-y-0 left-0 z-20 w-2 -translate-x-px cursor-col-resize touch-none outline-none"
             />
             <div className="flex h-full flex-col" style={{ width: railWidth }}>
-              {/* 模式切换头 */}
-              <div className="context-rail-header flex items-center gap-1 border-b border-[var(--border)] px-3 py-2.5">
+              {/* 模式切换头：选中了对象时才有「详情 / OfferU」两个标签；只有 Agent 时标题和收起钮并进 Agent 面板自己的头 */}
+              {selection && (
+              <div className="context-rail-header flex items-center gap-1 px-3 py-2.5">
                 {selection ? (
                 <div className="offeru-rail-tabs relative flex flex-1 rounded-md bg-[var(--surface-muted)] p-0.5">
                   {(
@@ -244,6 +245,7 @@ export function ContextRail() {
                   <PanelRightClose size={15} strokeWidth={1.75} />
                 </button>
               </div>
+              )}
 
               {/* 面板体:同一时间只显示一种模式 */}
               <div className="relative min-h-0 flex-1">
@@ -257,7 +259,7 @@ export function ContextRail() {
                     className="absolute inset-0"
                   >
                     <Suspense fallback={null}>
-                      {railMode === "inspector" ? <InspectorPanel /> : <AgentPanel />}
+                      {railMode === "inspector" ? <InspectorPanel /> : <AgentPanel onClose={selection ? undefined : () => setRailOpen(false)} />}
                     </Suspense>
                   </motion.div>
                 </AnimatePresence>
