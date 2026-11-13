@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/layout/PageHeader";
+import { Field, Select as UiSelect } from "@/components/ui";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ModelPicker } from "@/components/settings/ModelPicker";
@@ -119,7 +120,7 @@ interface SettingsConfigPayload {
 
 const bauhausFieldClassNames = {
   inputWrapper:
-    "border border-[var(--border-strong)] bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-[var(--border-strong)] hover:-translate-y-[1px]",
+    "rounded-[var(--ou-radius-control)] border-0 bg-[var(--ou-bg-surface-solid)]",
   input: "font-medium text-[var(--foreground)] placeholder:text-[var(--foreground-muted)]",
   label: "font-semibold tracking-[0.06em] text-[11px] text-[var(--foreground-muted)]",
   description: "text-[var(--foreground-muted)]",
@@ -127,7 +128,7 @@ const bauhausFieldClassNames = {
 };
 
 const modelFieldClassNames = {
-  inputWrapper: "rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-none",
+  inputWrapper: "rounded-[var(--ou-radius-control)] border-0 bg-[var(--ou-bg-surface-solid)] shadow-none",
   input: "text-[var(--foreground)]", label: "text-sm text-[var(--foreground-muted)]",
 };
 
@@ -151,7 +152,7 @@ function AgentConcurrencySetting({ value, onSave }: { value: number; onSave: (ne
     }
   };
   return (
-    <section data-testid="agent-concurrency-setting" className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 text-[13px]">
+    <section data-testid="agent-concurrency-setting" className="flex flex-wrap items-center gap-3 ou-sheet p-5 text-[length:var(--ou-type-sm)]">
       <div className="min-w-0 flex-1">
         <label htmlFor="agent-max-concurrency" className="font-medium text-[var(--foreground)]">Agent 最大并发数</label>
         <p className="mt-1 text-[var(--foreground-muted)]">同时运行的助手任务上限，过高可能触发模型限流</p>
@@ -164,13 +165,13 @@ function AgentConcurrencySetting({ value, onSave }: { value: number; onSave: (ne
         step={1}
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
-        className="w-16 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--foreground)]"
+        className="w-16 ou-input ou-input-sm text-[length:var(--ou-type-sm)] text-[var(--ou-text-primary)]"
       />
       <button
         type="button"
         disabled={!valid || parsed === value || saving}
         onClick={() => void save()}
-        className="rounded-md border border-[var(--border)] px-3 py-1 text-[13px] text-[var(--foreground)] disabled:opacity-50"
+        className="ou-button ou-button-secondary ou-button-sm"
       >
         保存
       </button>
@@ -196,7 +197,7 @@ function AgentFallbackSetting({ enabled, onSave }: { enabled: boolean; onSave: (
     }
   };
   return (
-    <section data-testid="agent-fallback-setting" className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 text-[13px]">
+    <section data-testid="agent-fallback-setting" className="flex flex-wrap items-center gap-3 ou-sheet p-5 text-[length:var(--ou-type-sm)]">
       <div className="min-w-0 flex-1">
         <label htmlFor="agent-fallback-toggle" className="font-medium text-[var(--foreground)]">没配模型时交给本机 Agent</label>
         <p className="mt-1 text-[var(--foreground-muted)]">简历、邮件等内容会经本机 Agent 的 CLI 发到它自己的云端。配了内置模型时不生效。</p>
@@ -216,7 +217,7 @@ function AgentFallbackSetting({ enabled, onSave }: { enabled: boolean; onSave: (
 }
 
 const bauhausModalContentClassName =
-  "max-h-[88vh] border border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--foreground)] shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
+  "max-h-[88vh] ou-sheet bg-[var(--ou-bg-surface-solid)] text-[var(--ou-text-primary)]";
 
 function normalizeProviderId(value: string): string {
   const normalized = value
@@ -327,7 +328,7 @@ function TestLlmButton() {
     <>
       <Button
         size="sm"
-        className="rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
+        className="ou-button ou-button-secondary ou-button-sm"
         onPress={testConnection}
         isLoading={testing}
       >
@@ -554,7 +555,7 @@ function LocalDataSafetyCard() {
 
   return (
     <>
-      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none" data-testid="local-data-safety">
+      <Card className="bauhaus-panel overflow-hidden" data-testid="local-data-safety">
         <CardBody className="space-y-5 p-5 md:p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -570,11 +571,11 @@ function LocalDataSafetyCard() {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+          <div className="bauhaus-panel-sm bg-[var(--ou-bg-control)] p-4">
             <p className="bauhaus-label text-[var(--foreground-muted)]">数据库</p>
             <p className="mt-2 flex items-center gap-2 text-sm font-semibold"><Database size={16} />{status?.database.filename || "读取中"}</p>
           </div>
-          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+          <div className="bauhaus-panel-sm bg-[var(--ou-bg-control)] p-4">
             <p className="bauhaus-label text-[var(--foreground-muted)]">可恢复备份</p>
             <p className="mt-2 text-3xl font-semibold">{status?.backup_count ?? "—"}</p>
           </div>
@@ -699,7 +700,7 @@ function LocalDataSafetyCard() {
           </div>
           {!loading && backups.length === 0 && <p className="text-sm font-medium text-[var(--foreground-muted)]">还没有备份。创建第一份一致性备份后，可以从这里选择恢复。</p>}
           {backups.slice(0, 5).map((backup) => (
-            <div key={backup.backup_id} className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 bg-[var(--surface-muted)] p-3" data-testid={`data-backup-${backup.backup_id}`}>
+            <div key={backup.backup_id} className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 bg-[var(--ou-bg-control)] p-3" data-testid={`data-backup-${backup.backup_id}`}>
               <div>
                 <p className="text-sm font-semibold">
                   {backup.reason === "pre_restore" ? "恢复前自动备份" : backup.reason === "pre_migration" ? "迁移前自动备份" : backup.reason === "pre_reset" ? "全清前自动备份" : "手动备份"} · {backup.backup_id.slice(0, 8)}
@@ -730,7 +731,7 @@ function LocalDataSafetyCard() {
 
       <Modal isOpen={isOpen} onClose={onClose} size="lg" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-semibold">确认恢复本地数据</ModalHeader>
+          <ModalHeader className="px-6 py-5 text-xl font-semibold">确认恢复本地数据</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
               当前运行中的数据不会立刻改变。OfferU 会校验并暂存备份；下次启动前先创建恢复前备份，再替换 SQLite 与受管资产。恢复失败会自动回滚并停止启动。
@@ -738,7 +739,7 @@ function LocalDataSafetyCard() {
             <p className="text-sm font-bold">备份：{selectedBackup?.backup_id}</p>
             <Input label="输入“恢复”以继续" value={confirmationText} onValueChange={setConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
           </ModalBody>
-          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+          <ModalFooter className="px-6 py-5">
             <Button variant="light" onPress={onClose}>取消</Button>
             <Button color="danger" isDisabled={confirmationText !== "恢复"} isLoading={action === "restore"} onPress={() => void stageRestore()} startContent={action !== "restore" ? <RotateCcw size={15} /> : undefined}>
               暂存并在重启时恢复
@@ -749,14 +750,14 @@ function LocalDataSafetyCard() {
 
       <Modal isOpen={demoResetOpen} onClose={() => setDemoResetOpen(false)} size="lg" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-semibold">确认重置 Demo 工作区</ModalHeader>
+          <ModalHeader className="px-6 py-5 text-xl font-semibold">确认重置 Demo 工作区</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
               只处理明确标记的合成数据。不会调用真实岗位删除接口，也不会删除你的 Profile、真实岗位、简历、备份或连接凭据。展示模式只清除独立的 Showcase IndexedDB。
             </div>
             <Input label="输入“重置 Demo”以继续" value={demoConfirmationText} onValueChange={setDemoConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
           </ModalBody>
-          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+          <ModalFooter className="px-6 py-5">
             <Button variant="light" onPress={() => setDemoResetOpen(false)}>取消</Button>
             <Button color="warning" data-testid="confirm-reset-demo" isDisabled={demoConfirmationText !== "重置 Demo"} isLoading={action === "reset_demo"} onPress={() => void resetDemo()}>
               确认重置 Demo
@@ -767,7 +768,7 @@ function LocalDataSafetyCard() {
 
       <Modal isOpen={privacyScrubOpen} onClose={() => setPrivacyScrubOpen(false)} size="lg" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-semibold">确认清理历史邮件正文</ModalHeader>
+          <ModalHeader className="px-6 py-5 text-xl font-semibold">确认清理历史邮件正文</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
               这会清空已完成结构化解析的旧面试通知正文，但保留通知时间、岗位关联和结构化状态。正文不会进入备份恢复，也不能在清理后恢复。OfferU 不会展示待清理正文内容。
@@ -775,7 +776,7 @@ function LocalDataSafetyCard() {
             <p className="text-sm font-bold">待处理：{legacyEmailBodyCount} 条记录 · {legacyEmailBodyCharacters} 个字符</p>
             <Input label="输入“清理旧正文”以继续" value={privacyConfirmationText} onValueChange={setPrivacyConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
           </ModalBody>
-          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+          <ModalFooter className="px-6 py-5">
             <Button variant="light" onPress={() => setPrivacyScrubOpen(false)}>取消</Button>
             <Button color="danger" isDisabled={privacyConfirmationText !== "清理旧正文"} isLoading={action === "privacy_scrub"} onPress={() => void scrubLegacyEmailBodies()}>
               确认清理
@@ -786,7 +787,7 @@ function LocalDataSafetyCard() {
 
       <Modal isOpen={syntheticPurgeOpen} onClose={() => setSyntheticPurgeOpen(false)} size="lg" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-semibold">确认清理合成邮箱测试数据</ModalHeader>
+          <ModalHeader className="px-6 py-5 text-xl font-semibold">确认清理合成邮箱测试数据</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
               只会处理 OfferU 保留的合成邮箱测试账号、同步运行、信号、候选和本机凭据引用。若它们已经关联正式时间线，系统会拒绝清理；真实邮箱、岗位和投递状态不会被处理。
@@ -794,7 +795,7 @@ function LocalDataSafetyCard() {
             <p className="text-sm font-bold">待处理：{syntheticEmailDataCount} 条合成邮箱测试数据</p>
             <Input label="输入“清理合成邮箱”以继续" value={syntheticConfirmationText} onValueChange={setSyntheticConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
           </ModalBody>
-          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+          <ModalFooter className="px-6 py-5">
             <Button variant="light" onPress={() => setSyntheticPurgeOpen(false)}>取消</Button>
             <Button color="danger" isDisabled={syntheticConfirmationText !== "清理合成邮箱"} isLoading={action === "privacy_purge_synthetic"} onPress={() => void purgeSyntheticEmailTestData()}>
               确认清理
@@ -868,10 +869,10 @@ function LocalFeedbackCard() {
   };
 
   return (
-    <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none" data-testid="local-feedback">
+    <Card className="bauhaus-panel overflow-hidden" data-testid="local-feedback">
       <CardBody className="space-y-4 p-5 md:p-6">
         <div className="flex items-start gap-3">
-          <div className="bauhaus-panel-sm flex h-11 w-11 shrink-0 items-center justify-center bg-[var(--surface-muted)] text-[var(--foreground)]">
+          <div className="bauhaus-panel-sm flex h-11 w-11 shrink-0 items-center justify-center bg-[var(--ou-bg-control)] text-[var(--ou-text-primary)]">
             <MessageSquare size={18} />
           </div>
           <div>
@@ -1274,7 +1275,7 @@ export default function SettingsPage() {
     >
       <PageHeader title="设置" description={SHOWCASE ? "展示版不连接本机，真实数据和外置 Agent 请使用桌面版。" : "Agent 连接、模型服务和数据安全。"} />
 
-      <div className="divide-y divide-[var(--border)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className="divide-y divide-[var(--ou-line-separator)] overflow-hidden ou-sheet">
         <SettingsRow rowKey="agent" title="我的 Agent" status={agentStatus} onOpen={() => setOpenSection("agent")} />
         <SettingsRow rowKey="models" title="模型服务" status={modelStatus} onOpen={() => setOpenSection("models")} />
         <SettingsRow rowKey="accounts" title="账号与来源" status="登录与求职来源" onOpen={() => setOpenSection("accounts")} />
@@ -1289,8 +1290,8 @@ export default function SettingsPage() {
       </SettingsDialog>
 
       <SettingsDialog isOpen={openSection === "models"} onClose={closeSection} title="模型服务">
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)]" data-testid="embedded-model-settings">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border)] p-5">
+      <section className="ou-sheet" data-testid="embedded-model-settings">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--ou-line-separator)] p-5">
           <div>
             <p className="text-xs font-medium text-[var(--foreground-muted)]">内置 Agent</p>
             <h2 className="mt-1 text-xl font-semibold">模型连接</h2>
@@ -1301,12 +1302,12 @@ export default function SettingsPage() {
         <div className="space-y-4 p-5">
           {providerPresetError && <p role="alert" className="text-sm text-red-600">{providerPresetError}</p>}
           {config?.vault_status && !config.vault_status.available && <p role="alert" className="text-sm text-red-600">系统钥匙串不可用，密钥无法保存：{config.vault_status.error}</p>}
-          {apiConfigs.length === 0 ? <div className="rounded-lg bg-[var(--surface-muted)] p-6">
+          {apiConfigs.length === 0 ? <div className="rounded-lg bg-[var(--ou-bg-control)] p-6">
             <p className="font-medium">还没有连接模型服务</p>
             <p className="mt-2 text-sm text-[var(--foreground-muted)]">添加接口地址和密钥后，会自动获取模型列表。密钥只保存到系统钥匙串。</p>
-          </div> : apiConfigs.map((item) => <div key={item.id} className={`flex flex-wrap items-center gap-4 rounded-lg border p-4 ${item.is_active ? "border-[var(--primary-blue)] bg-[var(--surface-muted)]" : "border-[var(--border)]"}`}>
+          </div> : apiConfigs.map((item) => <div key={item.id} className={`flex flex-wrap items-center gap-4 rounded-[var(--ou-radius-card)] p-4 ${item.is_active ? "bg-[var(--ou-bg-selected)]" : "bg-[var(--ou-bg-control)]"}`}>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{item.service_name}</h3>{item.is_active && <span className="rounded bg-[var(--surface)] px-2 py-1 text-xs text-[var(--primary-blue)]">当前使用</span>}{disabledProviders.includes(item.provider_id) && <span className="text-xs text-red-600">已禁用</span>}</div>
+              <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{item.service_name}</h3>{item.is_active && <span className="rounded bg-[var(--ou-bg-surface)] px-2 py-1 text-xs text-[var(--primary-blue)]">当前使用</span>}{disabledProviders.includes(item.provider_id) && <span className="text-xs text-[var(--ou-tone-red-text)]">已禁用</span>}</div>
               <p className="mt-1 break-all text-sm">{item.model}</p>
               <p className="mt-1 break-all text-xs text-[var(--foreground-muted)]">{item.base_url}</p>
             </div>
@@ -1316,7 +1317,7 @@ export default function SettingsPage() {
               <Button size="sm" variant="light" onPress={() => { setSelectedConfigId(item.id); onDeleteOpen(); }}>删除</Button>
             </div>
           </div>)}
-          {config?.active_llm_summary && <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-4"><span className="text-sm text-[var(--foreground-muted)]">已保存：{config.active_llm_summary.service_name} · {config.active_llm_summary.model}</span><TestLlmButton /></div>}
+          {config?.active_llm_summary && <div className="flex flex-wrap items-center gap-3 border-t border-[var(--ou-line-separator)] pt-4"><span className="text-sm text-[var(--ou-text-secondary)]">已保存：{config.active_llm_summary.service_name} · {config.active_llm_summary.model}</span><TestLlmButton /></div>}
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-[var(--foreground-muted)]">{apiDirty ? "配置有未保存的修改" : "密钥保存在系统钥匙串"}</p>
             {apiDirty && <Button isLoading={apiSaving} onPress={() => void handleSaveApiSettings()} className="rounded-lg bg-[var(--foreground)] text-white">保存模型配置</Button>}
@@ -1352,7 +1353,7 @@ export default function SettingsPage() {
 
       <SettingsDialog isOpen={openSection === "data"} onClose={closeSection} title="数据">
         <LocalDataSafetyCard />
-        <details className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <details className="ou-sheet p-4">
           <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground-muted)]">危险操作</summary>
           <div className="mt-4">
             <FreshResetPanel />
@@ -1370,8 +1371,8 @@ export default function SettingsPage() {
       </SettingsDialog>
 
       <Modal isOpen={isEditorOpen} onClose={onEditorClose} size="xl" placement="center" scrollBehavior="inside">
-        <ModalContent className="max-h-[88vh] rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-xl">
-          <ModalHeader className="border-b border-[var(--border)] px-6 py-4 text-lg font-semibold">
+        <ModalContent className="max-h-[88vh] ou-sheet bg-[var(--ou-bg-surface-solid)] text-[var(--ou-text-primary)]">
+          <ModalHeader className="px-6 py-4 text-lg font-semibold">
             {editingConfigId ? "编辑模型配置" : "新增模型配置"}
           </ModalHeader>
           <ModalBody className="space-y-5 overflow-y-auto px-6 py-5">
@@ -1405,15 +1406,13 @@ export default function SettingsPage() {
             {apiSaveError && <p role="alert" className="text-sm text-red-600">{apiSaveError}</p>}
             <ModelPicker key={editingConfigId || "new"} baseUrl={formBaseUrl} apiKey={formApiKey} apiFormat={currentFormPreset?.api_format || ""} configId={editingConfigId || ""} value={formCustomModel} onChange={setFormCustomModel} error={formErrors.model} />
 
-            <details className="rounded-lg border border-[var(--border)] p-3">
+            <details className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-3">
               <summary className="cursor-pointer text-sm text-[var(--foreground-muted)]">接口协议与显示名称</summary>
               <div className="mt-4 space-y-4">
-            <label className="text-xs font-semibold text-[var(--foreground-muted)]">接口协议
-              <select value={formProviderChoice} onChange={(event) => setFormProviderChoice(event.target.value)} className="mt-2 block min-h-10 w-full border border-[var(--border-strong)] bg-white px-3 text-sm">
-                {providerPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
-              </select>
-              {formErrors.api_format && <p className="mt-1 text-xs text-red-600">{formErrors.api_format}</p>}
-            </label>
+            <Field label="接口协议" error={formErrors.api_format}>
+              {(id) => <UiSelect id={id} value={formProviderChoice} onValueChange={setFormProviderChoice}
+                options={providerPresets.map((preset) => ({ value: preset.id, label: preset.name }))} />}
+            </Field>
             <Input label="显示名称（可选）" variant="bordered" value={formCustomServiceName} onValueChange={setFormCustomServiceName} placeholder="默认使用接口的域名" isInvalid={Boolean(formErrors.service_name)} errorMessage={formErrors.service_name} classNames={modelFieldClassNames} />
               </div>
             </details>
@@ -1422,15 +1421,15 @@ export default function SettingsPage() {
               设为当前激活配置
             </Checkbox>
 
-            <Divider className="my-1 border-[var(--border-strong)]/10 md:col-span-2" />
+            <Divider className="my-1 border-[var(--ou-line-control)]/10 md:col-span-2" />
             <p className="text-xs font-medium text-[var(--foreground-muted)] md:col-span-2">
               填写接口地址和密钥后，选择自动获取的模型。服务不提供列表时，可手动填写模型 ID。
             </p>
           </ModalBody>
-          <ModalFooter className="border-t border-[var(--border)] px-6 py-4">
+          <ModalFooter className="px-6 py-4">
             <Button
               variant="light"
-              className="rounded-lg border border-[var(--border)] px-4 text-[var(--foreground)]"
+              className="ou-button ou-button-secondary"
               onPress={onEditorClose}
             >
               取消
@@ -1448,7 +1447,7 @@ export default function SettingsPage() {
 
       <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} size="sm" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] bg-[#F0C020] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">
+          <ModalHeader className="bg-[var(--ou-tone-yellow-bg)] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">
             确认删除
           </ModalHeader>
           <ModalBody className="px-6 py-6">
@@ -1456,7 +1455,7 @@ export default function SettingsPage() {
               确定删除当前配置“{selectedConfig?.service_name || "未命名配置"}”吗？此操作不可撤销。
             </p>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+          <ModalFooter className="px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"

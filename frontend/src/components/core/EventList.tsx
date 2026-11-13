@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { Button, DatePicker, Input, Select } from "@/components/ui";
 import { EVENT_KIND, type Event, type EventKind, when, write } from "@/lib/core";
 
 export function EventRow({ event, showJob = true }: { event: Event; showJob?: boolean }) {
@@ -45,15 +46,14 @@ export function AddEvent({ jobId }: { jobId?: number }) {
     setTitle("");
     setAt("");
   };
-  const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
+  // 一行：输入框占满，类型 Select、时间 DatePicker、添加按钮都是 components/ui 的胶囊（不再用原生下拉和日期框）。
   return (
-    <form className="mt-2 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="加一件事" aria-label="事项" style={{ fontSize: 13 }} className={`${field} min-w-[200px] flex-1`} />
-      <select value={kind} onChange={(e) => setKind(e.target.value as EventKind)} aria-label="类型" style={{ fontSize: 13 }} className={field}>
-        {Object.entries(EVENT_KIND).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-      </select>
-      <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} aria-label="时间" style={{ fontSize: 13 }} className={field} />
-      <button type="submit" style={{ fontSize: 13 }} disabled={!title.trim()} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">添加</button>
+    <form className="ou-add-event" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="加一件事" aria-label="事项" className="ou-input-sm" />
+      <Select size="sm" className="ou-add-event-kind" aria-label="类型" value={kind} onValueChange={(v) => setKind(v as EventKind)}
+        options={Object.entries(EVENT_KIND).map(([value, label]) => ({ value, label }))} />
+      <DatePicker withTime size="sm" className="ou-add-event-at" aria-label="时间" placeholder="时间（可不填）" value={at} onChange={setAt} />
+      <Button type="submit" size="sm" variant="primary" disabled={!title.trim()}>添加</Button>
     </form>
   );
 }

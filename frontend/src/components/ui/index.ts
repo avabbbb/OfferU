@@ -3,6 +3,7 @@ export { Button, type ButtonProps, type ButtonVariant } from "./Button";
 export { Field, Input } from "./Field";
 export { Select, type SelectOption } from "./Select";
 export { Switch } from "./Switch";
+export { DatePicker } from "./DatePicker";
 export { Menu, type MenuItem } from "./Menu";
 export { Popover } from "./Popover";
 export { Floating } from "./Floating";

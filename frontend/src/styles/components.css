@@ -260,6 +260,31 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 .ou-switch[aria-checked="true"] .ou-switch-thumb { transform: translateX(1rem); }
 @media (prefers-reduced-motion: reduce) { .ou-switch-thumb { transition: none; } }
 
+/* ── DatePicker：触发器同 Input（日历图标 + 文字），浮层同 Popover 的浅色玻璃 ── */
+.ou-date-trigger { justify-content: flex-start; min-width: 0; cursor: default; text-align: left; }
+.ou-date-trigger > svg { flex: none; color: var(--ou-text-tertiary); }
+.ou-date-placeholder { color: var(--ou-text-placeholder); }
+.ou-date-picker { width: 18.5rem; min-width: 0; padding: var(--ou-space-3); }
+.ou-date-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ou-space-2); padding: 0 var(--ou-space-1) var(--ou-space-2) var(--ou-space-2); }
+.ou-date-month { font-size: var(--ou-type-sm); font-weight: 600; color: var(--ou-text-primary); font-variant-numeric: tabular-nums; }
+.ou-date-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.125rem; }
+.ou-date-weekday { padding-bottom: var(--ou-space-1); text-align: center; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-date-day {
+  display: inline-flex; height: 2.25rem; align-items: center; justify-content: center;
+  border-radius: var(--ou-radius-pill); color: var(--ou-text-primary); font-size: var(--ou-type-sm); font-variant-numeric: tabular-nums;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-date-day:hover { background: var(--ou-bg-hover); }
+.ou-date-day:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.ou-date-day[data-outside] { color: var(--ou-text-placeholder); }
+.ou-date-day[data-today] { color: var(--ou-tone-orange-text); font-weight: 600; }
+.ou-date-day[data-selected] { background: var(--ou-action-primary); color: var(--ou-on-action-primary); font-weight: 600; }
+.ou-date-day[data-today][data-selected] { background: var(--ou-color-orange); color: var(--ou-color-on-orange); }
+.ou-date-time { display: flex; align-items: center; gap: var(--ou-space-2); margin-top: var(--ou-space-3); padding: var(--ou-space-2) var(--ou-space-1) 0; color: var(--ou-text-secondary); font-size: var(--ou-type-sm); }
+.ou-date-time-label { margin-right: auto; }
+.ou-date-time .ou-select-wrap { width: 4.25rem; }
+.ou-date-foot { display: flex; align-items: center; gap: var(--ou-space-1); margin-top: var(--ou-space-3); }
+
 /* ── 弹窗 L4 ── */
 .ou-scrim { position: fixed; inset: 0; z-index: var(--ou-layer-overlay); background: var(--ou-scrim); -webkit-backdrop-filter: blur(var(--ou-scrim-blur)); backdrop-filter: blur(var(--ou-scrim-blur)); }
 .ou-dialog {
@@ -362,6 +387,12 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 .ou-today-sheet { padding: var(--ou-space-4) var(--ou-space-6) var(--ou-space-6); }
 .ou-today-sheet h2 { color: var(--ou-text-primary); font-size: var(--ou-type-section); font-weight: 600; }
 .ou-today-sheet :is(input:not([type="checkbox"]), select) { border-color: transparent; border-radius: var(--ou-radius-control); background: var(--ou-bg-field); }
+/* 「加一件事」一行：输入框占满，类型 / 时间 / 添加是一串小胶囊；放不下时整行换行。 */
+.ou-add-event { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); margin-top: var(--ou-space-2); }
+.ou-add-event > .ou-input { min-width: 12rem; flex: 1; }
+.ou-today-sheet .ou-add-event > .ou-input, .ou-add-event > .ou-input { border-radius: var(--ou-radius-pill); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-capsule-shadow); }
+.ou-add-event-kind { width: 7.5rem; }
+.ou-add-event-at { width: auto; max-width: 13rem; }
 
 /* 岗位表格：放在一张白色纸面上（大圆角 + 柔和阴影），不再是贴边的白块。 */
 .ou-jobs-sheet > p { margin: 0; padding: var(--ou-space-1) var(--ou-space-4) var(--ou-space-3); }

@@ -36,6 +36,17 @@
 
 看：`#/resume` 左栏「我的模块 / 更多模块」。
 
+## DatePicker（`components/ui/DatePicker.tsx`，Radix Popover）
+
+替代原生 `<input type="date">` / `type="datetime-local"`（系统弹层不跟玻璃风格、深色下发白、中文格式不统一）。值的格式与原生一致：`YYYY-MM-DD`，`withTime` 时 `YYYY-MM-DDTHH:mm`，空串 = 未填，可直接替换。
+
+- 触发器同 Input（`size="sm"` 是 28px 胶囊，同 Select）：日历图标 + 「11月16日 周一 14:00」，不是今年才带年份；未填显示占位（默认「选日期」/「选日期和时间」）。
+- 浮层同 Popover 的浅色玻璃：「2026 年 11 月」+ ‹ ›（`.ou-button-group`）→ 周一开头的 6×7 日期格（`.ou-date-day`，圆形；非本月浅色；**今天橙字**、选中墨黑实心，今天又被选中时橙底墨字——与周日历一致）→ `withTime` 时「时间」一行两个 `Select`（时 00–23、分 00/15/30/45）→ 底部「清除」「今天」（ghost），`withTime` 再加「完成」。
+- 只选日期时点一下就关；带时间时选日期不关，接着调时间。键盘：打开后焦点在当前日期，←→ 一天、↑↓ 一周、PageUp / PageDown 换月，回车选中，Esc 关并把焦点还给触发器。
+- 纯逻辑 `parseDateValue / monthGrid / formatDateValue` 有 vitest（`ui.test.ts`）。
+
+看：今天页「要做的事」底部「加一件事」的时间胶囊；`#/jobs?view=calendar` 右上 + →「时间」；面试复盘页的「面试日期」。
+
 ## Menu（Radix DropdownMenu）
 
 「更多」、行操作、状态切换。v3.1 是**浅色玻璃**（参考 Inspora · Mona「feature menu」改成浅色）：面板 `--ou-glass-menu`（白 70%）+ `--ou-glass-blur-heavy`（40px）模糊、`--ou-radius-menu`（22px）、`--ou-elev-menu`。每项是一行 `--ou-menu-row`（40px）胶囊 = 16px 图标 + 文字 + 可选 `description`（第二行小字）+ 可选快捷键；层级只靠同一支墨色的透明度（`--ou-alpha-*`），不靠字重。悬停 / 键盘高亮 = 白胶囊浮起 + 文字右挪 `--ou-nudge` + 右侧小箭头淡入（`--ou-ease-spring-soft`）。`{ heading }` 项是分组小标题；危险项放最后、红字（`--ou-tone-red-text`），中间用 `"separator"`。可选 `label` 作为浮层的 `aria-label`。
