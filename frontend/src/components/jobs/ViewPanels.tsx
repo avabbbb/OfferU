@@ -1,6 +1,8 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode } from "react";
+
+import { Popover as UiPopover, Select } from "@/components/ui";
 
 import { JOB_STATUS, type Job } from "@/lib/core";
 import {
@@ -15,33 +17,17 @@ export const ghost = "rounded-md px-2 py-1 text-[13px] text-[var(--foreground-mu
 
 export type Patch = (p: Partial<ViewConfig>) => void;
 
-// 按钮 + 浮层；点别处或按 Esc 关掉。
+// 按钮 + 浮层（components/ui 的 Popover：浅色玻璃、Radix 负责 Esc / 点外面关闭和焦点归还）。
 export function Popover({ label, active, width = 360, children }: { label: ReactNode; active?: boolean; width?: number; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", down);
-    document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
-  }, [open]);
   return (
-    <div ref={ref} className="relative">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
-        className={"rounded-md px-2 py-1 text-[13px] " + (active || open
-          ? "bg-[var(--accent-bg)] text-[var(--foreground)]"
-          : "text-[var(--foreground-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]")}>
+    <UiPopover style={{ width }} trigger={
+      <button type="button" data-active={active || undefined}
+        className="rounded-full px-2 py-1 text-[length:var(--ou-type-sm)] text-[var(--foreground-muted)] hover:text-[var(--foreground)] data-[active]:text-[var(--foreground)] data-[state=open]:text-[var(--foreground)]">
         {label}
       </button>
-      {open && (
-        <div role="dialog" style={{ width, boxShadow: "0 8px 24px var(--shadow-medium)" }}
-          className="absolute right-0 z-30 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-opaque)] p-3 text-[13px] text-[var(--foreground)]">
-          {children}
-        </div>
-      )}
-    </div>
+    }>
+      {children}
+    </UiPopover>
   );
 }
 
@@ -66,10 +52,9 @@ function ValueInput({ c, jobs, onChange }: { c: Condition; jobs: Job[]; onChange
         {c.value.map((v) => (
           <button key={v} type="button" className="tag-pill" title="去掉" onClick={() => onChange(c.value.filter((x) => x !== v))}>{name(v)} ×</button>
         ))}
-        <select value="" aria-label="选值" className={ctl + " min-w-0 flex-1"} onChange={(e) => { if (e.target.value) onChange([...c.value, e.target.value]); }}>
-          <option value="">{c.value.length ? "再加一个…" : "选择…"}</option>
-          {opts.filter(([k]) => !c.value.includes(k)).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
-        </select>
+        <Select key={c.value.join("|")} size="sm" aria-label="选值" className="min-w-0 flex-1" placeholder={c.value.length ? "再加一个…" : "选择…"}
+          options={opts.filter(([k]) => !c.value.includes(k)).map(([k, n]) => ({ value: k, label: n }))}
+          onValueChange={(v) => { if (v) onChange([...c.value, v]); }} />
       </div>
     );
   }
@@ -87,23 +72,18 @@ export function FilterPanel({ view, jobs, patch }: { view: ViewConfig; jobs: Job
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-[var(--foreground-muted)]">
         <span>符合以下</span>
-        <select value={mode} aria-label="条件关系" className={ctl} onChange={(e) => set(conditions, e.target.value === "or" ? "or" : "and")}>
-          <option value="and">所有</option>
-          <option value="or">任一</option>
-        </select>
+        <Select size="sm" value={mode} aria-label="条件关系" className="w-20" options={[{ value: "and", label: "所有" }, { value: "or", label: "任一" }]}
+          onValueChange={(v) => set(conditions, v === "or" ? "or" : "and")} />
         <span>条件</span>
       </div>
       {conditions.map((c, i) => {
         const none = c.op === "empty" || c.op === "notEmpty";
         return (
           <div key={i} className="flex items-start gap-1.5">
-            <select value={c.field} aria-label="字段" className={ctl + " w-24 shrink-0"}
-              onChange={(e) => { const f = e.target.value as FieldKey; edit(i, { field: f, op: OPS[FIELDS[f].type][0], value: [] }); }}>
-              {FIELD_KEYS.map((k) => <option key={k} value={k}>{FIELDS[k].name}</option>)}
-            </select>
-            <select value={c.op} aria-label="条件" className={ctl + " w-20 shrink-0"} onChange={(e) => edit(i, { op: e.target.value as Op })}>
-              {OPS[FIELDS[c.field].type].map((op) => <option key={op} value={op}>{OP_NAME[op]}</option>)}
-            </select>
+            <Select size="sm" value={c.field} aria-label="字段" className="w-24 shrink-0" options={FIELD_KEYS.map((k) => ({ value: k, label: FIELDS[k].name }))}
+              onValueChange={(v) => { const f = v as FieldKey; edit(i, { field: f, op: OPS[FIELDS[f].type][0], value: [] }); }} />
+            <Select size="sm" value={c.op} aria-label="条件" className="w-24 shrink-0" options={OPS[FIELDS[c.field].type].map((op) => ({ value: op, label: OP_NAME[op] }))}
+              onValueChange={(v) => edit(i, { op: v as Op })} />
             {none ? <span className="flex-1" /> : <ValueInput c={c} jobs={jobs} onChange={(value) => edit(i, { value })} />}
             <button type="button" aria-label="删除条件" className={ghost} onClick={() => set(conditions.filter((_, j) => j !== i))}>×</button>
           </div>
@@ -123,9 +103,8 @@ export function GroupPanel({ view, patch }: { view: ViewConfig; patch: Patch }) 
       {g.map((f, i) => (
         <div key={i} className="flex items-center gap-1.5">
           <span className="w-10 shrink-0 text-[var(--foreground-muted)]">{i ? "再按" : "按"}</span>
-          <select value={f} aria-label="分组字段" className={ctl + " flex-1"} onChange={(e) => patch({ group: g.map((x, j) => (j === i ? (e.target.value as FieldKey) : x)) })}>
-            {GROUPABLE.filter((k) => k === f || !g.includes(k)).map((k) => <option key={k} value={k}>{FIELDS[k].name}</option>)}
-          </select>
+          <Select size="sm" value={f} aria-label="分组字段" className="flex-1" options={GROUPABLE.filter((k) => k === f || !g.includes(k)).map((k) => ({ value: k, label: FIELDS[k].name }))}
+            onValueChange={(v) => patch({ group: g.map((x, j) => (j === i ? (v as FieldKey) : x)) })} />
           <button type="button" aria-label="删除分组" className={ghost} onClick={() => patch({ group: g.filter((_, j) => j !== i) })}>×</button>
         </div>
       ))}
@@ -144,13 +123,10 @@ export function SortPanel({ view, patch }: { view: ViewConfig; patch: Patch }) {
       {s.map((x, i) => (
         <div key={i} className="flex items-center gap-1.5">
           <span className="w-10 shrink-0 text-[var(--foreground-muted)]">{i ? "然后" : "按"}</span>
-          <select value={x.field} aria-label="排序字段" className={ctl + " flex-1"} onChange={(e) => patch({ sort: s.map((y, j) => (j === i ? { ...y, field: e.target.value as FieldKey } : y)) })}>
-            {FIELD_KEYS.filter((k) => k === x.field || !s.some((y) => y.field === k)).map((k) => <option key={k} value={k}>{FIELDS[k].name}</option>)}
-          </select>
-          <select value={x.desc ? "desc" : "asc"} aria-label="方向" className={ctl + " w-20"} onChange={(e) => patch({ sort: s.map((y, j) => (j === i ? { ...y, desc: e.target.value === "desc" } : y)) })}>
-            <option value="asc">升序</option>
-            <option value="desc">降序</option>
-          </select>
+          <Select size="sm" value={x.field} aria-label="排序字段" className="flex-1" options={FIELD_KEYS.filter((k) => k === x.field || !s.some((y) => y.field === k)).map((k) => ({ value: k, label: FIELDS[k].name }))}
+            onValueChange={(v) => patch({ sort: s.map((y, j) => (j === i ? { ...y, field: v as FieldKey } : y)) })} />
+          <Select size="sm" value={x.desc ? "desc" : "asc"} aria-label="方向" className="w-20" options={[{ value: "asc", label: "升序" }, { value: "desc", label: "降序" }]}
+            onValueChange={(v) => patch({ sort: s.map((y, j) => (j === i ? { ...y, desc: v === "desc" } : y)) })} />
           <button type="button" aria-label="删除排序" className={ghost} onClick={() => patch({ sort: s.filter((_, j) => j !== i) })}>×</button>
         </div>
       ))}

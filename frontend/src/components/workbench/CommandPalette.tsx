@@ -189,7 +189,7 @@ export function CommandPalette() {
             animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.985 }}
             transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 38 }}
-            className="offeru-command-surface mx-auto mt-[14vh] w-[min(92vw,600px)] overflow-hidden"
+            className="offeru-command-surface mx-auto mt-[12vh] w-[min(92vw,780px)] overflow-hidden"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="offeru-command-head">
@@ -229,50 +229,54 @@ export function CommandPalette() {
               </div>
             </div>
 
-            <ul ref={listRef} id={listboxId} role="listbox" aria-label={mode === "search" ? "结果" : "提问"} className="offeru-command-list custom-scrollbar">
-              {items.map((item, index) => {
-                const Icon = iconFor(item);
-                const active = index === activeIndex;
-                const done = handedOff === item.id;
-                const showHeader = index === 0 || items[index - 1].group !== item.group;
-                const headerLabel = mode === "ask" && !query.trim() ? "试着问" : GROUP_LABEL[item.group];
-                return (
-                  <li key={item.id} role="presentation">
-                    {showHeader && (
-                      <p className="offeru-command-group" role="presentation">
-                        {headerLabel}
-                      </p>
-                    )}
-                    <div
-                      id={optionId(index)}
-                      role="option"
-                      aria-selected={active}
-                      data-index={index}
-                      data-active={active || undefined}
-                      onClick={() => run(item)}
-                      onMouseMove={() => !active && setActiveIndex(index)}
-                      className="offeru-command-item"
-                    >
-                      <span className="offeru-command-icon" aria-hidden>
-                        {done ? <Check size={14} strokeWidth={2} /> : <Icon size={14} strokeWidth={1.75} />}
-                      </span>
-                      <span className="offeru-command-label">
-                        {item.id === "ask-query" && mode === "search" ? (
-                          <>
-                            问 OfferU：<span className="text-[var(--foreground)]">{item.label}</span>
-                          </>
-                        ) : (
-                          item.label
-                        )}
-                      </span>
-                      <span className="offeru-command-hint">
-                        {done ? "已交给 OfferU" : item.hint}
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="offeru-command-body">
+              <ul ref={listRef} id={listboxId} role="listbox" aria-label={mode === "search" ? "结果" : "提问"} className="offeru-command-list custom-scrollbar">
+                {items.map((item, index) => {
+                  const Icon = iconFor(item);
+                  const active = index === activeIndex;
+                  const done = handedOff === item.id;
+                  const showHeader = index === 0 || items[index - 1].group !== item.group;
+                  const headerLabel = mode === "ask" && !query.trim() ? "试着问" : GROUP_LABEL[item.group];
+                  return (
+                    <li key={item.id} role="presentation">
+                      {showHeader && (
+                        <p className="offeru-command-group" role="presentation">
+                          {headerLabel}
+                        </p>
+                      )}
+                      <div
+                        id={optionId(index)}
+                        role="option"
+                        aria-selected={active}
+                        data-index={index}
+                        data-active={active || undefined}
+                        onClick={() => run(item)}
+                        onMouseMove={() => !active && setActiveIndex(index)}
+                        className="offeru-command-item"
+                      >
+                        <span className="offeru-command-icon" aria-hidden>
+                          {done ? <Check size={14} strokeWidth={2} /> : <Icon size={14} strokeWidth={1.75} />}
+                        </span>
+                        <span className="offeru-command-label">
+                          {item.id === "ask-query" && mode === "search" ? (
+                            <>
+                              问 OfferU：<span className="text-[var(--foreground)]">{item.label}</span>
+                            </>
+                          ) : (
+                            item.label
+                          )}
+                        </span>
+                        <span className="offeru-command-hint">
+                          {done ? "已交给 OfferU" : item.hint}
+                        </span>
+                        <ArrowRight size={14} strokeWidth={1.9} className="offeru-command-arrow" aria-hidden />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <CommandPreview item={items[activeIndex]} done={handedOff === items[activeIndex]?.id} mode={mode} />
+            </div>
 
             <div className="offeru-command-foot" aria-hidden>
               <span className="truncate">
@@ -290,5 +294,37 @@ export function CommandPalette() {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/** 右侧预览（参考 Inspora · Mona「feature menu」的「左索引 + 右预览」）：高亮哪一项，就提前说清楚选它会发生什么。 */
+function CommandPreview({ item, done, mode }: { item: PaletteItem | undefined; done: boolean; mode: PaletteMode }) {
+  if (!item) return <aside className="offeru-command-preview" aria-hidden />;
+  const Icon = iconFor(item);
+  const isPage = item.group === "pages";
+  return (
+    <aside className="offeru-command-preview" aria-hidden>
+      <div key={item.id} className="offeru-command-preview-inner">
+        <span className="offeru-command-preview-tile" data-agent={!isPage || undefined}>
+          {done ? <Check size={18} strokeWidth={2} /> : <Icon size={18} strokeWidth={1.75} />}
+        </span>
+        <p className="offeru-command-preview-title">{item.group === "ask" && mode === "search" ? "问 OfferU" : item.label}</p>
+        <p className="offeru-command-preview-desc">{isPage ? item.hint : GROUP_LABEL[item.group] + " · " + item.hint}</p>
+        <div className="offeru-command-preview-card">
+          {isPage ? (
+            <>
+              <span className="offeru-command-preview-eyebrow">打开页面</span>
+              <span>{item.label}<span className="offeru-command-preview-path">{item.href}</span></span>
+            </>
+          ) : (
+            <>
+              <span className="offeru-command-preview-eyebrow">{done ? "已交给 OfferU" : "会交给右侧 OfferU"}</span>
+              <span className="offeru-command-preview-prompt">{item.prompt || "输入问题后回车"}</span>
+            </>
+          )}
+        </div>
+        <span className="offeru-command-preview-enter"><kbd>↵</kbd> {isPage ? "打开" : mode === "ask" ? "提问" : "执行"}</span>
+      </div>
+    </aside>
   );
 }

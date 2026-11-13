@@ -4,10 +4,9 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { type DragEvent, type ReactNode, useState } from "react";
 
-import { TagInput } from "@/components/core/TagInput";
+import { JobTag, TagPicker } from "@/components/jobs/JobPickers";
 import { StatusPill } from "@/components/jobs/JobsTable";
 import { type Event, JOB_STATUS, type Job, type JobStatus, useTool, when, write } from "@/lib/core";
-import { tagPatch } from "@/lib/jobView";
 
 const OPEN: JobStatus[] = ["saved", "applied", "test", "interview", "offer"];
 const ENDED: JobStatus[] = ["rejected", "closed"];
@@ -27,7 +26,6 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
   const [tag, setTag] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [showEnded, setShowEnded] = useState(false);
-  const [editing, setEditing] = useState<number | null>(null);
   const [error, setError] = useState("");
   if (!jobs) return null;
   const all = jobs.items;
@@ -69,7 +67,6 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
     onDragLeave: () => setOver((cur) => (cur === key ? null : cur)),
     onDrop: (e: DragEvent) => { e.preventDefault(); drop(key, e.dataTransfer.getData("text/plain")); },
   });
-  const saveTags = (job: Job, value: string[]) => void write("save", { type: "job", id: job.id, data: tagPatch(job, value) });
   const addIn = async (status: JobStatus) => {
     setError("");
     try {
@@ -82,7 +79,7 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
   const card = (job: Job, index: number) => {
     const event = upcoming.get(job.id);
     return (
-      <li key={job.id} data-testid="job-card" draggable={editing !== job.id}
+      <li key={job.id} data-testid="job-card" draggable
         onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(job.id)); e.dataTransfer.effectAllowed = "move"; }}
         className="ou-card ou-enter group min-h-10 cursor-grab px-3 py-2.5 active:cursor-grabbing"
         style={{ ["--i" as string]: Math.min(index, 8) }}>
@@ -95,17 +92,14 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
           {job.score != null && <span className="tabular-nums" title={(job.reasons ?? []).join("\n")}>{job.score} 分</span>}
           {event ? <span>{when(event.at)} {event.title}</span> : job.applied_at ? <span>{job.applied_at.slice(5)} 投递</span> : null}
           {(job.tags ?? []).map((t) => (
-            <button key={t} type="button" onClick={() => setTag(t)} title={(job.auto_tags?.includes(t) ? "Agent 自动打的 · " : "") + "只看 #" + t}
-              className="ou-kanban-tag">{t}</button>
+            <JobTag key={t} text={t} onClick={() => setTag(t)} title={(job.auto_tags?.includes(t) ? "Agent 自动打的 · " : "") + "只看 #" + t} />
           ))}
-          <button type="button" onClick={() => setEditing(job.id)}
-            className={"opacity-0 hover:text-[var(--foreground)] group-hover:opacity-100 focus-visible:opacity-100 " + faint}>
-            {job.tags?.length ? "改标签" : "+ 标签"}
-          </button>
+          <TagPicker job={job} options={tags} trigger={
+            <button type="button" className={"opacity-0 hover:text-[var(--foreground)] group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 " + faint}>
+              {job.tags?.length ? "改标签" : "+ 标签"}
+            </button>
+          } />
         </div>
-        {editing === job.id && (
-          <TagInput value={job.tags ?? []} options={tags} onChange={(value) => saveTags(job, value)} onClose={() => setEditing(null)} />
-        )}
       </li>
     );
   };

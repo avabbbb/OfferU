@@ -2,12 +2,13 @@
 
 import { type ColumnDef, type ColumnSizingState, type Updater, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { AlignLeft, Calendar, ChevronRight, CircleChevronDown, Hash, List, Plus } from "lucide-react";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 
-import { TagInput } from "@/components/core/TagInput";
+import { JobTag, StatusPicker, TagPicker } from "@/components/jobs/JobPickers";
+import { LabelPicker } from "@/components/ui";
 import { JOB_STATUS, type Job, type JobStatus, write } from "@/lib/core";
 import {
-  FIELDS, MAX_WIDTH, MIN_WIDTH, PRIMARY, ROW_HEIGHT, STATUS_GROUPS, STATUS_ORDER, STATUS_TONE, groupJobs, tagPatch,
+  FIELDS, MAX_WIDTH, MIN_WIDTH, PRIMARY, ROW_HEIGHT, STATUS_ORDER, STATUS_TONE, groupJobs, tagPatch,
   type FieldKey, type FieldType, type Group, type ViewConfig,
 } from "@/lib/jobView";
 
@@ -39,59 +40,11 @@ function OptionPill({ text }: { text: string }) {
   return <span className={PILL + optionTone(text)} title={text}><span className="truncate">{text}</span></span>;
 }
 
-// 状态下拉照 Notion：顶部是当前值，下面按 待办 / 进行中 / 已完成 分组列出胶囊，悬停整行变灰。
-// 用 fixed 定位贴在单元格下方，避免被表格滚动容器裁掉；点别处、滚动或按 Esc 关闭。
-export function StatusMenu({ value, onPick, onClose }: { value: JobStatus; onPick: (s: JobStatus) => void; onClose: () => void }) {
-  const anchor = useRef<HTMLSpanElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  useLayoutEffect(() => {
-    const r = anchor.current?.getBoundingClientRect();
-    if (r) setPos({ left: Math.min(r.left, window.innerWidth - 240), top: Math.min(r.bottom + 4, window.innerHeight - 340) });
-  }, []);
-  useEffect(() => {
-    const down = (e: Event) => { if (!menu.current?.contains(e.target as Node)) onClose(); };
-    const key = (e: Event) => { if ((e as globalThis.KeyboardEvent).key === "Escape") onClose(); };
-    const scroll = (e: Event) => { if (!menu.current?.contains(e.target as Node)) onClose(); };
-    document.addEventListener("mousedown", down);
-    document.addEventListener("keydown", key);
-    document.addEventListener("scroll", scroll, true);
-    return () => {
-      document.removeEventListener("mousedown", down);
-      document.removeEventListener("keydown", key);
-      document.removeEventListener("scroll", scroll, true);
-    };
-  }, [onClose]);
-  return (
-    <span ref={anchor} className="flex max-w-full">
-      <StatusPill status={value} />
-      {pos && (
-        <div ref={menu} role="listbox" aria-label="投递状态" style={pos}
-          className="fixed z-50 w-56 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-opaque)] text-[13px] shadow-[0_8px_24px_rgba(15,15,15,0.14)]">
-          <div className="border-b border-[var(--border)] px-2.5 py-2"><StatusPill status={value} /></div>
-          {STATUS_GROUPS.map(([name, list], i) => (
-            <div key={name} className={"px-1 py-1" + (i ? " border-t border-[var(--border)]" : "")}>
-              <div className="px-2 pb-1 pt-0.5 text-[12px] text-[var(--foreground-muted)]">{name}</div>
-              {list.map((s) => (
-                <button key={s} type="button" role="option" aria-selected={s === value} onClick={() => onPick(s)}
-                  className={"flex w-full items-center rounded-md px-2 py-1 hover:bg-[var(--surface-hover)]" + (s === value ? " bg-[var(--surface-hover)]" : "")}>
-                  <StatusPill status={s} />
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </span>
-  );
-}
-
 const TYPE_ICON: Record<FieldType, typeof AlignLeft> = {
   text: AlignLeft, select: CircleChevronDown, tags: List, number: Hash, date: Calendar,
 };
 
 export const saveJob = (job: Job, data: Record<string, unknown>) => write("save", { type: "job", id: job.id, data });
-export const saveTags = (job: Job, tags: string[]) => saveJob(job, tagPatch(job, tags));
 
 const DEFAULT_WIDTH: Record<FieldKey, number> = {
   company: 160, title: 220, status: 104, city: 90, hire_type: 100, tags: 160, score: 72, applied_at: 108, created_at: 108,
@@ -166,15 +119,15 @@ function CellView({ job, field, editing, setEditing, tagOptions, wrap }: {
   }
   switch (field) {
     case "status":
-      if (on) return <StatusMenu value={job.status} onClose={close} onPick={(s) => { close(); if (s !== job.status) void saveJob(job, { status: s }); }} />;
-      return <button type="button" title="改状态" onClick={start} className="flex max-w-full"><StatusPill status={job.status} /></button>;
+      return <StatusPicker job={job} trigger={<button type="button" title="改状态" className="flex max-w-full"><StatusPill status={job.status} /></button>} />;
     case "tags":
-      if (on) return <TagInput value={job.tags ?? []} options={tagOptions} onClose={close} onChange={(tags) => void saveTags(job, tags)} />;
       return (
-        <button type="button" title="改标签" onClick={start} className={"flex w-full min-w-0 gap-1 text-left " + (wrap ? "flex-wrap" : "overflow-hidden")}>
-          {(job.tags ?? []).map((t) => <span key={t} className="shrink-0"><OptionPill text={t} /></span>)}
-          {!job.tags?.length && <span className="opacity-0 hover:opacity-100">{faint("+ 标签")}</span>}
-        </button>
+        <TagPicker job={job} options={tagOptions} trigger={
+          <button type="button" title="改标签" className={"flex w-full min-w-0 gap-1 text-left " + (wrap ? "flex-wrap" : "overflow-hidden")}>
+            {(job.tags ?? []).map((t) => <span key={t} className="shrink-0"><JobTag text={t} /></span>)}
+            {!job.tags?.length && <span className="opacity-0 hover:opacity-100">{faint("+ 标签")}</span>}
+          </button>
+        } />
       );
     case "hire_type":
       return job.posting?.hire_type ? <span className="flex"><OptionPill text={job.posting.hire_type} /></span> : null;
@@ -429,15 +382,15 @@ export function JobsTable({ jobs, view, patch, openId, onOpen }: {
             : section("all", <>{rows(jobs, "all")}{addRow({}, "加一条")}</>, true)}
 
           {byStatus && missing.length > 0 && (
-            <label style={{ width: grid }} className="mt-4 flex h-8 items-center gap-1.5 rounded px-1 text-[13.5px] text-[var(--foreground-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground-muted)]">
-              <Plus size={14} strokeWidth={1.75} />
-              <span>新建分组</span>
-              <select value="" aria-label="新建分组" onChange={(e) => { const status = e.target.value; if (status) void addIn({ status }); }}
-                className="ml-1 bg-transparent text-[13px] text-[var(--foreground-muted)] outline-none">
-                <option value="">选一个状态…</option>
-                {missing.map((s) => <option key={s} value={s}>{JOB_STATUS[s]}</option>)}
-              </select>
-            </label>
+            <LabelPicker label="新建分组" placeholder="选一个状态…" multiple={false} value={[]}
+              options={missing.map((s) => ({ value: s, label: JOB_STATUS[s], tone: STATUS_TONE[s] }))}
+              onChange={([status]) => { if (status) void addIn({ status }); }}
+              trigger={
+                <button type="button" style={{ width: grid }} className="mt-4 flex h-8 items-center gap-1.5 rounded-full px-1 text-[length:var(--ou-type-body)] text-[var(--foreground-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground-muted)]">
+                  <Plus size={14} strokeWidth={1.75} />
+                  <span>新建分组</span>
+                </button>
+              } />
           )}
         </div>
       </div>
@@ -449,12 +402,10 @@ export function JobsTable({ jobs, view, patch, openId, onOpen }: {
         <div role="toolbar" aria-label="批量操作" style={{ boxShadow: "0 8px 24px var(--shadow-medium)" }}
           className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-opaque)] px-3 py-2 text-[13px]">
           <span>已选 {chosen.length} 个</span>
-          <select value="" disabled={batchBusy} aria-label="批量改状态"
-            onChange={(e) => { const status = e.target.value; if (status) void batch((job) => saveJob(job, { status })); }}
-            className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]">
-            <option value="">改状态…</option>
-            {STATUS_ORDER.map((s) => <option key={s} value={s}>{JOB_STATUS[s]}</option>)}
-          </select>
+          <LabelPicker label="批量改状态" placeholder="改成…" multiple={false} value={[]} side="top"
+            options={STATUS_ORDER.map((s) => ({ value: s, label: JOB_STATUS[s], tone: STATUS_TONE[s] }))}
+            onChange={([status]) => { if (status) void batch((job) => saveJob(job, { status })); }}
+            trigger={<button type="button" disabled={batchBusy} className="ou-button ou-button-secondary ou-button-sm">改状态…</button>} />
           <button type="button" disabled={batchBusy} className={ghost + " text-red-600 hover:text-red-700"}
             onClick={() => { if (window.confirm("删除选中的 " + chosen.length + " 个岗位？每条都能在「最近改动」里撤销。")) void batch((job) => write("delete", { type: "job", id: job.id })); }}>
             删除

@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 
-import { TagInput } from "@/components/core/TagInput";
-import { JOB_STATUS, type Job } from "@/lib/core";
-import { STATUS_ORDER } from "@/lib/jobView";
+import { JobTag, StatusSelect, TagPicker } from "@/components/jobs/JobPickers";
+import { type Job } from "@/lib/core";
 
-import { saveJob, saveTags } from "./JobsTable";
+import { saveJob } from "./JobsTable";
 import { ctl, ghost } from "./ViewPanels";
 
 // 右侧记录详情（同飞书「展开记录」）：∧∨ 按当前表格顺序切换，Esc 关闭；改动失焦即存。完整页（JD、评估、投递）走「查看详情」。
@@ -53,8 +52,6 @@ export function RecordDrawer({ job, index, total, tagOptions, onPrev, onNext, on
   onNext: () => void;
   onClose: () => void;
 }) {
-  const [editTags, setEditTags] = useState(false);
-  useEffect(() => setEditTags(false), [job.id]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -86,23 +83,19 @@ export function RecordDrawer({ job, index, total, tagOptions, onPrev, onNext, on
         </div>
         <dl className="grid gap-x-3 gap-y-2" style={{ gridTemplateColumns: "72px minmax(0, 1fr)" }}>
           <Row label="状态">
-            <select value={job.status} aria-label="投递状态" className={ctl} onChange={(e) => void saveJob(job, { status: e.target.value })}>
-              {STATUS_ORDER.map((s) => <option key={s} value={s}>{JOB_STATUS[s]}</option>)}
-            </select>
+            <div className="pt-1"><StatusSelect job={job} /></div>
           </Row>
           <Row label="公司"><Field job={job} field="company" /></Row>
           <Row label="岗位"><Field job={job} field="title" /></Row>
           <Row label="城市"><Field job={job} field="city" /></Row>
           <Row label="招聘类型"><p className="pt-1.5">{job.posting?.hire_type || <span className="text-[var(--foreground-faint)]">—</span>}</p></Row>
           <Row label="标签">
-            {editTags
-              ? <TagInput value={job.tags ?? []} options={tagOptions} onClose={() => setEditTags(false)} onChange={(tags) => void saveTags(job, tags)} />
-              : (
-                <button type="button" onClick={() => setEditTags(true)} className="flex min-h-7 w-full flex-wrap items-center gap-1 rounded-md px-1 py-1 text-left hover:bg-[var(--surface-hover)]">
-                  {(job.tags ?? []).map((t) => <span key={t} className="tag-pill">#{t}</span>)}
-                  {!job.tags?.length && <span className="text-[var(--foreground-faint)]">+ 标签</span>}
-                </button>
-              )}
+            <TagPicker job={job} options={tagOptions} trigger={
+              <button type="button" className="flex min-h-7 w-full flex-wrap items-center gap-1 rounded-md px-1 py-1 text-left hover:bg-[var(--surface-hover)]">
+                {(job.tags ?? []).map((t) => <JobTag key={t} text={t} />)}
+                {!job.tags?.length && <span className="text-[var(--foreground-faint)]">+ 标签</span>}
+              </button>
+            } />
           </Row>
           <Row label="评分">
             <div className="pt-1.5">

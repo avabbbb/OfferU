@@ -9,7 +9,7 @@ import { type Doc, type Event, type Job, refreshAll, tool, useTool, write } from
 import { evaluateJobs } from "@/lib/evaluate";
 import { ResearchCard } from "@/components/core/ResearchCard";
 
-import { StatusSelect } from "../page";
+import { StatusSelect } from "@/components/jobs/JobPickers";
 
 function LongText({ job, field, label, placeholder }: { job: Job; field: "jd" | "notes"; label: string; placeholder: string }) {
   const [value, setValue] = useState(job[field] ?? "");
