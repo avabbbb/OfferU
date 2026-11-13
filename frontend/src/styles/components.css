@@ -382,7 +382,7 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
   gap: var(--ou-space-3);
   margin-top: var(--ou-space-3);
   margin-inline: calc(-1 * var(--ou-gutter));
-  padding: 0 var(--ou-gutter) var(--ou-space-4);
+  padding: var(--ou-space-2) var(--ou-gutter) var(--ou-space-6);
   overflow-x: auto;
   scroll-snap-type: x proximity;
   scroll-padding-inline: var(--ou-gutter);
@@ -390,8 +390,9 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 }
 .ou-kanban-column {
   display: flex;
-  width: var(--ou-kanban-column);
-  flex-shrink: 0;
+  min-width: var(--ou-kanban-column-min);
+  max-width: var(--ou-kanban-column);
+  flex: 1 0 0;
   flex-direction: column;
   padding: var(--ou-space-2);
   border-radius: var(--ou-radius-panel);
@@ -401,7 +402,27 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 }
 .ou-kanban-column[data-over] { box-shadow: var(--ou-ring-focus); }
 .ou-kanban-head { display: flex; min-height: 1.75rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-1); font-size: var(--ou-type-sm); font-weight: 400; }
-.ou-kanban-column > ul { gap: var(--ou-space-2); }
+.ou-kanban-column > ul { gap: var(--ou-space-3); padding: var(--ou-space-1) 0; }
+/* 看板卡 = 色块：按状态取色，文字用该色相的深色；元数据、标签降一档透明度。 */
+.ou-kanban-card { min-height: 2.5rem; padding: var(--ou-space-3) var(--ou-space-3) calc(var(--ou-space-3) + var(--ou-swatch-edge)); }
+.ou-kanban-card .ou-kanban-subtitle { color: var(--ou-pill-text); }
+.ou-kanban-card .ou-kanban-meta { color: var(--ou-pill-text); }
+.ou-kanban-card .ou-kanban-meta > span { opacity: var(--ou-alpha-soft); }
+.ou-kanban-card .ou-tag { background: var(--ou-capsule-hover); color: var(--ou-pill-text); }
+.ou-kanban-card button.ou-tag:hover { background: var(--ou-capsule-bg); }
+.ou-swatch.ou-enter { animation-fill-mode: backwards; }
+.ou-kanban-card { --ou-swatch-mix: 70%; }
+.ou-swatch.ou-tone-gray { --ou-swatch-mix: 88%; }
+.ou-kanban-ended {
+  display: inline-flex; min-height: 2rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-3);
+  border-radius: var(--ou-radius-pill); background: var(--ou-glass-subtle); font-size: var(--ou-type-sm);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-kanban-filter { display: inline-flex; min-height: 1.75rem; align-items: center; gap: 0.3125rem; padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); color: var(--ou-text-secondary); font-size: var(--ou-type-sm); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
+.ou-kanban-filter > span { color: var(--ou-text-placeholder); font-size: var(--ou-type-xs); }
+.ou-kanban-filter:hover { color: var(--ou-text-primary); }
+.ou-kanban-filter[aria-pressed="true"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+.ou-kanban-ended:hover, .ou-kanban-ended[data-over] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
 .ou-kanban-title { font-size: var(--ou-type-body); font-weight: 600; line-height: 1.4; color: var(--ou-text-primary); }
 .ou-kanban-subtitle { font-size: var(--ou-type-sm); line-height: 1.45; color: var(--ou-text-secondary); }
 .ou-kanban-meta { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
@@ -422,9 +443,100 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 .ou-kanban-add:hover { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
 @media (max-width: 40rem) {
   .ou-kanban-track { scroll-snap-type: x mandatory; }
-  .ou-kanban-column { width: min(85vw, 20rem); }
+  .ou-kanban-column { min-width: min(85vw, 20rem); }
 }
 
+
+/* ── 色块（Event Swatch）：日历事项 + 看板岗位卡 ──
+   面 = 该色相的浅底和中间色混出来的粉彩（.ou-tone-* 提供 --ou-pill-*）；内侧白边 + 底边略深一截，像压出来的塑料片；
+   悬停轻轻放大（弹簧，带一点回弹）+ 阴影变深；拖起来微倾 + 阴影更深；光标保持箭头。 */
+.ou-swatch {
+  position: relative;
+  border-radius: var(--ou-radius-swatch);
+  background: color-mix(in oklab, var(--ou-pill-bg) var(--ou-swatch-mix), var(--ou-pill-border));
+  box-shadow: var(--ou-swatch-rim), inset 0 calc(-1 * var(--ou-swatch-edge)) 0 color-mix(in oklab, var(--ou-pill-border) 55%, var(--ou-pill-dot)), var(--ou-swatch-shadow);
+  color: var(--ou-pill-text);
+  cursor: default;
+  transition: transform var(--ou-motion-slow) var(--ou-ease-spring-soft), box-shadow var(--ou-motion-slow) var(--ou-ease-standard), opacity var(--ou-motion-base) var(--ou-ease-standard);
+}
+.ou-swatch[draggable="true"]:hover, .ou-swatch[draggable="true"]:focus-within {
+  z-index: var(--ou-layer-sticky);
+  transform: translateY(-2px) scale(var(--ou-swatch-scale));
+  box-shadow: var(--ou-swatch-rim), inset 0 calc(-1 * var(--ou-swatch-edge)) 0 color-mix(in oklab, var(--ou-pill-border) 55%, var(--ou-pill-dot)), var(--ou-swatch-shadow-hover);
+}
+.ou-swatch[data-lifted] {
+  transform: rotate(var(--ou-swatch-tilt)) scale(var(--ou-swatch-scale));
+  box-shadow: var(--ou-swatch-rim), inset 0 calc(-1 * var(--ou-swatch-edge)) 0 color-mix(in oklab, var(--ou-pill-border) 55%, var(--ou-pill-dot)), var(--ou-swatch-shadow-drag);
+}
+.ou-swatch[data-dragging] { opacity: var(--ou-alpha-faint); transform: scale(0.98); }
+.ou-drag-holder { position: fixed; top: -200vh; left: 0; padding: var(--ou-space-6); pointer-events: none; }
+.ou-swatch-top { display: flex; align-items: center; gap: var(--ou-space-1); min-height: 1.5rem; }
+.ou-swatch-top > svg { flex: none; opacity: var(--ou-alpha-soft); }
+.ou-swatch-more {
+  display: inline-flex; width: 1.5rem; height: 1.5rem; flex: none; align-items: center; justify-content: center; margin-left: auto;
+  border-radius: var(--ou-radius-pill); color: inherit; opacity: var(--ou-alpha-muted);
+  transition: opacity var(--ou-motion-fast) var(--ou-ease-standard), background-color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-swatch-more:hover, .ou-swatch-more[data-state="open"] { opacity: 1; background: var(--ou-capsule-hover); }
+.ou-swatch-hidden {
+  margin-left: auto; padding: 0 var(--ou-space-2); border-radius: var(--ou-radius-pill);
+  background: color-mix(in oklab, var(--ou-pill-text) 14%, transparent); color: inherit;
+  font-size: var(--ou-type-xs); font-weight: 500; line-height: 1.25rem; white-space: nowrap;
+}
+.ou-swatch-hidden + .ou-swatch-more { margin-left: 0; }
+.ou-swatch-hidden:hover { background: color-mix(in oklab, var(--ou-pill-text) 22%, transparent); }
+.ou-swatch-meta { font-size: var(--ou-type-xs); opacity: var(--ou-alpha-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ou-swatch-title { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: var(--ou-type-sm); font-weight: 600; line-height: 1.3; color: var(--ou-text-primary); letter-spacing: -0.005em; }
+@media (prefers-reduced-motion: reduce) { .ou-swatch[draggable="true"]:hover { transform: none; } }
+
+/* ── 周日历 ── */
+.ou-cal { padding: var(--ou-space-2) 0 var(--ou-space-4); overflow: hidden; background: var(--ou-bg-surface-solid); }
+.ou-cal-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2) var(--ou-space-3); padding: var(--ou-space-2) var(--ou-space-4) var(--ou-space-3); }
+.ou-cal-toolbar .ou-button-group { background: var(--ou-bg-control); }
+.ou-cal-title { margin-left: var(--ou-space-1); font-size: var(--ou-type-section); font-weight: 600; color: var(--ou-text-primary); }
+.ou-cal-week { margin-left: var(--ou-space-2); font-size: var(--ou-type-sm); font-weight: 400; color: var(--ou-text-tertiary); }
+.ou-cal-plus { width: 2.25rem; height: 2.25rem; background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+.ou-cal-plus:hover, .ou-cal-plus[data-state="open"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-elev-2); color: var(--ou-text-primary); }
+.ou-cal-add { width: 20rem; }
+.ou-input-sm { min-height: 1.75rem; border-radius: var(--ou-radius-pill); font-size: var(--ou-type-sm); }
+.ou-cal-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+.ou-cal-grid {
+  display: grid;
+  min-width: calc(var(--ou-cal-gutter) + 7 * var(--ou-cal-day-min));
+  grid-template-columns: var(--ou-cal-gutter) repeat(7, minmax(var(--ou-cal-day-min), 1fr));
+  grid-template-rows: auto calc(var(--hours) * var(--ou-cal-hour));
+  padding-right: var(--ou-space-3);
+}
+.ou-cal-corner { position: sticky; top: 0; }
+.ou-cal-dayhead { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; padding: var(--ou-space-2) var(--ou-space-3) var(--ou-space-3); }
+.ou-cal-weekday { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-cal-date { display: inline-flex; width: 1.875rem; height: 1.875rem; align-items: center; justify-content: center; margin-left: -0.375rem; border-radius: var(--ou-radius-pill); font-size: var(--ou-type-section); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ou-text-primary); }
+.ou-cal-dayhead[data-today] .ou-cal-weekday { color: var(--ou-tone-orange-text); font-weight: 500; }
+.ou-cal-dayhead[data-today] .ou-cal-date { background: var(--ou-color-orange); color: var(--ou-color-on-orange); font-weight: 600; }
+.ou-cal-dayhead[data-weekend] .ou-cal-date { color: var(--ou-text-secondary); }
+.ou-cal-allday { margin-top: var(--ou-space-1); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.ou-cal-gutter { position: relative; }
+.ou-cal-hour, .ou-cal-now-pill, .ou-cal-line, .ou-cal-now { position: absolute; top: calc(var(--t) * var(--ou-cal-hour) / 60); }
+.ou-cal-hour { right: var(--ou-space-2); translate: 0 -50%; font-size: var(--ou-type-xs); font-variant-numeric: tabular-nums; color: var(--ou-text-placeholder); }
+.ou-cal-gutter, .ou-cal-col { margin-top: var(--ou-space-2); }
+.ou-cal-now-pill { right: var(--ou-space-1); z-index: var(--ou-layer-sticky); translate: 0 -50%; padding: 0 var(--ou-space-1); border-radius: var(--ou-radius-pill); background: var(--ou-color-orange); color: var(--ou-color-on-orange); font-size: var(--ou-type-xs); font-weight: 600; line-height: 1.125rem; font-variant-numeric: tabular-nums; }
+.ou-cal-col { position: relative; min-width: 0; transition: background-color var(--ou-motion-base) var(--ou-ease-standard); }
+.ou-cal-col[data-weekend] { background: color-mix(in oklab, var(--ou-line-faint) 55%, transparent); }
+.ou-cal-col[data-over] { background: var(--ou-bg-hover); }
+.ou-cal-line { left: 0; right: 0; height: 1px; background: var(--ou-line-faint); }
+.ou-cal-now { left: 0; right: 0; z-index: var(--ou-layer-sticky); height: 2px; translate: 0 -50%; border-radius: var(--ou-radius-pill); background: var(--ou-color-orange); }
+.ou-cal-now::before { content: ""; position: absolute; left: -0.25rem; top: 50%; width: 0.5rem; height: 0.5rem; translate: 0 -50%; border-radius: var(--ou-radius-pill); background: var(--ou-color-orange); }
+.ou-cal-stack { position: absolute; left: var(--ou-space-1); right: var(--ou-space-1); top: calc(var(--t) * var(--ou-cal-hour) / 60 + 0.125rem); height: calc(var(--h) * var(--ou-cal-hour) / 60 - var(--ou-space-1)); }
+.ou-cal-stack[data-open] { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: var(--ou-space-1); height: auto; animation: ou-rise-in var(--ou-motion-slow) var(--ou-ease-spring-soft) both; }
+.ou-cal-slot { position: relative; margin-top: calc(var(--t) * var(--ou-cal-hour) / 60); height: calc(var(--vm) * var(--ou-cal-hour) / 60 - var(--ou-space-1)); }
+.ou-cal-stack:not([data-open]) .ou-cal-slot { position: absolute; inset: 0; margin: 0; height: auto; }
+.ou-cal-event { display: flex; height: 100%; flex-direction: column; justify-content: space-between; padding: var(--ou-space-2) var(--ou-space-2) calc(var(--ou-space-2) + var(--ou-swatch-edge)) var(--ou-space-3); overflow: hidden; }
+.ou-cal-stack[data-open] .ou-cal-event { padding-left: var(--ou-space-2); }
+.ou-cal-event[data-done] .ou-swatch-title { text-decoration: line-through; color: var(--ou-text-tertiary); }
+.ou-cal-front { position: absolute; inset: 0; }
+.ou-cal-behind { position: absolute; inset: 0; transform: translateY(calc(var(--k) * 0.4375rem)) scale(calc(1 - var(--k) * 0.035)); transform-origin: bottom center; transition: transform var(--ou-motion-slow) var(--ou-ease-spring-soft); }
+.ou-cal-behind .ou-cal-event { opacity: 0.92; }
+.ou-cal-stack[data-stacked]:hover .ou-cal-behind { transform: translateY(calc(var(--k) * 0.75rem)) scale(calc(1 - var(--k) * 0.03)); }
 
 /* ── 动效 v2（docs/design/visual-system.md §7）──────────────────────────
    原则：动效说明「从哪来、到哪去、现在在干嘛」，不做装饰。全部走 token；
@@ -497,7 +609,7 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 /* 看板：拖到列上时列底和焦点环平滑出现；卡片拖起时略微倾斜。 */
 .ou-kanban-column { transition: box-shadow var(--ou-motion-base) var(--ou-ease-standard), background-color var(--ou-motion-base) var(--ou-ease-standard); }
 .ou-kanban-column[data-over] { background: var(--ou-glass-bg); }
-.ou-card[draggable="true"]:active { transform: rotate(-1deg) scale(1.02); box-shadow: var(--ou-elev-3); }
+
 
 /* 弹窗（⌘K 用 framer-motion 弹簧，已有）：从中心略微放大出现，遮罩淡入。 */
 @keyframes ou-fade-in { from { opacity: 0; } to { opacity: 1; } }

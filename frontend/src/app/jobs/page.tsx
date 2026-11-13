@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { JobsCalendar } from "@/components/jobs/JobsCalendar";
 import { JobsGantt } from "@/components/jobs/JobsGantt";
 import { JobsTable } from "@/components/jobs/JobsTable";
 import { RecordDrawer } from "@/components/jobs/RecordDrawer";
@@ -9,7 +10,7 @@ import { ViewBar } from "@/components/jobs/ViewBar";
 import { JobBoard } from "@/components/today/JobBoard";
 import { type Event, JOB_STATUS, type Job, refreshAll, useTool, write } from "@/lib/core";
 import { evaluateJobs } from "@/lib/evaluate";
-import { applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
+import { VIEW_KINDS, applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
 
 const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
 
@@ -82,7 +83,13 @@ export default function JobsPage() {
   const [rankProgress, setRankProgress] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => { setState(loadViews()); setLoaded(true); }, []);
+  useEffect(() => {
+    const saved = loadViews();
+    // #/jobs?view=calendar（以及旧的 #/calendar）直接打开对应视图。
+    const want = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("view");
+    setState(VIEW_KINDS.includes(want as ViewKind) ? { ...saved, active: want as ViewKind } : saved);
+    setLoaded(true);
+  }, []);
   useEffect(() => { if (loaded) saveViews(state); }, [state, loaded]);
 
   const view = state.views[state.active];
@@ -138,6 +145,7 @@ export default function JobsPage() {
           : <JobsTable jobs={shown} view={view} patch={patch} openId={openId} onOpen={setOpenId} onAdd={() => setAdding(true)} />
       )}
       {state.active === "board" && <JobBoard embedded />}
+      {state.active === "calendar" && <JobsCalendar events={events} />}
       {state.active === "gantt" && <JobsGantt jobs={shown} events={events} view={view} openId={openId} onOpen={setOpenId} />}
 
       {open && (

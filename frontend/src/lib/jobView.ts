@@ -160,9 +160,9 @@ export function groupJobs(jobs: Job[], fields: FieldKey[], prefix = ""): Group[]
 
 // ---- 视图配置 ----
 
-export type ViewKind = "table" | "board" | "gantt";
-export const VIEW_KINDS: ViewKind[] = ["table", "board", "gantt"];
-export const VIEW_NAME: Record<ViewKind, string> = { table: "表格", board: "看板", gantt: "甘特" };
+export type ViewKind = "table" | "board" | "gantt" | "calendar";
+export const VIEW_KINDS: ViewKind[] = ["table", "board", "gantt", "calendar"];
+export const VIEW_NAME: Record<ViewKind, string> = { table: "表格", board: "看板", gantt: "甘特", calendar: "日历" };
 export type RowHeight = "low" | "medium" | "high";
 export const ROW_HEIGHT: Record<RowHeight, number> = { low: 32, medium: 44, high: 64 };
 
@@ -196,7 +196,7 @@ export function defaultView(kind: ViewKind): ViewConfig {
 }
 
 export function defaultState(): ViewState {
-  return { active: "table", views: { table: defaultView("table"), board: defaultView("board"), gantt: defaultView("gantt") } };
+  return { active: "table", views: { table: defaultView("table"), board: defaultView("board"), gantt: defaultView("gantt"), calendar: defaultView("calendar") } };
 }
 
 const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
@@ -251,7 +251,7 @@ export function loadViews(store: Store | undefined = local()): ViewState {
   const views = isObj(raw.views) ? raw.views : {};
   return {
     active: VIEW_KINDS.includes(raw.active as ViewKind) ? (raw.active as ViewKind) : "table",
-    views: { table: sanitizeView(views.table, "table"), board: sanitizeView(views.board, "board"), gantt: sanitizeView(views.gantt, "gantt") },
+    views: { table: sanitizeView(views.table, "table"), board: sanitizeView(views.board, "board"), gantt: sanitizeView(views.gantt, "gantt"), calendar: sanitizeView(views.calendar, "calendar") },
   };
 }
 

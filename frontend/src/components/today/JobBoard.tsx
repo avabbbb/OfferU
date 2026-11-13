@@ -6,14 +6,16 @@ import { type DragEvent, type ReactNode, useState } from "react";
 
 import { JobTag, TagPicker } from "@/components/jobs/JobPickers";
 import { StatusPill } from "@/components/jobs/JobsTable";
+import { liftDragImage } from "@/lib/dragLift";
+import { STATUS_TONE } from "@/lib/jobView";
 import { type Event, JOB_STATUS, type Job, type JobStatus, useTool, when, write } from "@/lib/core";
 
 const OPEN: JobStatus[] = ["saved", "applied", "test", "interview", "offer"];
 const ENDED: JobStatus[] = ["rejected", "closed"];
 const byScore = (a: Job, b: Job) => (b.score ?? -1) - (a.score ?? -1);
 
-// 看板（色卡 v2 + 层级模型）：列 = L0 画布上的浅色分区（--ou-bg-control），卡片 = L2（白底 + 1px 分隔线 + 1/2 阴影，悬停抬起一级）。
-// 列宽随窗口流动（--ou-kanban-column：16–22rem），窄屏横向滚动并按列吸附；颜色只留给列头的状态胶囊。
+// 看板（Glass v3 + Inspora「Event Swatch」）：列 = 渐变上的浅玻璃分区；卡片 = 按状态取色的粉彩色块（.ou-swatch：内侧白边、底边略深、16px 圆角），
+// 悬停轻轻放大，拖起来微倾 + 阴影变深。列宽在 13.5–22rem 之间平分可用宽度，1440 宽下五列放得下；再窄才在自己的轨道里横滚。
 const muted = "text-[var(--foreground-muted)]";
 const faint = "text-[var(--foreground-faint)]";
 const ghostBtn = "rounded px-1.5 py-0.5 hover:bg-[var(--surface-hover)]";
@@ -80,8 +82,8 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
     const event = upcoming.get(job.id);
     return (
       <li key={job.id} data-testid="job-card" draggable
-        onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(job.id)); e.dataTransfer.effectAllowed = "move"; }}
-        className="ou-card ou-enter group min-h-10 cursor-grab px-3 py-2.5 active:cursor-grabbing"
+        onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(job.id)); e.dataTransfer.effectAllowed = "move"; liftDragImage(e); }}
+        className={`ou-swatch ou-tone-${STATUS_TONE[job.status]} ou-kanban-card ou-enter group`}
         style={{ ["--i" as string]: Math.min(index, 8) }}>
         <Link href={"/jobs/" + job.id} title={[job.company, job.title].filter(Boolean).join(" · ")}
           className="ou-kanban-title block truncate">
@@ -111,7 +113,7 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
         {head}<span className={"tabular-nums " + faint}>{list.length}</span>
         {key === "ended" && <button type="button" onClick={() => setShowEnded(false)} className={"ml-auto " + ghostBtn + " " + muted}>收起</button>}
       </h3>
-      <ul className="mt-1 flex min-h-10 list-none flex-col gap-2">{list.map(card)}</ul>
+      <ul className="mt-1 flex min-h-10 list-none flex-col">{list.map(card)}</ul>
       {add && (
         <button type="button" onClick={() => void addIn(add)} aria-label={"在「" + JOB_STATUS[add] + "」新建"}
           className="ou-kanban-add">
@@ -126,27 +128,28 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         {!embedded && <h2 className={"text-[13px] font-medium " + muted}>投递看板</h2>}
         {tags.length > 0 && (
-          <div className={"flex flex-wrap items-center gap-0.5 text-[13px] " + muted} role="group" aria-label="按标签筛选">
+          <div className="ou-segment flex-wrap" role="group" aria-label="按标签筛选">
             <button type="button" aria-pressed={!tag} onClick={() => setTag(null)}
-              className={ghostBtn + " aria-pressed:bg-[var(--surface-hover)] aria-pressed:text-[var(--foreground)]"}>全部</button>
+              className="ou-kanban-filter">全部</button>
             {tags.map((t) => (
               <button key={t} type="button" aria-pressed={tag === t} onClick={() => setTag(tag === t ? null : t)}
-                className={ghostBtn + " aria-pressed:bg-[var(--surface-hover)] aria-pressed:text-[var(--foreground)]"}>
-                {t}<span className={"ml-1 tabular-nums " + faint}>{counts.get(t)}</span>
+                className="ou-kanban-filter">
+                {t}<span className="tabular-nums">{counts.get(t)}</span>
               </button>
             ))}
           </div>
         )}
         {error && <span className="ou-field-error" role="alert">{error}</span>}
-      </div>
-      <div className="ou-kanban-track">
-        {OPEN.map((s) => column(s, shown.filter((job) => job.status === s).sort(byScore), <StatusPill status={s} />, s))}
-        {showEnded ? column("ended", ended, <span className={muted}>已结束</span>) : (
+        {!showEnded && (
           <button type="button" onClick={() => setShowEnded(true)} {...dropZone("ended")}
-            className={"flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 hover:bg-[var(--surface-hover)] data-[over]:bg-[var(--surface-hover)] " + muted}>
+            className={"ou-kanban-ended ml-auto " + muted}>
             已结束<span className={"tabular-nums " + faint}>{ended.length}</span>
           </button>
         )}
+      </div>
+      <div className="ou-kanban-track">
+        {OPEN.map((s) => column(s, shown.filter((job) => job.status === s).sort(byScore), <StatusPill status={s} />, s))}
+        {showEnded && column("ended", ended, <span className={muted}>已结束</span>)}
       </div>
     </section>
   );
