@@ -2076,7 +2076,7 @@ body {
 .resume-shell {
   --surface: var(--ou-bg-hover);
   --card: var(--ou-bg-surface);
-  --field: var(--ou-bg-control);
+  --field: var(--ou-bg-field);
   --ink: var(--ou-action-primary);
   --shadow-card: var(--ou-elev-2);
   --shadow-raised: var(--ou-elev-3);
@@ -2297,6 +2297,43 @@ body {
 .resume-shell .rf-dot { margin-top: 0.85rem; width: 0.3rem; height: 0.3rem; flex-shrink: 0; border-radius: 999px; background: var(--foreground-muted); }
 .resume-shell .rf-bullet .rf-actions { padding-top: 0.25rem; }
 .resume-shell .rf-link { align-self: flex-start; color: var(--ink); font-size: 0.75rem; }
+/* 块式编辑框（RichText）：平时只有一块输入区；格式条 / 块菜单是跟着选区的 L3 浮层，放大编辑是 L4 弹窗。 */
+:is(.resume-shell, .rt-zoom) .rt { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; border: 1px solid transparent; border-radius: var(--ou-radius-control); background: var(--ou-bg-field); transition: border-color var(--ou-motion-fast) var(--ou-ease-standard); }
+:is(.resume-shell, .rt-zoom) .rt:focus-within { border-color: var(--ou-line-strong); box-shadow: var(--ou-ring-focus); }
+:is(.resume-shell, .rt-zoom) .rt .rt-edit { height: auto; margin: 0; padding: 0.5rem 0.75rem; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; cursor: text; }
+:is(.resume-shell, .rt-zoom) .rt:not(.rt-compact) .rt-edit { padding-right: 2.25rem; }
+:is(.resume-shell, .rt-zoom) .rt-edit:empty::before { content: attr(data-placeholder); color: var(--ou-text-placeholder); pointer-events: none; }
+:is(.resume-shell, .rt-zoom) .rt-edit ul, :is(.resume-shell, .rt-zoom) .rt-edit ol { margin: 0.125rem 0; padding-left: 1.4em; }
+:is(.resume-shell, .rt-zoom) .rt-edit ul { list-style: disc; }
+:is(.resume-shell, .rt-zoom) .rt-edit ol { list-style: decimal; }
+:is(.resume-shell, .rt-zoom) .rt-edit blockquote { margin: 0 0 0 2em; }
+:is(.resume-shell, .rt-zoom) .rt-edit b, :is(.resume-shell, .rt-zoom) .rt-edit strong { font-weight: 600; }
+:is(.resume-shell, .rt-zoom) .rt-edit a { color: var(--ou-text-primary); text-decoration: underline; text-underline-offset: 2px; }
+.resume-shell .rt-zoom-btn { position: absolute; top: 0.375rem; right: 0.375rem; display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--ou-radius-control); color: var(--ou-text-tertiary); opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard); }
+.resume-shell .rt:hover .rt-zoom-btn, .resume-shell .rt:focus-within .rt-zoom-btn, .resume-shell .rt-zoom-btn:focus-visible { opacity: 1; }
+.resume-shell .rt-zoom-btn:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.resume-shell .rt-zoom-btn svg { width: 0.875rem; height: 0.875rem; }
+.ou-dialog.rt-zoom { width: min(48rem, calc(100vw - 2 * var(--ou-gutter))); }
+.ou-dialog.rt-zoom .rt { margin-top: var(--ou-space-4); }
+.ou-dialog.rt-zoom .rt-edit { max-height: calc(100dvh - 16rem); overflow: auto; font-size: var(--ou-type-section); padding-right: 0.75rem; }
+/* 浮层：格式条（飞书式：文本类型 ▾ · 对齐 ▾ | B I | 链接 清除）与 / 块菜单 */
+.rt-bubble { padding: var(--ou-space-1); }
+.rt-bar { display: flex; align-items: center; color: var(--ou-text-secondary); }
+.rt-group { display: inline-flex; align-items: center; gap: 0.0625rem; padding: 0 0.25rem; }
+.rt-group + .rt-group { border-left: 1px solid var(--ou-line-separator); }
+.rt-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.0625rem; min-width: 1.75rem; height: 1.75rem; padding: 0 0.25rem; border-radius: var(--ou-radius-control); color: inherit; }
+.rt-btn svg { width: 0.95rem; height: 0.95rem; }
+.rt-btn:hover, .rt-btn[aria-pressed="true"], .rt-btn[aria-expanded="true"] { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.rt-chevron svg { width: 0.625rem; height: 0.625rem; }
+.rt-sub { display: flex; flex-direction: column; margin-top: var(--ou-space-1); padding-top: var(--ou-space-1); border-top: 1px solid var(--ou-line-separator); }
+.rt-slash { min-width: 11rem; }
+.rt-option { display: flex; align-items: center; gap: var(--ou-space-2); width: 100%; padding: 0.375rem 0.5rem; border-radius: var(--ou-radius-control); color: var(--ou-text-primary); font-size: var(--ou-type-sm); text-align: left; }
+.rt-option svg { width: 0.95rem; height: 0.95rem; color: var(--ou-text-tertiary); }
+.rt-option:hover, .rt-option[aria-selected="true"] { background: var(--ou-bg-hover); }
+/* 要点块：一行一块，排序 / 删除悬停或聚焦时才出现 */
+.resume-shell .rf-blocks { display: flex; flex-direction: column; gap: 0.375rem; }
+.resume-shell .rf-bullet .rf-actions { opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard); }
+.resume-shell .rf-bullet:hover .rf-actions, .resume-shell .rf-bullet:focus-within .rf-actions { opacity: 1; }
 .resume-shell .rf-add {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.375rem 0.75rem; border: 0; border-radius: var(--ou-radius-control);
   background: transparent; color: var(--ou-text-secondary); font-size: var(--ou-type-sm);
@@ -2315,27 +2352,6 @@ body {
 .resume-shell .rf-chip:hover { border-color: var(--ink); color: var(--ink); }
 
 /* 正文 / 要点的所见即所得编辑框：正文工具栏常驻，要点（一行字）只在聚焦时露出工具栏。 */
-.resume-shell .rt { display: flex; flex-direction: column; flex: 1; min-width: 0; border: 1px solid transparent; border-radius: var(--ou-radius-control); background: var(--ou-bg-control); overflow: hidden; transition: border-color var(--ou-motion-fast) var(--ou-ease-standard); }
-.resume-shell .rt:focus-within { border-color: var(--ou-line-strong); box-shadow: var(--ou-ring-focus); }
-.resume-shell .rt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.125rem 0; padding: 0.25rem 0.375rem; border-bottom: 1px solid var(--ou-line-separator); color: var(--ou-text-tertiary); }
-.resume-shell .rt-bar::-webkit-scrollbar { display: none; }
-.resume-shell .rt-bar > .rt-group { flex: none; }
-.resume-shell .rt-group { display: inline-flex; align-items: center; gap: 0.0625rem; padding: 0 0.25rem; }
-.resume-shell .rt-group + .rt-group { border-left: 1px solid var(--border); }
-.resume-shell .rt-group:first-child { padding-left: 0; }
-.resume-shell .rt-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.625rem; height: 1.625rem; border-radius: 0.375rem; color: inherit; }
-.resume-shell .rt-btn svg { width: 0.95rem; height: 0.95rem; }
-.resume-shell .rt-btn:hover { background: var(--surface); color: var(--ink); }
-.resume-shell .rt-btn[aria-pressed="true"] { background: var(--surface); color: var(--ink); }
-.resume-shell .rt-compact .rt-bar { display: none; }
-.resume-shell .rt-compact:focus-within .rt-bar { display: flex; }
-.resume-shell .rt .rt-edit { height: auto; margin: 0; padding: 0.5rem 0.75rem; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; cursor: text; }
-.resume-shell .rt-edit ul, .resume-shell .rt-edit ol { margin: 0.125rem 0; padding-left: 1.4em; }
-.resume-shell .rt-edit ul { list-style: disc; }
-.resume-shell .rt-edit ol { list-style: decimal; }
-.resume-shell .rt-edit blockquote { margin: 0 0 0 2em; }
-.resume-shell .rt-edit b, .resume-shell .rt-edit strong { font-weight: 600; }
-.resume-shell .rt-edit a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 
 
 /* 预览：和左侧编辑栏同色的中性底（--background）上放一张 A4，只用一层浅阴影托出纸面，不要深色边框。 */

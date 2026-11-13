@@ -4,6 +4,7 @@ export { Field, Input } from "./Field";
 export { Select, type SelectOption } from "./Select";
 export { Menu, type MenuItem } from "./Menu";
 export { Popover } from "./Popover";
+export { Floating } from "./Floating";
 export { Dialog } from "./Dialog";
 export { PanelHeader, PanelSection } from "./Panel";
 export { Pill, toneOf, TONES, type Tone } from "./Pill";
