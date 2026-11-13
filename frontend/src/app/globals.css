@@ -67,7 +67,7 @@ button.notion-tag[aria-expanded="true"] { color: var(--foreground); }
 .notion-sources-id { margin-right: 6px; color: var(--foreground-faint); font-variant-numeric: tabular-nums; }
 
 html {
-  background: var(--background);
+  background: var(--ou-bg-canvas);
 }
 
 html,
@@ -76,11 +76,13 @@ body,
   min-height: 100%;
 }
 
+/* v3 Glass：整页底是冷暖渐变（左上冷蓝 → 右下桃色），所有面板都是叠在它上面的半透明玻璃。 */
 body {
   min-height: 100vh;
   min-height: 100dvh;
-  background:
-    var(--background);
+  background-color: var(--ou-bg-canvas);
+  background-image: var(--ou-bg-wash);
+  background-attachment: fixed;
   color: var(--foreground);
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   font-family: var(--font-display), "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -634,8 +636,7 @@ select {
 
 /* ── OfferU flat workbench: Notion interaction base + local woven material ── */
 .workbench-main {
-  background:
-    var(--background);
+  background: transparent;
 }
 
 .stage-page {
@@ -692,24 +693,24 @@ select {
 
 .stage-toolbar,
 .data-toolbar {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: 0 1px 2px var(--shadow-soft);
+  border: 0;
+  border-radius: var(--ou-radius-panel);
+  background: var(--ou-bg-surface);
+  box-shadow: var(--ou-elev-1);
 }
 
 .data-workspace {
-  border-color: var(--border-strong);
-  border-radius: 14px;
-  box-shadow: 0 1px 2px var(--shadow-soft), 0 10px 24px rgba(24, 40, 48, 0.025);
+  border-color: transparent;
+  border-radius: var(--ou-radius-panel);
+  box-shadow: var(--ou-elev-2);
 }
 
 .bauhaus-panel.rounded-none {
-  border-radius: 14px;
+  border-radius: var(--ou-radius-panel);
 }
 
 .bauhaus-panel.shadow-none {
-  box-shadow: 0 1px 2px var(--shadow-soft);
+  box-shadow: var(--ou-elev-1);
 }
 
 .offeru-data-table {
@@ -776,14 +777,11 @@ select {
 }
 
 .context-rail {
-  background:
-    linear-gradient(180deg, rgba(244, 241, 234, 0.58), transparent 8rem),
-    var(--background);
+  background: var(--ou-glass-bg);
 }
 
 .context-rail-header {
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(12px);
+  background: transparent;
 }
 
 .inspector-hero {
@@ -909,14 +907,14 @@ select {
    2026-11-13 起旧变量全部桥接到 --ou-* 语义 token（色卡 v2），只允许 var() 桥接，不再写字面值。
    ───────────────────────────────────────────── */
 :root {
-  --background: var(--ou-bg-canvas);
+  --background: var(--ou-bg-surface-solid); /* v3：旧代码把 --background 当「白底 / 墨色上的字」用；整页底是 body 上的渐变 */
   --sidebar-bg: var(--ou-bg-sidebar);
   --foreground: var(--ou-text-primary);
   --foreground-soft: color-mix(in oklab, var(--ou-text-primary) 70%, var(--ou-text-secondary));
   --foreground-muted: var(--ou-text-secondary);
   --foreground-faint: var(--ou-text-tertiary);
   --surface: var(--ou-bg-surface);
-  --surface-opaque: var(--ou-bg-surface);
+  --surface-opaque: var(--ou-bg-surface-solid);
   --surface-muted: var(--ou-bg-control);
   --surface-hover: var(--ou-bg-hover);
   --status-blush: var(--ou-tone-red-bg);
@@ -936,13 +934,14 @@ select {
   --accent: var(--foreground);
   --accent-bg: var(--surface-hover);
 
+  /* v3：旧页面的 1px 边框改成几乎看不见的半透明线；层次交给透明度和阴影。 */
   --border: var(--ou-line-separator);
   --border-strong: var(--ou-line-control);
-  --shadow-soft: color-mix(in oklab, var(--ou-color-ink) 5%, transparent);
-  --shadow-medium: color-mix(in oklab, var(--ou-color-ink) 12%, transparent);
-  --shadow-paper: var(--ou-shadow-1);
-  --glass: var(--ou-bg-sidebar);
-  --glass-strong: var(--ou-bg-surface);
+  --shadow-soft: color-mix(in oklab, var(--ou-shadow-ink) 6%, transparent);
+  --shadow-medium: color-mix(in oklab, var(--ou-shadow-ink) 14%, transparent);
+  --shadow-paper: var(--ou-elev-1);
+  --glass: var(--ou-glass-bg);
+  --glass-strong: var(--ou-glass-strong);
   --grid-size: 32px;
   --radius-card: var(--ou-radius-card);
 
@@ -954,7 +953,7 @@ select {
 
 html,
 body {
-  background-color: var(--background);
+  background-color: var(--ou-bg-canvas);
 }
 
 body {
@@ -973,7 +972,7 @@ body {
 }
 
 .workbench-main {
-  background: #ffffff;
+  background: transparent;
 }
 
 .workbench-main h1:not(.resume-body *){
@@ -992,51 +991,52 @@ body {
 .stage-toolbar,
 .data-toolbar,
 .data-workspace {
-  border-color: var(--border) !important;
-  border-radius: var(--radius-card) !important;
-  background: var(--surface) !important;
-  box-shadow: var(--shadow-paper) !important;
+  border-color: transparent !important;
+  border-radius: var(--ou-radius-panel) !important;
+  background: var(--ou-bg-surface) !important;
+  box-shadow: var(--ou-elev-2) !important;
 }
 
+/* 旧按钮统一成 v3 胶囊：白胶囊 + 柔和阴影；红色变体就是墨黑主按钮。 */
 .bauhaus-button {
-  border-color: var(--border-strong) !important;
-  border-radius: 8px !important;
-  background: var(--surface) !important;
+  border-color: transparent !important;
+  border-radius: var(--ou-radius-pill) !important;
+  background: var(--ou-capsule-bg) !important;
   color: var(--foreground) !important;
   font-family: var(--font-sans);
-  font-size: 0.8rem;
+  font-size: var(--ou-type-sm);
   font-weight: 500;
   letter-spacing: 0;
-  box-shadow: 0 1px 1px rgba(31, 31, 29, 0.04);
+  box-shadow: var(--ou-capsule-shadow);
 }
 
 .bauhaus-button:hover {
-  border-color: rgba(31, 31, 29, 0.28) !important;
-  background: #fbfaf8 !important;
+  border-color: transparent !important;
+  box-shadow: var(--ou-elev-2) !important;
 }
 
 .bauhaus-button-red {
-  border-color: var(--foreground) !important;
-  background: var(--foreground) !important;
-  color: #fff !important;
+  border-color: transparent !important;
+  background: var(--ou-action-primary) !important;
+  color: var(--ou-on-action-primary) !important;
 }
 
 .bauhaus-button-red:hover {
-  background: #33332f !important;
+  background: var(--ou-action-primary-hover) !important;
 }
 
 .bauhaus-button-blue,
 .bauhaus-button-green,
 .bauhaus-button-yellow {
-  border: 1px solid var(--border) !important;
-  background: var(--surface) !important;
+  border: 1px solid transparent !important;
+  background: var(--ou-capsule-bg) !important;
   color: var(--foreground) !important;
 }
 
 .bauhaus-button-blue:hover,
 .bauhaus-button-green:hover,
 .bauhaus-button-yellow:hover {
-  background: var(--surface-hover) !important;
+  background: var(--ou-capsule-bg) !important;
 }
 
 .bauhaus-chip {
@@ -1055,14 +1055,14 @@ body {
 
 .stage-page [data-slot="input-wrapper"],
 .stage-page [data-slot="trigger"] {
-  border-color: var(--border-strong) !important;
-  border-radius: 8px !important;
-  background: var(--surface) !important;
-  box-shadow: none !important;
+  border-color: transparent !important;
+  border-radius: var(--ou-radius-control) !important;
+  background: var(--ou-bg-surface-solid) !important;
+  box-shadow: var(--ou-capsule-shadow) !important;
 }
 
 .stage-page [role="tablist"] {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0;
   border-radius: 0;
   background: transparent;
 }
@@ -1072,11 +1072,44 @@ body {
   font-size: 0.8rem;
 }
 
-/* 侧栏：比工作区深半度的纸色，没有毛玻璃、没有投影。 */
+/* 侧栏（v3）：浮在冷暖渐变上的一块磨砂玻璃窗格，四周留一点缝，20px 圆角，没有分隔线。 */
 .offeru-sidebar {
-  border-right-color: var(--border) !important;
-  background: var(--sidebar-bg) !important;
+  margin: var(--ou-pane-inset) 0 var(--ou-pane-inset) var(--ou-pane-inset);
+  height: calc(100% - 2 * var(--ou-pane-inset)) !important;
+  border-right: 0 !important;
+  border-radius: var(--ou-radius-panel);
+  background: var(--ou-glass-bg) !important;
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  box-shadow: var(--ou-glass-highlight), var(--ou-elev-pane);
 }
+
+.offeru-sidebar-mark.ou-tile { background: var(--ou-action-primary); color: var(--ou-on-action-primary); box-shadow: var(--ou-capsule-shadow); }
+.offeru-sidebar-mark span { font-size: var(--ou-type-sm); font-weight: 700; }
+
+/* 右上角 Agent 栏开关：一颗磨砂圆钮。 */
+.offeru-rail-toggle { position: fixed; top: 0.875rem; right: 0.875rem; z-index: var(--ou-layer-modal); width: 2.25rem; height: 2.25rem; color: var(--ou-text-secondary); }
+.offeru-rail-toggle:hover { background: var(--ou-capsule-bg); color: var(--ou-text-primary); }
+
+/* 侧栏底部的「使用我的 Agent」：玻璃上的半透明胶囊卡，悬停变实白，不描边。 */
+.offeru-sidebar [data-testid="agent-connection-status"] { border-color: transparent; border-radius: var(--ou-radius-card); background: var(--ou-capsule-hover); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-sidebar [data-testid="agent-connection-status"]:hover { border-color: transparent; background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+
+/* ⌘K 入口：玻璃上的一条白色搜索胶囊。 */
+.offeru-sidebar-searchbox {
+  display: flex;
+  width: 100%;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: var(--ou-space-2);
+  padding: 0 var(--ou-space-3);
+  border-radius: var(--ou-radius-control);
+  background: var(--ou-capsule-hover);
+  color: var(--ou-text-tertiary);
+  font-size: var(--ou-type-sm);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.offeru-sidebar-searchbox:hover { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-secondary); }
 
 .offeru-sidebar-brand p:last-child {
   font-family: var(--font-sans);
@@ -1085,19 +1118,16 @@ body {
 }
 
 .offeru-nav-link {
-  min-height: 2.125rem;
+  min-height: 2.5rem;
   border-radius: var(--ou-radius-control) !important;
 }
 
-.offeru-nav-link[aria-current="page"] {
-  background: var(--ou-bg-selected) !important;
-  color: var(--foreground) !important;
-}
-
 .offeru-mobile-nav {
-  border-top-color: var(--border) !important;
-  background: var(--ou-glass-bg) !important;
-  backdrop-filter: blur(var(--ou-glass-blur));
+  border-top-color: transparent !important;
+  background: var(--ou-glass-strong) !important;
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  box-shadow: var(--ou-elev-pane);
 }
 
 .offeru-mobile-nav a {
@@ -1108,12 +1138,14 @@ body {
 
 .context-rail.offeru-context-rail {
   border-left-color: transparent !important;
-  background: var(--sidebar-bg) !important;
-  box-shadow: var(--ou-elev-1) !important;
+  background: var(--ou-glass-bg) !important;
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  box-shadow: var(--ou-glass-highlight), var(--ou-elev-pane) !important;
 }
 
 .context-rail-header {
-  border-bottom-color: var(--border) !important;
+  border-bottom-color: transparent !important;
   background: transparent !important;
 }
 
@@ -1132,16 +1164,16 @@ body {
 }
 
 .offeru-command-surface {
-  border-radius: var(--ou-radius-floating);
+  border-radius: var(--ou-radius-panel);
   background: var(--surface-opaque);
   box-shadow: var(--ou-elev-4);
 }
 
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .offeru-command-surface {
-    background: var(--ou-glass-bg);
-    -webkit-backdrop-filter: saturate(180%) blur(24px);
-    backdrop-filter: saturate(180%) blur(24px);
+    background: var(--ou-glass-strong);
+    -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+    backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
   }
 }
 
@@ -1290,16 +1322,17 @@ body {
 }
 
 .offeru-focus-topbar {
-  border-bottom-color: var(--border) !important;
-  background: rgba(247, 246, 242, 0.92) !important;
-  backdrop-filter: blur(12px);
+  border-bottom-color: transparent !important;
+  background: var(--ou-glass-bg) !important;
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
 }
 
 .offeru-focus-agent {
-  border-color: var(--border) !important;
-  border-radius: 12px !important;
-  background: #fff !important;
-  box-shadow: 0 18px 48px rgba(31, 31, 29, 0.16) !important;
+  border-color: transparent !important;
+  border-radius: var(--ou-radius-panel) !important;
+  background: var(--ou-glass-strong) !important;
+  box-shadow: var(--ou-elev-4) !important;
 }
 
 .inspector-hero {
@@ -2074,6 +2107,7 @@ body {
 
 /* 简历编辑器外壳：和岗位页同一套 Notion 式中性色。底色、文字、细线继承全局；卡片纯白、输入框浅灰、标题无衬线；彩色只留给蓝色主操作和聚焦。 */
 .resume-shell {
+  background: transparent;
   --surface: var(--ou-bg-hover);
   --card: var(--ou-bg-surface);
   --field: var(--ou-bg-field);
@@ -2089,9 +2123,9 @@ body {
 /* v2（苹果风）：顶栏是半透明毛玻璃，贴顶，底下一条发丝线；保存状态是一个小圆点 + 灰字。 */
 .resume-shell .rs-head {
   position: sticky; top: 0; z-index: var(--ou-layer-sticky);
-  display: flex; align-items: center; gap: 0.75rem; min-width: 0; min-height: 3rem; padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--ou-line-separator); background: var(--ou-glass-bg);
-  backdrop-filter: saturate(180%) blur(var(--ou-glass-blur)); -webkit-backdrop-filter: saturate(180%) blur(var(--ou-glass-blur));
+  display: flex; align-items: center; gap: 0.75rem; min-width: 0; min-height: 3rem; padding: 0.5rem 0.5rem 0.5rem 1rem; margin-right: 2.75rem; /* 右上角留给 Agent 栏开关 */
+  border-radius: var(--ou-radius-panel); background: var(--ou-glass-bg); box-shadow: var(--ou-glass-highlight), var(--ou-elev-1);
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
 }
 .resume-shell .rs-saved { display: inline-flex; flex: none; align-items: center; gap: 0.375rem; color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
 .resume-shell .rs-saved::before {
@@ -2103,8 +2137,8 @@ body {
 @media (prefers-reduced-motion: reduce) { .resume-shell .rs-saved[data-pending]::before { animation: none; } }
 .resume-shell .rs-joblink { flex: none; color: var(--ou-text-secondary); font-size: var(--ou-type-xs); }
 .resume-shell .rs-joblink:hover { color: var(--ou-text-primary); }
-.resume-shell .rs-body { display: flex; flex: 1; min-height: 0; background: var(--ou-bg-canvas); }
-.resume-shell .rs-preview { display: flex; flex: none; flex-direction: column; width: 56%; min-width: 26.25rem; background: var(--ou-bg-canvas); }
+.resume-shell .rs-body { display: flex; flex: 1; min-height: 0; background: transparent; }
+.resume-shell .rs-preview { display: flex; flex: none; flex-direction: column; width: 56%; min-width: 26.25rem; background: transparent; }
 .resume-shell .rs-bar {
   position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 0.125rem; min-width: 0;
   margin-left: auto; font-size: 0.8125rem; white-space: nowrap;
@@ -2185,6 +2219,18 @@ body {
 }
 .resume-shell .rs-status[data-error] { background: var(--ou-color-danger); color: var(--ou-on-action-primary); }
 
+/* v3：编辑器里的旧下拉（字号、模板、名字、下载、学校联想）统一成磨砂浮层，不描边。 */
+.resume-shell :is(.rs-menu, .rs-download-menu, .rw-menu, .rf-suggest) {
+  border-color: transparent; border-radius: var(--ou-radius-floating); background: var(--ou-bg-floating); box-shadow: var(--ou-elev-3);
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+}
+.resume-shell .rs-btn { border-color: transparent; border-radius: var(--ou-radius-pill); background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+.resume-shell .rs-btn:hover { background: var(--ou-capsule-bg); box-shadow: var(--ou-elev-2); }
+.resume-shell :is(.rs-trigger, .rs-combo, .rw-name, .rw-new, .rs-option, .rw-row) { border-radius: var(--ou-radius-control); }
+.resume-shell .rs-download { border-radius: var(--ou-radius-pill); }
+.resume-shell .rs-download-main { border-radius: var(--ou-radius-pill) 0 0 var(--ou-radius-pill); padding-left: 1rem; }
+.resume-shell .rs-download-caret { border-radius: 0 var(--ou-radius-pill) var(--ou-radius-pill) 0; }
+
 /* 简历名切换器：点名字下拉切换 / 新建 / 改名 / 复制 / 删除。 */
 .resume-shell .rw { position: relative; display: flex; flex: 0 1 auto; align-items: center; gap: 0.125rem; min-width: 8.5rem; }
 .resume-shell .rw-name {
@@ -2231,7 +2277,7 @@ body {
 /* v2 左栏：浅灰画布上一组组白色圆角卡（iOS inset grouped），卡片不描边，只用一圈发丝线托出。 */
 .resume-shell .rf-scroll {
   min-width: 0; flex: 1; overflow: auto; padding: 1rem 1rem 3rem; display: flex; flex-direction: column; gap: 0.875rem;
-  background: var(--ou-bg-canvas);
+  background: transparent;
 }
 .resume-shell .rf-card {
   border: 0; border-radius: var(--ou-radius-card); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-1);
@@ -2356,10 +2402,10 @@ body {
 
 /* 预览：和左侧编辑栏同色的中性底（--background）上放一张 A4，只用一层浅阴影托出纸面，不要深色边框。 */
 /* v2 预览：和左栏同一块底（整个编辑器只有「底 / 白卡 / 输入灰」三种面），A4 纸只靠 L3 阴影浮起；右下角一枚毛玻璃缩放胶囊。 */
-.resume-shell .rp-canvas { position: relative; background: var(--ou-bg-canvas); }
+.resume-shell .rp-canvas { position: relative; background: transparent; }
 .resume-shell .rp-canvas [role="alert"] { color: var(--ou-color-danger); }
 .resume-shell .rp-error { max-width: 49.625rem; margin: 0 auto 0.75rem; font-size: var(--ou-type-xs); }
-.resume-shell .rp-paper { border-radius: var(--ou-radius-1); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-3); }
+.resume-shell .rp-paper { border-radius: var(--ou-radius-1); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-elev-2); }
 .resume-shell .rp-break { position: absolute; inset-inline: 0; border-top: 1px dashed var(--ou-line-strong); pointer-events: none; }
 .resume-shell .rp-break > span {
   position: absolute; top: -0.625rem; right: 0.75rem; padding: 0 0.5rem; border-radius: var(--ou-radius-pill);

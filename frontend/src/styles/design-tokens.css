@@ -1,6 +1,7 @@
-/* OfferU editorial workspace tokens. New UI uses --ou-*; legacy variables are migrated page-by-page.
- * Palette v2 (2026-11-13): legacy variables in app/globals.css bridge to these via var().
- * Color references: Zapier brand palette, adapted to OfferU semantic roles.
+/* OfferU workspace tokens. New UI uses --ou-*; legacy variables in app/globals.css bridge to these via var().
+ * v3 "Glass" (2026-11-13): cool→warm wash canvas, translucent white surfaces with backdrop blur, soft broad
+ * shadows instead of 1px rings, large radii, white hover/selected capsules. Reference: Inspora · Rolando "Bleep App".
+ * Ink text, ink primary button, orange = urgent / delegate, purple = Agent are unchanged from v2.
  */
 :root {
   /* 5 brand roles: paper / surface / ink / orange / purple. Lavender = purple derivative. */
@@ -29,6 +30,12 @@
   --ou-type-section: 1rem;
   --ou-type-page: clamp(1.375rem, 1.2rem + 0.45vw, 1.75rem);
   --ou-line-body: 1.55;
+  /* Document view (resume editor, long-form): Bleep reading column. */
+  --ou-type-doc: 1rem;
+  --ou-type-doc-heading: 1.25rem;
+  --ou-line-doc: 1.6;
+  --ou-width-doc: 46rem; /* ≈ 736px centered column */
+  --ou-font-mono: "JetBrains Mono", "SF Mono", ui-monospace, "Cascadia Code", monospace;
 
   --ou-space-1: 0.25rem;
   --ou-space-2: 0.5rem;
@@ -37,13 +44,19 @@
   --ou-space-6: 1.5rem;
   --ou-space-8: 2rem;
 
-  --ou-radius-1: 0.375rem;
-  --ou-radius-2: 0.625rem;
-  --ou-radius-3: 0.875rem;
+  /* v3 radii: everything rounder; the more it floats, the rounder it is. */
+  --ou-radius-1: 0.625rem;  /* 10px menu items, small controls */
+  --ou-radius-2: 1.125rem;  /* 18px cards */
+  --ou-radius-3: 1rem;      /* 16px menus / popovers */
+  --ou-radius-4: 1.25rem;   /* 20px window panes, panels, dialogs */
+  --ou-radius-tile: 0.625rem; /* 10px frosted icon tiles (28px tile ≈ Bleep's 12/32) */
+  --ou-radius-input: 0.75rem; /* 12px inputs, search fields */
 
-  --ou-shadow-1: 0 1px 2px rgba(32, 21, 21, 0.05);
-  --ou-shadow-2: 0 2px 8px rgba(32, 21, 21, 0.08);
-  --ou-shadow-3: 0 8px 26px rgba(32, 21, 21, 0.12);
+  /* Shadow ink: a cool violet-gray, so shadows read as depth on the wash instead of dirt. */
+  --ou-shadow-ink: rgba(60, 50, 80, 1);
+  --ou-shadow-1: 0 1px 2px rgba(60, 50, 80, 0.05), 0 4px 14px rgba(60, 50, 80, 0.06);
+  --ou-shadow-2: 0 1px 2px rgba(60, 50, 80, 0.05), 0 12px 32px rgba(60, 50, 80, 0.10);
+  --ou-shadow-3: 0 12px 32px rgba(60, 50, 80, 0.14);
 
   --ou-layer-base: 0;
   --ou-layer-sticky: 10;
@@ -54,8 +67,22 @@
   /* ⌘K sits above every legacy layer (legacy z-index values go up to 80 until migrated). */
   --ou-layer-command: 90;
 
-  --ou-glass-bg: rgba(255, 255, 255, 0.88);
-  --ou-glass-blur: 12px;
+  /* Glass materials (v3). bg = chrome panes (sidebar, top bars); strong = floating menus / dialogs. */
+  --ou-glass-bg: rgba(255, 255, 255, 0.55);
+  --ou-glass-strong: rgba(255, 255, 255, 0.86);
+  --ou-glass-subtle: rgba(255, 255, 255, 0.36);
+  --ou-glass-blur: 24px;
+  --ou-glass-saturate: 170%;
+  --ou-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+  /* Canvas wash: cool blue top-left → peach bottom-right, kept quiet so text stays on near-white. */
+  --ou-wash-cool: #c9d6f2;
+  --ou-wash-warm: #f6e3d2;
+  --ou-wash-mid: #eeecf1;
+  --ou-bg-wash:
+    radial-gradient(110% 80% at 0% 0%, rgba(201, 214, 242, 0.95) 0%, rgba(201, 214, 242, 0) 60%),
+    radial-gradient(110% 90% at 100% 100%, rgba(246, 227, 210, 0.95) 0%, rgba(246, 227, 210, 0) 62%),
+    linear-gradient(135deg, #dfe6f5 0%, #eeecf1 48%, #f6e9df 100%);
 
   /* Warm neutral ramp N1–N12 (OKLCH hue 55). Pick a step by its role, not by eye — see docs/design/visual-system.md §2. */
   --ou-neutral-1: #fffcf9; /* canvas */
@@ -81,17 +108,26 @@
   --ou-tone-pink-bg: #ffe9f3; --ou-tone-pink-border: #f1c6d9; --ou-tone-pink-dot: #cf78a3; --ou-tone-pink-text: #844063;
   --ou-tone-red-bg: #ffe8e5; --ou-tone-red-border: #fec4be; --ou-tone-red-dot: #e66e68; --ou-tone-red-text: #953734;
 
-  /* Semantic surfaces (palette v2, 2026-11-13). Components use these, not neutral steps directly. */
-  --ou-bg-canvas: var(--ou-neutral-1);      /* L0 page canvas */
-  --ou-bg-sidebar: var(--ou-neutral-2);     /* app sidebar, agent rail */
-  --ou-bg-surface: var(--ou-color-surface); /* L1–L4 content surfaces */
-  --ou-bg-control: var(--ou-neutral-3);
-  --ou-bg-field: #f3f2f0;                   /* low-chroma text-field fill (resume editor), 2026-11-13 */
-  --ou-bg-hover: var(--ou-neutral-4);
-  --ou-bg-selected: var(--ou-neutral-5);
-  --ou-line-separator: var(--ou-neutral-6);
-  --ou-line-control: var(--ou-neutral-7);
-  --ou-line-strong: var(--ou-neutral-8);
+  /* Semantic surfaces (v3 Glass, 2026-11-13). Components use these, not neutral steps directly. */
+  --ou-bg-canvas: var(--ou-wash-mid);       /* L0 solid fallback; the visible canvas is --ou-bg-wash */
+  --ou-bg-sidebar: var(--ou-glass-bg);      /* app sidebar, agent rail: frosted pane */
+  --ou-bg-surface: rgba(255, 255, 255, 0.84); /* L1–L2 content surfaces: translucent white sheet */
+  --ou-bg-surface-solid: var(--ou-color-surface); /* where content must not show through (A4 paper, inputs on glass) */
+  --ou-bg-floating: var(--ou-glass-strong); /* L3–L4 menus, popovers, dialogs (always with backdrop blur) */
+  --ou-bg-control: rgba(60, 50, 80, 0.05);  /* segmented tracks, kanban lanes on white */
+  --ou-bg-field: rgba(60, 50, 80, 0.04);    /* text-field fill on white */
+  --ou-bg-hover: rgba(60, 50, 80, 0.055);   /* hover on white surfaces */
+  --ou-bg-selected: rgba(60, 50, 80, 0.085);
+  /* Hover / selected on glass = a solid white capsule that lifts (Bleep), not a border. */
+  --ou-capsule-bg: var(--ou-color-surface);
+  --ou-capsule-hover: rgba(255, 255, 255, 0.62);
+  --ou-capsule-shadow: 0 1px 2px rgba(60, 50, 80, 0.06), 0 4px 12px rgba(60, 50, 80, 0.07);
+  --ou-tile-bg: rgba(255, 255, 255, 0.72); /* frosted icon tile */
+  --ou-tile-shadow: 0 1px 2px rgba(60, 50, 80, 0.08);
+  --ou-highlight-code: #fbebc8; /* pale amber behind inline code */
+  --ou-line-separator: rgba(60, 50, 80, 0.08);
+  --ou-line-control: rgba(60, 50, 80, 0.14);
+  --ou-line-strong: rgba(60, 50, 80, 0.24);
   --ou-text-primary: var(--ou-neutral-12);
   --ou-text-secondary: var(--ou-neutral-11);
   --ou-text-tertiary: var(--ou-neutral-10);
@@ -103,21 +139,26 @@
   --ou-selection: color-mix(in oklab, var(--ou-color-ink) 14%, transparent);
   --ou-scrollbar: color-mix(in oklab, var(--ou-color-ink) 16%, transparent);
   --ou-scrollbar-hover: color-mix(in oklab, var(--ou-color-ink) 28%, transparent);
-  --ou-scrim: color-mix(in oklab, var(--ou-color-ink) 18%, transparent);
-  --ou-shadow-color: color-mix(in oklab, var(--ou-color-ink) 10%, transparent);
+  --ou-scrim: rgba(60, 50, 80, 0.16);
+  --ou-scrim-blur: 6px;
+  --ou-shadow-color: rgba(60, 50, 80, 0.10);
 
-  /* Elevation L0–L4: every level is a border + shadow pair (Apple/Feishu style, never shadow alone). */
+  /* Elevation L0–L4 (v3): broad, soft, low-contrast shadows. L1–L2 have no hairline ring; L3–L4 keep a
+   * 0.5px whisper so floating glass stays legible over busy content. */
   --ou-elev-0: none;
-  --ou-elev-1: 0 0 0 1px var(--ou-line-separator);
-  --ou-elev-2: 0 0 0 1px var(--ou-line-separator), 0 1px 2px color-mix(in oklab, var(--ou-color-ink) 6%, transparent);
-  --ou-elev-2-hover: 0 0 0 1px var(--ou-line-control), 0 4px 12px color-mix(in oklab, var(--ou-color-ink) 9%, transparent);
-  --ou-elev-3: 0 0 0 1px var(--ou-line-control), 0 8px 24px color-mix(in oklab, var(--ou-color-ink) 12%, transparent);
-  --ou-elev-4: 0 0 0 1px var(--ou-line-control), 0 24px 60px color-mix(in oklab, var(--ou-color-ink) 20%, transparent);
+  --ou-elev-1: 0 1px 2px rgba(60, 50, 80, 0.04), 0 6px 20px rgba(60, 50, 80, 0.06);
+  --ou-elev-2: 0 1px 2px rgba(60, 50, 80, 0.05), 0 12px 32px rgba(60, 50, 80, 0.10);
+  --ou-elev-2-hover: 0 2px 4px rgba(60, 50, 80, 0.06), 0 18px 44px rgba(60, 50, 80, 0.16);
+  --ou-elev-3: 0 0 0 0.5px rgba(60, 50, 80, 0.08), 0 12px 32px rgba(60, 50, 80, 0.16);
+  --ou-elev-4: 0 0 0 0.5px rgba(60, 50, 80, 0.08), 0 28px 72px rgba(60, 50, 80, 0.24);
+  --ou-elev-pane: 0 1px 2px rgba(60, 50, 80, 0.04), 0 12px 40px rgba(60, 50, 80, 0.08); /* sidebar / rail panes */
 
   --ou-radius-pill: 999px;
-  --ou-radius-control: var(--ou-radius-1);
+  --ou-radius-control: var(--ou-radius-input); /* inputs, segmented items; buttons are pills */
+  --ou-radius-button: var(--ou-radius-pill);
   --ou-radius-card: var(--ou-radius-2);
   --ou-radius-floating: var(--ou-radius-3);
+  --ou-radius-panel: var(--ou-radius-4);
 
   /* Fluid layout: page containers by page type; gutters scale 390 → 1920. */
   --ou-gutter: clamp(1rem, 0.6rem + 1.6vw, 2.5rem);
@@ -128,7 +169,9 @@
   --ou-sidebar-width: clamp(14rem, 10rem + 5vw, 16rem);
 
   --ou-ring-hover: 0 0 0 1px var(--ou-line-control);
-  --ou-ring-focus: 0 0 0 1px var(--ou-line-strong), 0 0 0 3px var(--ou-bg-selected);
+  --ou-ring-focus: 0 0 0 1px var(--ou-line-strong), 0 0 0 4px rgba(60, 50, 80, 0.08);
+  --ou-check-ring: inset 0 0 0 1.5px var(--ou-line-control); /* empty round check in filter chips */
+  --ou-pane-inset: 0.5rem; /* gap between the viewport edge and floating glass panes */
   --ou-pill-ring: inset 0 0 0 1px var(--ou-pill-border, transparent);
   --ou-type-pill: 0.78125rem; /* 12.5px */
 
@@ -162,7 +205,39 @@
   --ou-color-danger: #ff9b8e;
   --ou-color-warning: #f0c57e;
   --ou-color-success: #9cd4b0;
-  --ou-glass-bg: rgba(36, 32, 39, 0.90);
+  /* v3 dark glass (coherent, not polished): deep blue → umber wash, smoky translucent panes. */
+  --ou-glass-bg: rgba(30, 28, 36, 0.58);
+  --ou-glass-strong: rgba(36, 32, 42, 0.88);
+  --ou-glass-subtle: rgba(255, 255, 255, 0.04);
+  --ou-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --ou-wash-cool: #1d2436;
+  --ou-wash-warm: #2e231d;
+  --ou-wash-mid: #1c1a20;
+  --ou-bg-wash:
+    radial-gradient(110% 80% at 0% 0%, rgba(40, 52, 84, 0.9) 0%, rgba(40, 52, 84, 0) 60%),
+    radial-gradient(110% 90% at 100% 100%, rgba(66, 46, 34, 0.9) 0%, rgba(66, 46, 34, 0) 62%),
+    linear-gradient(135deg, #1b2131 0%, #1c1a20 50%, #261e1a 100%);
+  --ou-bg-surface-solid: #242027;
+  --ou-bg-control: rgba(255, 255, 255, 0.06);
+  --ou-bg-field: rgba(255, 255, 255, 0.05);
+  --ou-bg-hover: rgba(255, 255, 255, 0.07);
+  --ou-bg-selected: rgba(255, 255, 255, 0.11);
+  --ou-capsule-bg: rgba(255, 255, 255, 0.12);
+  --ou-capsule-hover: rgba(255, 255, 255, 0.07);
+  --ou-capsule-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ou-tile-bg: rgba(255, 255, 255, 0.08);
+  --ou-tile-shadow: none;
+  --ou-highlight-code: #4a3a1c;
+  --ou-line-separator: rgba(255, 255, 255, 0.08);
+  --ou-line-control: rgba(255, 255, 255, 0.14);
+  --ou-line-strong: rgba(255, 255, 255, 0.24);
+  --ou-scrim: rgba(0, 0, 0, 0.45);
+  --ou-elev-1: 0 1px 2px rgba(0, 0, 0, 0.25), 0 6px 20px rgba(0, 0, 0, 0.2);
+  --ou-elev-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.3);
+  --ou-elev-2-hover: 0 2px 4px rgba(0, 0, 0, 0.3), 0 18px 44px rgba(0, 0, 0, 0.4);
+  --ou-elev-3: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --ou-elev-4: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 28px 72px rgba(0, 0, 0, 0.55);
+  --ou-elev-pane: 0 12px 40px rgba(0, 0, 0, 0.3);
   /* Dark neutral ramp + tones (prospective). */
   --ou-neutral-1: #120f0c;
   --ou-neutral-2: #191513;
@@ -186,7 +261,7 @@
   --ou-tone-purple-bg: #2d273e; --ou-tone-purple-border: #443d5c; --ou-tone-purple-dot: #a48fe1; --ou-tone-purple-text: #d3c9f9; /* 9.2:1 */
   --ou-tone-pink-bg: #3b222e; --ou-tone-pink-border: #583646; --ou-tone-pink-dot: #d67ea9; --ou-tone-pink-text: #f4c0d7; /* 9.2:1 */
   --ou-tone-red-bg: #42201e; --ou-tone-red-border: #613330; --ou-tone-red-dot: #ed756e; --ou-tone-red-text: #ffbcb6; /* 9.0:1 */
-  --ou-bg-surface: var(--ou-neutral-3);
+  --ou-bg-surface: rgba(40, 36, 46, 0.78);
 }
 
 /* Increase Contrast: separators and secondary text step one level darker. */
@@ -194,6 +269,8 @@
   :root {
     --ou-line-separator: var(--ou-neutral-8);
     --ou-line-control: var(--ou-neutral-9);
+    --ou-bg-surface: var(--ou-color-surface);
+    --ou-glass-bg: rgba(255, 255, 255, 0.86);
     --ou-text-secondary: var(--ou-neutral-12);
     --ou-text-tertiary: var(--ou-neutral-11);
   }
@@ -211,7 +288,11 @@
 
 @media (prefers-reduced-transparency: reduce) {
   :root {
-    --ou-glass-bg: var(--ou-color-surface);
+    --ou-glass-bg: var(--ou-neutral-2);
+    --ou-glass-strong: var(--ou-color-surface);
+    --ou-glass-subtle: var(--ou-neutral-3);
+    --ou-bg-surface: var(--ou-color-surface);
+    --ou-bg-wash: var(--ou-bg-canvas);
     --ou-glass-blur: 0px;
   }
 }

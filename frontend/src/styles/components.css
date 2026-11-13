@@ -8,7 +8,9 @@
   overflow: auto;
   padding: var(--ou-space-1);
   border-radius: var(--ou-radius-floating);
-  background: var(--ou-bg-surface);
+  background: var(--ou-bg-floating);
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
   box-shadow: var(--ou-elev-3);
   color: var(--ou-text-primary);
   font-size: var(--ou-type-body);
@@ -39,7 +41,7 @@
 .ou-menu-description { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
 .ou-menu-check { display: inline-flex; color: var(--ou-text-primary); }
 .ou-menu-shortcut { font: inherit; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
-.ou-menu-separator { height: 1px; margin: var(--ou-space-1) calc(-1 * var(--ou-space-1)); background: var(--ou-line-separator); }
+.ou-menu-separator { height: 1px; margin: var(--ou-space-1) var(--ou-space-2); background: var(--ou-line-separator); }
 
 /* ── 按钮 ── */
 .ou-button {
@@ -48,23 +50,27 @@
   align-items: center;
   justify-content: center;
   gap: var(--ou-space-1);
-  padding: 0 var(--ou-space-3);
-  border-radius: var(--ou-radius-control);
+  padding: 0 var(--ou-space-4);
+  border-radius: var(--ou-radius-button);
   font-size: var(--ou-type-sm);
   font-weight: 550;
   white-space: nowrap;
   transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
 }
 .ou-button:disabled { opacity: 0.5; cursor: not-allowed; }
-.ou-button-sm { min-height: 1.75rem; padding: 0 var(--ou-space-2); }
+.ou-button-sm { min-height: 1.75rem; padding: 0 var(--ou-space-3); }
 .ou-button-primary { background: var(--ou-action-primary); color: var(--ou-on-action-primary); }
 .ou-button-primary:hover:not(:disabled) { background: var(--ou-action-primary-hover); }
-.ou-button-secondary { background: var(--ou-bg-surface); color: var(--ou-text-primary); box-shadow: var(--ou-elev-2); }
-.ou-button-secondary:hover:not(:disabled) { background: var(--ou-bg-hover); }
+.ou-button-secondary { background: var(--ou-capsule-bg); color: var(--ou-text-primary); box-shadow: var(--ou-capsule-shadow); }
+.ou-button-secondary:hover:not(:disabled) { box-shadow: var(--ou-elev-2); }
 .ou-button-ghost { background: transparent; color: var(--ou-text-secondary); }
 .ou-button-ghost:hover:not(:disabled) { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
-.ou-icon-button { display: inline-flex; width: 1.75rem; height: 1.75rem; align-items: center; justify-content: center; border-radius: var(--ou-radius-1); color: var(--ou-text-tertiary); }
+/* 圆形 ghost 图标按钮；成组时放进 .ou-button-group（一颗磨砂胶囊里排一串圆钮，Bleep 的 ‹ › / 搜索 …）。 */
+.ou-icon-button { display: inline-flex; width: 2rem; height: 2rem; flex: none; align-items: center; justify-content: center; border-radius: var(--ou-radius-pill); color: var(--ou-text-tertiary); }
 .ou-icon-button:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.ou-button-group { display: inline-flex; align-items: center; gap: 0.125rem; padding: 0.125rem; border-radius: var(--ou-radius-pill); background: var(--ou-glass-subtle); }
+.ou-button-group > div > button:not(.ou-button), .ou-button-group > button:not(.ou-button) { min-height: 2rem; border-radius: var(--ou-radius-pill); }
+.ou-button-group .ou-icon-button:hover, .ou-button-group > div > button:not(.ou-button):hover, .ou-button-group > button:not(.ou-button):hover { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
 
 /* ── 表单 ── */
 .ou-field { display: flex; flex-direction: column; gap: var(--ou-space-1); }
@@ -80,20 +86,20 @@
   gap: var(--ou-space-2);
   padding: 0 var(--ou-space-3);
   border-radius: var(--ou-radius-control);
-  background: var(--ou-bg-surface);
-  box-shadow: var(--ou-elev-1);
+  background: var(--ou-bg-surface-solid);
+  box-shadow: var(--ou-capsule-shadow);
   color: var(--ou-text-primary);
   font: inherit;
   font-size: var(--ou-type-body);
   transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
 }
 .ou-input::placeholder, .ou-select-trigger [data-placeholder] { color: var(--ou-text-placeholder); }
-.ou-input:hover { box-shadow: var(--ou-ring-hover); }
+.ou-input:hover { box-shadow: var(--ou-elev-1); }
 .ou-input:focus-visible, .ou-input[data-state="open"] { outline: none; box-shadow: var(--ou-ring-focus); }
 .ou-select-content { min-width: var(--radix-select-trigger-width); }
 
 /* ── 弹窗 L4 ── */
-.ou-scrim { position: fixed; inset: 0; z-index: var(--ou-layer-overlay); background: var(--ou-scrim); }
+.ou-scrim { position: fixed; inset: 0; z-index: var(--ou-layer-overlay); background: var(--ou-scrim); -webkit-backdrop-filter: blur(var(--ou-scrim-blur)); backdrop-filter: blur(var(--ou-scrim-blur)); }
 .ou-dialog {
   position: fixed;
   top: 50%;
@@ -103,8 +109,10 @@
   max-height: calc(100dvh - 4rem);
   overflow: auto;
   padding: var(--ou-space-6);
-  border-radius: var(--ou-radius-floating);
-  background: var(--ou-bg-surface);
+  border-radius: var(--ou-radius-panel);
+  background: var(--ou-bg-floating);
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
   box-shadow: var(--ou-elev-4);
   /* 居中用独立的 translate，入场动画只动 transform，两者不互相覆盖。 */
   translate: -50% -50%;
@@ -115,15 +123,81 @@
 .ou-dialog-footer { display: flex; justify-content: flex-end; gap: var(--ou-space-2); margin-top: var(--ou-space-6); }
 
 /* ── 侧栏面板 ── */
-.ou-panel-header { display: flex; align-items: center; gap: var(--ou-space-2); padding: var(--ou-space-3) var(--ou-space-4); border-bottom: 1px solid var(--ou-line-separator); }
-.ou-panel-icon { display: inline-flex; color: var(--ou-text-tertiary); }
+.ou-panel-header { display: flex; align-items: center; gap: var(--ou-space-2); padding: var(--ou-space-3) var(--ou-space-4); }
+.ou-panel-icon { display: inline-flex; width: 1.75rem; height: 1.75rem; flex: none; align-items: center; justify-content: center; border-radius: var(--ou-radius-tile); background: var(--ou-tile-bg); box-shadow: var(--ou-tile-shadow); color: var(--ou-text-secondary); }
 .ou-panel-heading { min-width: 0; flex: 1; }
 .ou-panel-title { font-size: var(--ou-type-body); font-weight: 600; }
 .ou-panel-subtitle { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
 .ou-panel-actions { display: flex; gap: var(--ou-space-1); }
 .ou-panel-section { display: flex; flex-direction: column; gap: var(--ou-space-3); padding: var(--ou-space-4); }
-.ou-panel-section + .ou-panel-section { border-top: 1px solid var(--ou-line-separator); }
+.ou-panel-section + .ou-panel-section { padding-top: var(--ou-space-2); }
 .ou-panel-section-title { font-size: var(--ou-type-sm); font-weight: 600; color: var(--ou-text-secondary); }
+
+/* ── 玻璃材质（v3 Glass）──
+   .ou-glass：贴在冷暖渐变底上的磨砂窗格（侧栏、顶栏、Agent 栏）。
+   .ou-sheet：半透明白纸面（表格、文档、面板），不描边，只靠透明度 + 柔和大阴影浮起。 */
+.ou-glass {
+  background: var(--ou-glass-bg);
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  box-shadow: var(--ou-glass-highlight), var(--ou-elev-pane);
+}
+.ou-sheet { border-radius: var(--ou-radius-panel); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-2); }
+
+/* 磨砂小方块里放图标（侧栏、筛选、面板标题）：一个半径，到处一样。 */
+.ou-tile {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ou-radius-tile);
+  background: var(--ou-tile-bg);
+  box-shadow: var(--ou-tile-shadow);
+  color: var(--ou-text-secondary);
+}
+
+/* 悬停 / 选中 = 一颗实白胶囊浮起，不加描边（Bleep）。用在玻璃上的列表行。 */
+.ou-capsule-row {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: var(--ou-space-2);
+  padding: var(--ou-space-1) var(--ou-space-2);
+  border-radius: var(--ou-radius-control);
+  color: var(--ou-text-secondary);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-capsule-row:hover { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
+.ou-capsule-row[aria-current="page"], .ou-capsule-row[data-selected] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+
+/* 分段控件：玻璃轨道 + 选中段是白胶囊（二级标签、视图切换）。 */
+.ou-segment { display: inline-flex; align-items: center; gap: 0.125rem; padding: 0.1875rem; border-radius: var(--ou-radius-pill); background: var(--ou-glass-subtle); box-shadow: var(--ou-glass-highlight); }
+.ou-segment-item { display: inline-flex; min-height: 1.875rem; align-items: center; gap: var(--ou-space-1); padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); color: var(--ou-text-secondary); font-size: var(--ou-type-sm); font-weight: 500; transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
+.ou-segment-item:hover { color: var(--ou-text-primary); }
+.ou-segment-item[aria-current="page"], .ou-segment-item[aria-checked="true"], .ou-segment-item[aria-selected="true"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+
+/* 筛选 chip：前面一颗空心圆，选中时填实打勾（Bleep 的 Charts / Typography）。 */
+.ou-chip { display: inline-flex; min-height: 2rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-3) 0 var(--ou-space-2); border-radius: var(--ou-radius-pill); color: var(--ou-text-secondary); font-size: var(--ou-type-sm); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard); }
+.ou-chip:hover { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
+.ou-chip-check { display: inline-flex; width: 1rem; height: 1rem; flex: none; align-items: center; justify-content: center; border-radius: var(--ou-radius-pill); background: var(--ou-capsule-bg); box-shadow: var(--ou-check-ring); color: var(--ou-on-action-primary); }
+.ou-chip[aria-pressed="true"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+.ou-chip[aria-pressed="true"] .ou-chip-check { background: var(--ou-action-primary); box-shadow: none; }
+
+/* 卡片底部文字渐隐，代替硬裁切：内容「溶」掉，说明下面还有。 */
+.ou-fade-bottom { -webkit-mask-image: linear-gradient(to bottom, black 62%, transparent); mask-image: linear-gradient(to bottom, black 62%, transparent); }
+
+.ou-button-group > div > [role="dialog"] { border-color: transparent; border-radius: var(--ou-radius-floating); background: var(--ou-bg-floating); -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); }
+
+/* 今天页的「要做的事」「最近改动」：各一张半透明白纸，内边距宽松。 */
+.ou-today-sheet { padding: var(--ou-space-4) var(--ou-space-6) var(--ou-space-6); }
+.ou-today-sheet > h2 { color: var(--ou-text-primary); font-size: var(--ou-type-section); font-weight: 600; }
+.ou-today-sheet :is(input:not([type="checkbox"]), select) { border-color: transparent; border-radius: var(--ou-radius-control); background: var(--ou-bg-field); }
+
+/* 岗位表格：放在一张白色纸面上（大圆角 + 柔和阴影），不再是贴边的白块。 */
+.ou-jobs-sheet > p { margin: 0; padding: var(--ou-space-1) var(--ou-space-4) var(--ou-space-3); }
+.ou-jobs-sheet { overflow: hidden; padding-top: var(--ou-space-1); border-radius: var(--ou-radius-panel); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-elev-2); }
 
 /* ── 卡片 L2（看板卡、列表卡）── */
 .ou-card {
@@ -132,7 +206,7 @@
   box-shadow: var(--ou-elev-2);
   transition: box-shadow var(--ou-motion-base) var(--ou-ease-standard), transform var(--ou-motion-base) var(--ou-ease-standard);
 }
-.ou-card:hover { box-shadow: var(--ou-elev-2-hover); transform: translateY(-1px); }
+.ou-card:hover { box-shadow: var(--ou-elev-2-hover); transform: translateY(-2px); }
 
 /* ── 上下文用量环（改编自 Motif，MIT）── */
 .ou-context-ring { display: inline-flex; align-items: center; gap: var(--ou-space-1); padding: 0 var(--ou-space-1); border-radius: var(--ou-radius-1); font-size: var(--ou-type-xs); font-variant-numeric: tabular-nums; color: var(--ou-text-tertiary); }
@@ -176,8 +250,8 @@
   flex-shrink: 0;
   flex-direction: column;
   padding: var(--ou-space-2);
-  border-radius: var(--ou-radius-floating);
-  background: var(--ou-bg-control);
+  border-radius: var(--ou-radius-panel);
+  background: var(--ou-glass-subtle);
   scroll-snap-align: start;
   transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
 }
@@ -187,7 +261,7 @@
 .ou-kanban-title { font-size: var(--ou-type-body); font-weight: 600; line-height: 1.4; color: var(--ou-text-primary); }
 .ou-kanban-subtitle { font-size: var(--ou-type-sm); line-height: 1.45; color: var(--ou-text-secondary); }
 .ou-kanban-meta { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
-.ou-kanban-tag { padding: 0 var(--ou-space-1); border-radius: var(--ou-radius-1); background: var(--ou-bg-control); line-height: 1.5; }
+.ou-kanban-tag { padding: 0 var(--ou-space-2); border-radius: var(--ou-radius-pill); background: var(--ou-bg-control); line-height: 1.5; }
 .ou-kanban-tag:hover { color: var(--ou-text-primary); background: var(--ou-bg-hover); }
 .ou-kanban-add {
   display: flex;
@@ -199,9 +273,9 @@
   border-radius: var(--ou-radius-card);
   font-size: var(--ou-type-sm);
   color: var(--ou-text-tertiary);
-  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
 }
-.ou-kanban-add:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.ou-kanban-add:hover { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
 @media (max-width: 40rem) {
   .ou-kanban-track { scroll-snap-type: x mandatory; }
   .ou-kanban-column { width: min(85vw, 20rem); }
@@ -241,7 +315,9 @@
   gap: var(--ou-space-2);
   padding: var(--ou-space-1) var(--ou-space-3);
   border-radius: var(--ou-radius-pill);
-  background: var(--ou-bg-surface);
+  background: var(--ou-bg-floating);
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
   box-shadow: var(--ou-elev-2);
   font-size: var(--ou-type-sm);
   color: var(--ou-text-secondary);
@@ -276,7 +352,7 @@
 
 /* 看板：拖到列上时列底和焦点环平滑出现；卡片拖起时略微倾斜。 */
 .ou-kanban-column { transition: box-shadow var(--ou-motion-base) var(--ou-ease-standard), background-color var(--ou-motion-base) var(--ou-ease-standard); }
-.ou-kanban-column[data-over] { background: var(--ou-bg-hover); }
+.ou-kanban-column[data-over] { background: var(--ou-glass-bg); }
 .ou-card[draggable="true"]:active { transform: rotate(-1deg) scale(1.02); box-shadow: var(--ou-elev-3); }
 
 /* 弹窗（⌘K 用 framer-motion 弹簧，已有）：从中心略微放大出现，遮罩淡入。 */

@@ -131,7 +131,7 @@ export default function JobsPage() {
         {unscored > 0 && (
           <span className="flex items-center gap-2 text-[13px] text-[var(--foreground-muted)]">
             {unscored} 个岗位还没评估
-            <button type="button" onClick={() => void rank()} disabled={ranking} className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">{ranking ? (rankProgress ? `正在评估 ${rankProgress}…` : "正在评估…") : "评估未评估的"}</button>
+            <button type="button" onClick={() => void rank()} disabled={ranking} className="ou-button ou-button-secondary ou-button-sm">{ranking ? (rankProgress ? `正在评估 ${rankProgress}…` : "正在评估…") : "评估未评估的"}</button>
           </span>
         )}
         {error && <span role="alert" className="text-[12.5px] text-[var(--foreground)]">{error}</span>}

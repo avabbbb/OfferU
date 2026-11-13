@@ -39,13 +39,10 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`offeru-nav-link group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors duration-[var(--dur-quick)] ${
-        active
-          ? "text-[var(--foreground)]"
-          : "text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-      }`}
+      className="offeru-nav-link ou-capsule-row group relative"
     >
-      <Icon size={17} strokeWidth={1.75} />
+      {/* v3：图标放进磨砂小方块；悬停 / 当前页是一颗白胶囊，不加描边。 */}
+      <span className="ou-tile" aria-hidden><Icon size={15} strokeWidth={1.75} /></span>
       <span className={`truncate text-[length:var(--ou-type-body)] ${active ? "font-semibold" : "font-medium"}`}>{item.label}</span>
     </Link>
   );
@@ -58,10 +55,10 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="offeru-sidebar relative hidden h-full w-[var(--ou-sidebar-width)] shrink-0 overflow-hidden border-r border-[var(--border)] bg-[var(--sidebar-bg,var(--background))] md:flex md:flex-col">
+      <aside className="offeru-sidebar relative hidden h-full w-[var(--ou-sidebar-width)] shrink-0 overflow-hidden md:flex md:flex-col">
         <div className="offeru-sidebar-brand relative z-10 px-4 pb-2 pt-5">
           <Link href="/" className="flex items-center gap-2.5 rounded-md px-1.5 py-1">
-            <div className="offeru-sidebar-mark flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-[var(--foreground)] text-[var(--surface)]">
+            <div className="offeru-sidebar-mark ou-tile">
               <span className="text-[length:var(--ou-type-sm)] font-bold tracking-tight">O</span>
             </div>
             <p className="text-[length:var(--ou-type-section)] font-semibold tracking-tight text-[var(--foreground)]">OfferU</p>
@@ -73,7 +70,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => workbench?.setPaletteOpen(true)}
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[length:var(--ou-type-sm)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            className="offeru-sidebar-searchbox"
           >
             <Search size={14} strokeWidth={1.75} />
             <span className="min-w-0 flex-1 truncate whitespace-nowrap text-left">搜索或问 OfferU</span>

@@ -381,7 +381,7 @@ export function JobsTable({ jobs, view, patch, openId, onOpen }: {
   const missing = byStatus && groups ? STATUS_ORDER.filter((s) => !groups.some((g) => g.value === s)) : [];
 
   return (
-    <div className="relative">
+    <div className="ou-jobs-sheet relative">
       <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 220px)" }}>
         <div style={{ width: total }} className="pb-3">
           <div className="sticky top-0 z-20 bg-[var(--surface-opaque)]">
