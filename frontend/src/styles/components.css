@@ -241,6 +241,23 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 .ou-select-wrap { display: flex; min-width: 0; }
 .ou-select-sm { min-height: 1.75rem; padding: 0 var(--ou-space-2) 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); font-size: var(--ou-type-sm); }
 .ou-select-trigger > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 开关（Switch）：胶囊轨道 + 白圆钮；开 = 墨黑，关 = 半透明墨。圆钮用弹簧曲线滑过去。 */
+.ou-switch {
+  position: relative; display: inline-flex; flex: none; width: 2.25rem; height: 1.25rem; padding: 0.125rem;
+  border-radius: var(--ou-radius-pill); background: var(--ou-line-control); cursor: pointer;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-switch:hover:not(:disabled) { background: var(--ou-line-strong); }
+.ou-switch[aria-checked="true"] { background: var(--ou-action-primary); }
+.ou-switch[aria-checked="true"]:hover:not(:disabled) { background: var(--ou-action-primary-hover); }
+.ou-switch:disabled { opacity: 0.45; cursor: not-allowed; }
+.ou-switch:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.ou-switch-thumb {
+  width: 1rem; height: 1rem; border-radius: var(--ou-radius-pill); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-capsule-shadow);
+  transition: transform var(--ou-motion-base) var(--ou-ease-spring);
+}
+.ou-switch[aria-checked="true"] .ou-switch-thumb { transform: translateX(1rem); }
+@media (prefers-reduced-motion: reduce) { .ou-switch-thumb { transition: none; } }
 
 /* ── 弹窗 L4 ── */
 .ou-scrim { position: fixed; inset: 0; z-index: var(--ou-layer-overlay); background: var(--ou-scrim); -webkit-backdrop-filter: blur(var(--ou-scrim-blur)); backdrop-filter: blur(var(--ou-scrim-blur)); }

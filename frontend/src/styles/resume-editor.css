@@ -1,0 +1,93 @@
+/* 简历编辑器三栏（参考 offershow 简历编辑器，v3.1 Glass）：左栏模块管理 · 中间 A4 实时预览 · 右栏编辑。
+   三栏各自滚动，顶栏下面不再有内容滚过去（修「顶栏微微透出下面的字」）。只用 --ou-* 语义 Token。
+   旧的 .rs-* / .rf-* / .rt-* 仍在 globals.css，这里只放新布局和覆盖。 */
+
+.resume-shell.re-shell {
+  display: flex; flex: 1; flex-direction: column; gap: var(--ou-space-3); min-width: 0;
+  /* --re-fill = 视口高 − 自己离视口顶的距离（页面里量），减去 workbench-main 的底部留白（2rem）；整页不滚，三栏各自滚。 */
+  height: calc(var(--re-fill, 100dvh) - var(--ou-space-8)); min-height: 34rem;
+}
+
+/* 顶栏：不再 sticky 盖在内容上；用实白纸面，玻璃只留高光，后面没有字可透。 */
+.resume-shell.re-shell .rs-head {
+  position: relative; flex: none; margin-right: 2.75rem;
+  background: var(--ou-bg-surface-solid); box-shadow: var(--ou-glass-highlight), var(--ou-elev-1);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+
+.re-grid {
+  display: grid; flex: 1; min-height: 0; gap: var(--ou-space-4);
+  grid-template-columns: minmax(11.5rem, 13.5rem) minmax(0, 1fr) minmax(21rem, 26rem);
+  grid-template-areas: "rail preview editor";
+}
+.re-rail, .re-editor {
+  min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  border-radius: var(--ou-radius-panel); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-2);
+}
+.re-rail { grid-area: rail; padding: var(--ou-space-4) var(--ou-space-3); }
+.re-editor { grid-area: editor; }
+.re-preview { grid-area: preview; display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+.re-preview .rp-canvas { padding-top: 0; }
+
+/* 右栏里的旧表单（PR ② 换成按模块编辑）：去掉它自己的纸面，左侧把手区收窄。 */
+.re-editor .rf-scroll { gap: 1.75rem; padding: 1.5rem 1.25rem 3rem 2.75rem; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* ── 左栏：我的模块 ── */
+.rm { display: flex; flex-direction: column; gap: var(--ou-space-1); }
+.rm-heading { margin: 0 0 var(--ou-space-1); padding: 0 var(--ou-space-2); color: var(--ou-text-primary); font-size: var(--ou-type-section); font-weight: 600; }
+.rm-heading-more { margin-top: var(--ou-space-4); }
+.rm-list { display: flex; flex-direction: column; gap: 0.125rem; margin: 0; padding: 0; list-style: none; }
+.rm-row {
+  position: relative; display: flex; align-items: center; gap: var(--ou-space-1); min-height: 2.5rem; padding: 0 var(--ou-space-2) 0 0.125rem;
+  border-radius: var(--ou-radius-control); background: transparent;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.rm-row:hover { background: var(--ou-bg-hover); }
+.rm-row[data-selected] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+.rm-row[data-dragging] { position: relative; z-index: var(--ou-layer-popover); background: var(--ou-capsule-bg); box-shadow: var(--ou-elev-3); }
+.rm-grip {
+  display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1.5rem; height: 1.75rem;
+  border-radius: var(--ou-radius-1); color: var(--ou-text-placeholder); cursor: grab; touch-action: none;
+}
+.rm-grip:hover { color: var(--ou-text-secondary); }
+.rm-grip:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.rm-lock { cursor: default; }
+.rm-lock:hover { color: var(--ou-text-placeholder); }
+.rm-name {
+  flex: 1; min-width: 0; overflow: hidden; padding: 0.375rem 0; text-align: left; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--ou-text-primary); font-size: var(--ou-type-body);
+}
+.rm-row[data-selected] .rm-name { font-weight: 600; }
+.rm-row[data-off] .rm-name { color: var(--ou-text-secondary); }
+.rm-name-static { cursor: default; }
+.rm-input {
+  flex: 1; min-width: 0; height: 1.75rem; padding: 0 var(--ou-space-2); border: 0; border-radius: var(--ou-radius-1);
+  background: var(--ou-bg-field); color: var(--ou-text-primary); font: inherit; font-size: var(--ou-type-body); outline: none; box-shadow: var(--ou-ring-focus);
+}
+.rm-more {
+  display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem;
+  border-radius: var(--ou-radius-pill); color: var(--ou-text-tertiary); opacity: 0;
+  transition: opacity var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.rm-row:hover .rm-more, .rm-row:focus-within .rm-more, .rm-more[data-state="open"] { opacity: 1; }
+.rm-more:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.rm-add {
+  display: inline-flex; align-items: center; gap: var(--ou-space-2); min-height: 2.25rem; margin-top: var(--ou-space-3); padding: 0 var(--ou-space-3);
+  border-radius: var(--ou-radius-pill); color: var(--ou-text-secondary); font-size: var(--ou-type-sm);
+}
+.rm-add:hover { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
+
+/* ── 窄窗口（按编辑器自己的宽度，不按视口：开着侧栏 / Agent 栏时也对）──
+   ≥ 66rem 三栏；40–66rem 模块 + 编辑并排、预览放到下面；< 40rem 一列。后两档整页滚，三栏不再各自滚。 */
+.resume-shell.re-shell { container-type: inline-size; container-name: re; }
+@container re (max-width: 66rem) {
+  .re-grid { flex: none; grid-template-columns: minmax(10.5rem, 12rem) minmax(0, 1fr); grid-template-areas: "rail editor" "preview preview"; }
+  .re-rail, .re-editor { overflow: visible; align-self: start; }
+  .re-preview { height: 85dvh; }
+  .resume-shell.re-shell .rs-head { flex-wrap: wrap; }
+}
+@container re (max-width: 40rem) {
+  .re-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "rail" "editor" "preview"; }
+  .resume-shell.re-shell .rs-head { margin-right: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .rm-row, .rm-more { transition: none; } }

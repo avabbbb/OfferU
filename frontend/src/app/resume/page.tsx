@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { mutate } from "swr";
 
 import { BasicsMedia } from "@/components/resume/BasicsMedia";
 import { DownloadButton } from "@/components/resume/DownloadButton";
+import { BASICS, ModuleList } from "@/components/resume/ModuleList";
 import { type FormFocus, ResumeForm } from "@/components/resume/ResumeForm";
 import { type PreviewHandle, ResumePreview } from "@/components/resume/ResumePreview";
 import { ResumeSwitcher } from "@/components/resume/ResumeSwitcher";
@@ -17,6 +18,7 @@ import { type Doc, type Job, type Memory, type Profile, tool, useTool, write } f
 import { resumeFromProfile } from "@/lib/resumeDraft";
 import { emptyResume, locatePath, normalizeResume, type Resume } from "@/lib/resumeModel";
 import { type FitOutcome, fitOnePage, resolveStyle, type ResumeStyle } from "@/lib/resumeStyle";
+import "@/styles/resume-editor.css";
 
 const FIT_NOTICE: Record<FitOutcome, string> = {
   fits: "已经刚好一页",
@@ -25,6 +27,21 @@ const FIT_NOTICE: Record<FitOutcome, string> = {
   overflow: "压到下限还是超过一页，建议删减内容",
 };
 
+// 三栏要正好占满视口剩下的高度（各栏自己滚，整页不滚，顶栏下面没有内容滚过去）。
+// 上面有没有「简历 / 档案」分段、外层留白多少都不固定，所以按自己离视口顶的距离量。
+function useFillViewport() {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => el.style.setProperty("--re-fill", Math.max(0, window.innerHeight - el.getBoundingClientRect().top) + "px");
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+  return ref;
+}
+
 const refreshOverview = () => void mutate((k) => Array.isArray(k) && k[1] === "overview");
 
 function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
@@ -32,10 +49,17 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
 }) {
   const router = useRouter();
   const preview = useRef<PreviewHandle>(null);
+  const shell = useFillViewport();
   const [resume, setResume] = useState<Resume>(() => normalizeResume(doc.resume));
   const latest = useRef(resume);
   latest.current = resume;
   const [focus, setFocus] = useState<FormFocus | null>(null);
+  // 左栏选中的模块（BASICS 或 section.id）：右栏跟着滚过去；预览里点到哪个块也切到它所在的模块。
+  const [selected, setSelected] = useState<string>(BASICS);
+  const select = (id: string) => {
+    setSelected(id);
+    setFocus(id === BASICS ? { basics: true, at: Date.now() } : { sectionId: id, at: Date.now() });
+  };
   const [title, setTitle] = useState(doc.title ?? "");
   const [saved, setSaved] = useState(true);
   const [style, setStyle] = useState<ResumeStyle>(() => resolveStyle(doc.style, doc.template));
@@ -96,7 +120,7 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
   const job = jobs.find((j) => j.id === doc.job_id);
   const school = resume.sections.find((s) => s.type === "education")?.items[0]?.title.trim() ?? "";
   return (
-    <div className="resume-shell flex min-w-0 flex-1 flex-col">
+    <div ref={shell} className="resume-shell re-shell">
       <header className="rs-head">
         <ResumeSwitcher docs={docs} current={doc} jobs={jobs} title={title} onRename={rename} onCreate={onCreate} onCopy={copy}
           onDelete={(d) => void remove(d)} />
@@ -105,16 +129,25 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
         <StylePanel style={style} onChange={changeStyle} onFit={() => void fit()} fitting={fitting} notice={notice} />
         <DownloadButton docId={doc.id} />
       </header>
-      <div className="rs-body">
-        <ResumeForm resume={resume} onChange={changeResume} focus={focus} readOnly={tailoring}
-          basicsExtra={<BasicsMedia style={style} onStyle={changeStyle} photo={photo} school={school}
-            onPhoto={() => void mutate((k) => Array.isArray(k) && k[0] === "tool")} />} />
-        <div className="rs-preview">
+      <div className="re-grid">
+        <aside className="re-rail">
+          <ModuleList resume={resume} onChange={changeResume} selected={selected} onSelect={select} />
+        </aside>
+        <div className="re-preview">
           <ResumePreview ref={preview} resume={resume} style={style}
             toolbar={<TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved} onRunning={setTailoring}
               onDone={async (id) => { await mutate((k) => Array.isArray(k) && k[0] === "tool"); if (id !== doc.id) router.push("/resume/" + id); }} />}
-            onLocate={(path) => setFocus({ ...locatePath(resume, path), at: Date.now() })} />
+            onLocate={(path) => {
+              const at = locatePath(resume, path);
+              setSelected(at.sectionId ?? BASICS);
+              setFocus({ ...at, at: Date.now() });
+            }} />
         </div>
+        <section className="re-editor" aria-label="编辑内容">
+          <ResumeForm resume={resume} onChange={changeResume} focus={focus} readOnly={tailoring}
+            basicsExtra={<BasicsMedia style={style} onStyle={changeStyle} photo={photo} school={school}
+              onPhoto={() => void mutate((k) => Array.isArray(k) && k[0] === "tool")} />} />
+        </section>
       </div>
     </div>
   );
@@ -167,7 +200,7 @@ export default function ResumePage() {
   }
 
   return (
-    <div className="resume-shell flex h-full min-h-0">
+    <div className="resume-shell flex min-h-0">
       <Editor key={current.id} doc={current} docs={docs} jobs={jobs} photo={profileData?.record?.photo} onCopy={copy}
         onCreate={(fromProfile) => void create(fromProfile)} />
     </div>

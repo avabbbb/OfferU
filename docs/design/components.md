@@ -30,6 +30,12 @@
 
 替代所有原生 `<select>`。触发器同 Input；选项面板是 L3 浮层，至少与触发器同宽；选项可带图标和一行描述（例如模型预设：图标 + 名称 + 「Base URL 自动填好」）。
 
+## Switch（开关）
+
+`<Switch checked onCheckedChange aria-label>`：`role="switch"` 的原生按钮（空格 / 回车切换），胶囊轨道 + 白圆钮；开 = 墨黑轨道（同主按钮那支墨，不用彩色），关 = 半透明墨（`--ou-line-control`）；圆钮弹簧滑动，reduced-motion 下不动画；禁用 45% 透明（如简历「基础信息」锁定常开）。只表示「显示 / 启用」这类即时生效的二元状态；要提交的选项用勾选。必须有 `aria-label` 或可见文字。
+
+看：`#/resume` 左栏「我的模块 / 更多模块」。
+
 ## Menu（Radix DropdownMenu）
 
 「更多」、行操作、状态切换。v3.1 是**浅色玻璃**（参考 Inspora · Mona「feature menu」改成浅色）：面板 `--ou-glass-menu`（白 70%）+ `--ou-glass-blur-heavy`（40px）模糊、`--ou-radius-menu`（22px）、`--ou-elev-menu`。每项是一行 `--ou-menu-row`（40px）胶囊 = 16px 图标 + 文字 + 可选 `description`（第二行小字）+ 可选快捷键；层级只靠同一支墨色的透明度（`--ou-alpha-*`），不靠字重。悬停 / 键盘高亮 = 白胶囊浮起 + 文字右挪 `--ou-nudge` + 右侧小箭头淡入（`--ou-ease-spring-soft`）。`{ heading }` 项是分组小标题；危险项放最后、红字（`--ou-tone-red-text`），中间用 `"separator"`。可选 `label` 作为浮层的 `aria-label`。
