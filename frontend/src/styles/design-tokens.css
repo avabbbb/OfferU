@@ -134,6 +134,13 @@
   --ou-motion-fast: 120ms;
   --ou-motion-base: 200ms;
   --ou-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* Motion v2: Apple-like spring curves. Slow = page and list entrances; shimmer = "thinking" sweep. */
+  --ou-motion-slow: 320ms;
+  --ou-motion-shimmer: 1800ms;
+  --ou-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ou-ease-emphasized: cubic-bezier(0.2, 0.9, 0.1, 1.08);
+  --ou-stagger: 28ms;
+  --ou-rise: 0.375rem;
 }
 
 /* Prospective dark tokens for migrated surfaces. No existing dark styles are overridden. */
@@ -194,6 +201,9 @@
   :root {
     --ou-motion-fast: 0ms;
     --ou-motion-base: 0ms;
+    --ou-motion-slow: 0ms;
+    --ou-stagger: 0ms;
+    --ou-rise: 0rem;
   }
 }
 

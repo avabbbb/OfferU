@@ -204,3 +204,81 @@
   .ou-kanban-track { scroll-snap-type: x mandatory; }
   .ou-kanban-column { width: min(85vw, 20rem); }
 }
+
+
+/* ── 动效 v2（docs/design/visual-system.md §7）──────────────────────────
+   原则：动效说明「从哪来、到哪去、现在在干嘛」，不做装饰。全部走 token；
+   prefers-reduced-motion 下时长归零、位移归零，shimmer 变静态。 */
+
+/* 进场：页面切换、新卡片、新消息。轻微上浮 + 淡入，弹簧曲线。 */
+@keyframes ou-rise-in { from { opacity: 0; transform: translateY(var(--ou-rise)); } to { opacity: 1; transform: none; } }
+.ou-enter { animation: ou-rise-in var(--ou-motion-slow) var(--ou-ease-spring) both; animation-delay: calc(var(--i, 0) * var(--ou-stagger)); }
+.ou-page-enter { animation: ou-rise-in var(--ou-motion-slow) var(--ou-ease-spring) both; }
+
+/* 就地替换：Agent 的「一行步骤」换字时淡入 + 去模糊（参考 Inspora agent dashboard）。 */
+@keyframes ou-swap-in { from { opacity: 0; filter: blur(2px); transform: translateY(2px); } to { opacity: 1; filter: none; transform: none; } }
+.ou-swap { display: inline-block; animation: ou-swap-in var(--ou-motion-base) var(--ou-ease-standard) both; }
+
+/* 思考中：文字上扫过一道高光（参考 Motif thinking-block）。 */
+@keyframes ou-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.ou-shimmer {
+  background: linear-gradient(90deg, var(--ou-text-tertiary) 0%, var(--ou-text-tertiary) 40%, var(--ou-text-primary) 50%, var(--ou-text-tertiary) 60%, var(--ou-text-tertiary) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ou-shimmer var(--ou-motion-shimmer) linear infinite;
+}
+
+/* 运行胶囊：输入框上方的小胶囊，状态点呼吸。 */
+@keyframes ou-breathe { 0%, 100% { opacity: 0.45; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1); } }
+.ou-run-pill {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: var(--ou-space-2);
+  padding: var(--ou-space-1) var(--ou-space-3);
+  border-radius: var(--ou-radius-pill);
+  background: var(--ou-bg-surface);
+  box-shadow: var(--ou-elev-2);
+  font-size: var(--ou-type-sm);
+  color: var(--ou-text-secondary);
+  animation: ou-rise-in var(--ou-motion-slow) var(--ou-ease-spring) both;
+}
+.ou-run-dot { width: 0.4rem; height: 0.4rem; flex: none; border-radius: var(--ou-radius-pill); background: var(--ou-tone-purple-dot); animation: ou-breathe 1.4s var(--ou-ease-standard) infinite; }
+.ou-run-meta { flex: none; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* 「已处理 · N 次工具调用」折叠头（参考 Motif agent-activity）。 */
+.ou-activity > summary { display: inline-flex; align-items: center; gap: var(--ou-space-1); padding: var(--ou-space-1) 0; list-style: none; cursor: pointer; font-size: var(--ou-type-sm); color: var(--ou-text-tertiary); transition: color var(--ou-motion-fast) var(--ou-ease-standard); }
+.ou-activity > summary::-webkit-details-marker { display: none; }
+.ou-activity > summary:hover { color: var(--ou-text-secondary); }
+.ou-activity > summary .ou-chevron { transition: transform var(--ou-motion-base) var(--ou-ease-spring); }
+.ou-activity[open] > summary .ou-chevron { transform: rotate(90deg); }
+.ou-activity[open] > :not(summary) { animation: ou-rise-in var(--ou-motion-base) var(--ou-ease-spring) both; }
+
+/* 按下：所有按钮和可点卡片轻微收缩，像 iOS。 */
+.ou-button, .ou-icon-button, .ou-card[role="button"], .ou-pressable { transition: transform var(--ou-motion-fast) var(--ou-ease-standard), background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-base) var(--ou-ease-standard), border-color var(--ou-motion-fast) var(--ou-ease-standard); }
+.ou-button:active:not(:disabled), .ou-icon-button:active, .ou-pressable:active { transform: scale(0.97); }
+
+/* 胶囊换状态时颜色平滑过渡。 */
+.ou-pill { transition: background-color var(--ou-motion-base) var(--ou-ease-standard), color var(--ou-motion-base) var(--ou-ease-standard), box-shadow var(--ou-motion-base) var(--ou-ease-standard); }
+
+/* 完成打勾：勾线画出来。 */
+@keyframes ou-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.ou-check-draw path, .ou-check-draw polyline { stroke-dasharray: 1; stroke-dashoffset: 0; animation: ou-draw var(--ou-motion-slow) var(--ou-ease-spring) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ou-shimmer { animation: none; background: none; color: var(--ou-text-secondary); }
+  .ou-run-dot { animation: none; opacity: 1; }
+}
+
+/* 看板：拖到列上时列底和焦点环平滑出现；卡片拖起时略微倾斜。 */
+.ou-kanban-column { transition: box-shadow var(--ou-motion-base) var(--ou-ease-standard), background-color var(--ou-motion-base) var(--ou-ease-standard); }
+.ou-kanban-column[data-over] { background: var(--ou-bg-hover); }
+.ou-card[draggable="true"]:active { transform: rotate(-1deg) scale(1.02); box-shadow: var(--ou-elev-3); }
+
+/* 弹窗（⌘K 用 framer-motion 弹簧，已有）：从中心略微放大出现，遮罩淡入。 */
+@keyframes ou-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ou-zoom-in { from { opacity: 0; transform: scale(0.96) translateY(-0.5rem); } to { opacity: 1; transform: none; } }
+.ou-scrim { animation: ou-fade-in var(--ou-motion-base) var(--ou-ease-standard) both; }
+.ou-dialog { animation: ou-zoom-in var(--ou-motion-slow) var(--ou-ease-spring) both; }
