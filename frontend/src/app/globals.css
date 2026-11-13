@@ -1321,6 +1321,59 @@ body {
   color: var(--foreground-muted);
 }
 
+/* ⌘K v3.1（参考 Inspora · Mona「feature menu」改成浅色玻璃）：22px 圆角 + 重模糊；
+   左边索引列是 40px 胶囊行，悬停 / 键盘高亮 = 白胶囊 + 文字右挪 + 箭头淡入；右边是高亮项的预览。
+   层级靠同一支墨色的透明度，不靠字重。 */
+.offeru-command-surface { border-radius: var(--ou-radius-menu); box-shadow: var(--ou-glass-highlight), var(--ou-elev-menu); }
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .offeru-command-surface {
+    background: var(--ou-glass-menu);
+    -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur-heavy));
+    backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur-heavy));
+  }
+}
+.offeru-command-head { border-bottom-color: var(--ou-line-separator); padding: var(--ou-space-3) var(--ou-space-3) var(--ou-space-3) var(--ou-space-6); }
+.offeru-command-segment { border-radius: var(--ou-radius-pill); background: var(--ou-bg-control); }
+.offeru-command-segment-item { border-radius: var(--ou-radius-pill); }
+.offeru-command-segment-item[aria-selected="true"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+.offeru-command-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 17rem); gap: var(--ou-space-2); padding: var(--ou-space-2); }
+.offeru-command-list { max-height: min(56vh, 27rem); padding: 0; }
+.offeru-command-group { padding: var(--ou-space-3) var(--ou-space-3) var(--ou-space-1); font-weight: 400; color: var(--ou-text-primary); opacity: var(--ou-alpha-faint); }
+.offeru-command-item {
+  min-height: var(--ou-menu-row);
+  gap: var(--ou-space-3);
+  padding: 0 var(--ou-space-3) 0 var(--ou-space-2);
+  border-radius: var(--ou-radius-pill);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-base) var(--ou-ease-standard);
+}
+.offeru-command-item[data-active] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+.offeru-command-icon { width: 1.75rem; height: 1.75rem; border-radius: var(--ou-radius-pill); background: transparent; color: var(--ou-text-primary); opacity: var(--ou-alpha-muted); }
+.offeru-command-item[data-active] .offeru-command-icon { background: transparent; box-shadow: none; color: var(--ou-text-primary); opacity: var(--ou-alpha-soft); }
+.offeru-command-label { color: var(--ou-text-primary); opacity: var(--ou-alpha-soft); transition: transform var(--ou-motion-slow) var(--ou-ease-spring-soft), opacity var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-command-item[data-active] .offeru-command-label { opacity: 1; transform: translateX(var(--ou-nudge)); }
+.offeru-command-hint { color: var(--ou-text-primary); opacity: var(--ou-alpha-faint); }
+.offeru-command-item[data-active] .offeru-command-hint { color: var(--ou-text-primary); opacity: var(--ou-alpha-muted); }
+.offeru-command-arrow { flex: none; margin-left: calc(-1 * var(--ou-space-1)); color: var(--ou-text-primary); opacity: 0; transform: translateX(calc(-2 * var(--ou-nudge))); transition: transform var(--ou-motion-slow) var(--ou-ease-spring-soft), opacity var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-command-item[data-active] .offeru-command-arrow { opacity: var(--ou-alpha-muted); transform: none; }
+.offeru-command-preview { display: flex; min-height: 100%; padding: var(--ou-space-6) var(--ou-space-4) var(--ou-space-4); border-radius: calc(var(--ou-radius-menu) - var(--ou-space-2)); background: var(--ou-glass-subtle); box-shadow: var(--ou-glass-highlight); }
+.offeru-command-preview-inner { display: flex; width: 100%; flex-direction: column; gap: var(--ou-space-2); animation: ou-preview-in var(--ou-motion-slow) var(--ou-ease-spring) both; }
+@keyframes ou-preview-in { from { opacity: 0; transform: translateY(var(--ou-rise)); } to { opacity: 1; transform: none; } }
+.offeru-command-preview-tile { display: inline-flex; width: 2.75rem; height: 2.75rem; align-items: center; justify-content: center; margin-bottom: var(--ou-space-2); border-radius: var(--ou-radius-pill); background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+.offeru-command-preview-tile[data-agent] { background: var(--ou-tone-purple-bg); color: var(--ou-tone-purple-text); }
+.offeru-command-preview-title { font-size: var(--ou-type-section); font-weight: 500; color: var(--ou-text-primary); opacity: var(--ou-alpha-strong); }
+.offeru-command-preview-desc { font-size: var(--ou-type-sm); line-height: 1.5; color: var(--ou-text-primary); opacity: var(--ou-alpha-muted); }
+.offeru-command-preview-card { display: flex; flex-direction: column; gap: var(--ou-space-1); margin-top: var(--ou-space-3); padding: var(--ou-space-3); border-radius: var(--ou-radius-card); background: var(--ou-capsule-hover); font-size: var(--ou-type-sm); line-height: 1.55; color: var(--ou-text-primary); }
+.offeru-command-preview-eyebrow { font-size: var(--ou-type-xs); opacity: var(--ou-alpha-faint); }
+.offeru-command-preview-path { margin-left: var(--ou-space-2); font-family: var(--ou-font-mono); font-size: var(--ou-type-xs); opacity: var(--ou-alpha-faint); }
+.offeru-command-preview-prompt { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 5; -webkit-box-orient: vertical; opacity: var(--ou-alpha-soft); }
+.offeru-command-preview-enter { margin-top: auto; padding-top: var(--ou-space-4); font-size: var(--ou-type-xs); color: var(--ou-text-primary); opacity: var(--ou-alpha-muted); }
+.offeru-command-preview-enter kbd { display: inline-flex; min-width: 1.25rem; height: 1.25rem; align-items: center; justify-content: center; margin-right: var(--ou-space-1); border-radius: var(--ou-radius-pill); background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); font-family: inherit; }
+.offeru-command-foot { border-top-color: var(--ou-line-separator); }
+@media (max-width: 40rem) {
+  .offeru-command-body { grid-template-columns: minmax(0, 1fr); }
+  .offeru-command-preview { display: none; }
+}
+
 .offeru-focus-topbar {
   border-bottom-color: transparent !important;
   background: var(--ou-glass-bg) !important;
@@ -2496,25 +2549,7 @@ body {
 .resume-shell .rf-suggest mark { background: none; color: var(--ink); font-weight: 600; }
 .resume-shell .rf-suggest .rf-suggest-empty { color: var(--foreground-muted); font-size: 0.75rem; cursor: default; }
 
-.tag-input { position: relative; margin-top: 0.375rem; }
-.tag-input-box {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  padding: 0.25rem 0.375rem;
-  border: 1px solid var(--foreground-muted);
-  border-radius: 0.375rem;
-  background: var(--background);
-}
-.tag-input-box input {
-  flex: 1;
-  min-width: 4em;
-  border: 0;
-  outline: 0;
-  background: none;
-  color: var(--foreground);
-  font-size: var(--board-fs-sm);
-}
+
 .tag-pill {
   padding: 0 0.375rem;
   border: 0;
@@ -2525,33 +2560,6 @@ body {
   line-height: 1.6;
   cursor: pointer;
 }
-.tag-menu {
-  position: absolute;
-  z-index: 10;
-  left: 0;
-  right: 0;
-  margin-top: 0.25rem;
-  padding: 0.25rem;
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  background: var(--background);
-  list-style: none;
-  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.08);
-}
-.tag-menu button {
-  display: block;
-  width: 100%;
-  padding: 0.25rem 0.375rem;
-  border: 0;
-  border-radius: 0.25rem;
-  background: none;
-  color: var(--foreground);
-  font-size: var(--board-fs-sm);
-  text-align: left;
-  cursor: pointer;
-}
-.tag-menu [aria-selected="true"] button,
-.tag-menu button:hover { background: var(--surface); }
 
 /* 「增强对比度」由 design-tokens.css 的 prefers-contrast 统一加深，旧变量经 var() 桥接自动跟随。 */
 

@@ -13,15 +13,6 @@ import { applyView, defaultState, defaultView, loadViews, saveViews, type ViewCo
 
 const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
 
-export function StatusSelect({ job }: { job: Job }) {
-  return (
-    <select value={job.status} aria-label="投递状态" style={{ fontSize: 13 }} className={field + " py-1"}
-      onChange={(e) => void write("save", { type: "job", id: job.id, data: { status: e.target.value } })}>
-      {Object.entries(JOB_STATUS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-    </select>
-  );
-}
-
 // 添加岗位：贴链接或 JD 让后端抓正文、拆字段（抓不到就报错，不存空壳）；也能手动填。
 function AddJob() {
   const [text, setText] = useState("");
