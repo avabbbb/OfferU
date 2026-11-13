@@ -84,6 +84,10 @@ internal/
 !docs/design/
 docs/design/*
 !docs/design/statecharts.md
+# 设计规范（DESIGN.md 套件、视觉系统、组件、参考库、审计、色卡）也要进仓库，AGENTS.md 引用它们
+!docs/design/*.md
+!docs/design/assets/
+!docs/design/archive/
 !docs/archive/
 !docs/archive/**
 # Eval 原始截图/trace 默认只保留本地；正式报告必须包含脱敏后的关键证据。
