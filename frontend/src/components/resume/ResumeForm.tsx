@@ -114,21 +114,32 @@ function ContactField({ contact, onChange, onDelete }: {
   );
 }
 
+// 要点 = 一行一块：回车在下面新建、空块退格删掉并回到上一块、↑↓ 在块之间走；排序和删除按钮悬停才出现。
 function Bullets({ bullets, onChange }: { bullets: string[]; onChange: (next: string[]) => void }) {
+  const [focus, setFocus] = useState<{ i: number; n: number }>({ i: -1, n: 0 });
+  const go = (i: number) => setFocus((f) => ({ i, n: f.n + 1 }));
   const set = (i: number, value: string) => onChange(bullets.map((b, k) => (k === i ? value : b)));
+  const insert = (i: number) => { onChange([...bullets.slice(0, i), "", ...bullets.slice(i)]); go(i); };
   return (
-    <div className="space-y-2">
+    <div className="rf-blocks">
       {bullets.map((b, i) => (
         <div key={i} className="rf-bullet">
           <span className="rf-dot" aria-hidden />
-          <RichText value={b} rows={2} compact label={"要点 " + (i + 1)} onChange={(v) => set(i, v)} />
+          <RichText value={b} rows={1} compact label={"要点 " + (i + 1)} onChange={(v) => set(i, v)}
+            focusSignal={focus.i === i ? focus.n : 0}
+            keys={{
+              onEnter: () => insert(i + 1),
+              onRemove: () => { onChange(bullets.filter((_, k) => k !== i)); if (i > 0) go(i - 1); },
+              onPrev: i > 0 ? () => go(i - 1) : undefined,
+              onNext: i < bullets.length - 1 ? () => go(i + 1) : undefined,
+            }} />
           <div className="rf-actions">
             <Arrows index={i} count={bullets.length} onMove={(to) => onChange(move(bullets, i, to))} />
             <Btn label="删除要点" danger onClick={() => onChange(bullets.filter((_, k) => k !== i))}><Glyph name="trash" /></Btn>
           </div>
         </div>
       ))}
-      <button type="button" className="rf-link" onClick={() => onChange([...bullets, ""])}>+ 添加要点</button>
+      <button type="button" className="rf-link" onClick={() => insert(bullets.length)}>+ 添加要点</button>
     </div>
   );
 }
@@ -140,6 +151,7 @@ function ItemForm({ type, item, onPatch }: { type: SectionType; item: ResumeItem
       <input value={item[key]} onChange={(e) => onPatch({ [key]: e.target.value } as Partial<ResumeItem>)} className="rf-input" />
     </Field>
   ) : null;
+  const [desc, setDesc] = useState(0);
   return (
     <div className="space-y-3">
       {fields && (
@@ -147,11 +159,15 @@ function ItemForm({ type, item, onPatch }: { type: SectionType; item: ResumeItem
           {field("title", fields.title)}{field("subtitle", fields.subtitle)}{field("location", fields.location)}{field("date", fields.date)}
         </div>
       )}
-      {/* 不用 label 包：里面有工具栏按钮，点标题字会误触第一个按钮。 */}
-      <div className="rf-field">
-        <span className="rf-label">{fields ? "描述（可选）" : "内容"}</span>
-        <RichText value={item.text} rows={fields ? 2 : 4} label={fields ? "描述" : "内容"} onChange={(text) => onPatch({ text })} />
-      </div>
+      {/* 描述是可选的：没写时只留一行「+ 添加描述」，点开才出编辑框。不用 label 包：里面有放大按钮。 */}
+      {fields && !item.text && !desc ? (
+        <button type="button" className="rf-link" onClick={() => setDesc(1)}>+ 添加描述</button>
+      ) : (
+        <div className="rf-field">
+          <span className="rf-label">{fields ? "描述" : "内容"}</span>
+          <RichText value={item.text} rows={fields ? 3 : 5} label={fields ? "描述" : "内容"} focusSignal={desc} onChange={(text) => onPatch({ text })} />
+        </div>
+      )}
       {/* 个人总结 / 技能这类只有正文的模块不给要点；老数据里已有要点的照常显示，免得看不见。 */}
       {(fields || item.bullets.length > 0) && (
         <div className="rf-field">

@@ -86,6 +86,7 @@
   --ou-bg-sidebar: var(--ou-neutral-2);     /* app sidebar, agent rail */
   --ou-bg-surface: var(--ou-color-surface); /* L1–L4 content surfaces */
   --ou-bg-control: var(--ou-neutral-3);
+  --ou-bg-field: #f3f2f0;                   /* low-chroma text-field fill (resume editor), 2026-11-13 */
   --ou-bg-hover: var(--ou-neutral-4);
   --ou-bg-selected: var(--ou-neutral-5);
   --ou-line-separator: var(--ou-neutral-6);
@@ -166,6 +167,7 @@
   --ou-neutral-1: #120f0c;
   --ou-neutral-2: #191513;
   --ou-neutral-3: #211d1b;
+  --ou-bg-field: #1f1e1d;
   --ou-neutral-4: #272320;
   --ou-neutral-5: #2d2926;
   --ou-neutral-6: #342f2d;
