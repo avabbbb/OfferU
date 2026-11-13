@@ -125,7 +125,7 @@ export default function JobsPage() {
   };
 
   return (
-    <div className="space-y-4 px-6 py-8">
+    <div className="ou-page ou-page-wide space-y-4">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">岗位</h1>
         {unscored > 0 && (

@@ -23,12 +23,17 @@ export const RULES = [
   {
     id: "arbitrary-shadow",
     summary: "Use --ou-shadow-* instead of custom shadows",
-    regex: /shadow-\[|box-shadow\s*:\s*(?!var\(|none\b)/i,
+    regex: /shadow-\[|box-shadow\s*:(?!\s*(?:var\(|none\b))/i,
   },
   {
     id: "arbitrary-layer",
     summary: "Use --ou-layer-* rather than numeric z-index",
     regex: /\bz-\[\d+\]|\bz-[1-9]\d*\b|z-index\s*:\s*[1-9]\d*\b/i,
+  },
+  {
+    id: "raw-control",
+    summary: "Compose components/ui (Select, Menu, Popover, Dialog) instead of raw <select> or hand-rolled overlays",
+    regex: /<select\b|role=["']menu["']/,
   },
 ];
 

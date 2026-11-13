@@ -142,7 +142,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-10 px-6 py-10">
+    <div className="ou-page ou-page-reading space-y-10">
       <header className="flex items-start justify-between gap-6">
         <div>
           <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">档案</h1>

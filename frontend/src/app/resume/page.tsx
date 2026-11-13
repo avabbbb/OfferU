@@ -154,7 +154,7 @@ export default function ResumePage() {
 
   if (!current) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-10">
+      <div className="ou-page ou-page-default">
         <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">简历</h1>
         <p className="mt-1 text-[13.5px] text-[var(--foreground-muted)]">先有一份主简历，再按岗位复制一份改。左边按块写，右边就是导出的 PDF。</p>
         <div className="mt-6 flex gap-3">

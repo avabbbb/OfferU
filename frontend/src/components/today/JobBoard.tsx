@@ -13,16 +13,13 @@ const OPEN: JobStatus[] = ["saved", "applied", "test", "interview", "offer"];
 const ENDED: JobStatus[] = ["rejected", "closed"];
 const byScore = (a: Job, b: Job) => (b.score ?? -1) - (a.score ?? -1);
 
-// 照 Notion 看板（浅色主题）：列底统一中性浅灰，颜色只留给列头的深色胶囊；卡片白底 + 浅灰 1px 细边 + 小阴影；列底「+ 新建」灰字 + 浅灰细边。
-const COL = "bg-neutral-100/70";
-const RING = "ring-neutral-200";
-const ADD_TEXT = "text-neutral-500";
+// 看板（色卡 v2 + 层级模型）：列 = L0 画布上的浅色分区（--ou-bg-control），卡片 = L2（白底 + 1px 分隔线 + 1/2 阴影，悬停抬起一级）。
+// 列宽随窗口流动（--ou-kanban-column：16–22rem），窄屏横向滚动并按列吸附；颜色只留给列头的状态胶囊。
 const muted = "text-[var(--foreground-muted)]";
 const faint = "text-[var(--foreground-faint)]";
 const ghostBtn = "rounded px-1.5 py-0.5 hover:bg-[var(--surface-hover)]";
 
-// 投递看板（Notion 式）：一列一个阶段（260px 宽、10px 圆角、列间 12px），列头「状态色块 + 灰色数量」，列有极淡的同色底；
-// 卡片白底、同色细边、小阴影，悬停变灰；列底「+ 新建」在该阶段加一条。卡片拖到另一列就改状态（一条改动，可撤销）。
+// 投递看板：一列一个阶段，列头「状态胶囊 + 灰色数量」；卡片拖到另一列就改状态；列底「+ 新建」在该阶段加一条。卡片拖到另一列就改状态（一条改动，可撤销）。
 // 未通过和不投了合成「已结束」，默认收起；顶上按标签筛，卡片上点 #标签 也是筛。
 export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: jobs } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 }, 5000);
@@ -87,18 +84,18 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
     return (
       <li key={job.id} data-testid="job-card" draggable={editing !== job.id}
         onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(job.id)); e.dataTransfer.effectAllowed = "move"; }}
-        className={"group min-h-10 cursor-grab rounded-[10px] bg-[var(--surface-opaque)] px-2.5 py-2 shadow-sm ring-1 hover:bg-[var(--surface-hover)] active:cursor-grabbing " + RING}>
+        className="ou-card group min-h-10 cursor-grab px-3 py-2.5 active:cursor-grabbing">
         <Link href={"/jobs/" + job.id} title={[job.company, job.title].filter(Boolean).join(" · ")}
-          className="block truncate text-[15px] font-medium leading-[22px] text-[var(--foreground)]">
+          className="ou-kanban-title block truncate">
           {job.company || <span className={faint}>未填公司</span>}
         </Link>
-        {job.title && <div className={"truncate text-[12.5px] leading-5 " + muted}>{job.title}</div>}
-        <div className={"mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] " + muted}>
+        {job.title && <div className="ou-kanban-subtitle truncate">{job.title}</div>}
+        <div className="ou-kanban-meta mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
           {job.score != null && <span className="tabular-nums" title={(job.reasons ?? []).join("\n")}>{job.score} 分</span>}
           {event ? <span>{when(event.at)} {event.title}</span> : job.applied_at ? <span>{job.applied_at.slice(5)} 投递</span> : null}
           {(job.tags ?? []).map((t) => (
             <button key={t} type="button" onClick={() => setTag(t)} title={(job.auto_tags?.includes(t) ? "Agent 自动打的 · " : "") + "只看 #" + t}
-              className="rounded bg-[var(--surface-hover)] px-1 leading-[18px] hover:text-[var(--foreground)]">{t}</button>
+              className="ou-kanban-tag">{t}</button>
           ))}
           <button type="button" onClick={() => setEditing(job.id)}
             className={"opacity-0 hover:text-[var(--foreground)] group-hover:opacity-100 focus-visible:opacity-100 " + faint}>
@@ -114,16 +111,16 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
 
   const column = (key: string, list: Job[], head: ReactNode, add?: JobStatus) => (
     <section key={key} aria-label={key === "ended" ? "已结束" : JOB_STATUS[key as JobStatus]} {...dropZone(key)}
-      className={"flex w-[276px] shrink-0 flex-col rounded-[10px] px-2 pb-2 pt-1.5 transition-shadow data-[over]:shadow-[inset_0_0_0_2px_rgba(35,131,226,0.35)] " + COL}>
-      <h3 className="flex h-7 items-center gap-2 px-1 text-[13px] font-normal">
+      className="ou-kanban-column">
+      <h3 className="ou-kanban-head">
         {head}<span className={"tabular-nums " + faint}>{list.length}</span>
         {key === "ended" && <button type="button" onClick={() => setShowEnded(false)} className={"ml-auto " + ghostBtn + " " + muted}>收起</button>}
       </h3>
       <ul className="mt-1 flex min-h-10 list-none flex-col gap-2">{list.map(card)}</ul>
       {add && (
         <button type="button" onClick={() => void addIn(add)} aria-label={"在「" + JOB_STATUS[add] + "」新建"}
-          className={"mt-2 flex min-h-10 items-center gap-2 rounded-[10px] px-2.5 text-[15px] ring-1 hover:bg-[var(--background)] " + ADD_TEXT + " " + RING}>
-          <Plus size={16} strokeWidth={1.75} /> 新建
+          className="ou-kanban-add">
+          <Plus size={15} strokeWidth={1.75} aria-hidden /> 新建
         </button>
       )}
     </section>
@@ -145,9 +142,9 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
             ))}
           </div>
         )}
-        {error && <span className="text-[13px] text-red-600">{error}</span>}
+        {error && <span className="ou-field-error" role="alert">{error}</span>}
       </div>
-      <div className="mt-2 flex items-start gap-3 overflow-x-auto pb-4">
+      <div className="ou-kanban-track">
         {OPEN.map((s) => column(s, shown.filter((job) => job.status === s).sort(byScore), <StatusPill status={s} />, s))}
         {showEnded ? column("ended", ended, <span className={muted}>已结束</span>) : (
           <button type="button" onClick={() => setShowEnded(true)} {...dropZone("ended")}

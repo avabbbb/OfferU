@@ -1,4 +1,4 @@
-# OfferU Visual System · v1
+# OfferU Visual System · v1（已归档 2026-11-13，由 ../visual-system.md v2 取代）
 
 > Status: **governance baseline, not a visual redesign**. This file governs all *new or migrated* application UI. Existing screens retain their current appearance until separate, screenshot-reviewed migration PRs.
 >

@@ -9,7 +9,7 @@ import { VIEW_KINDS, VIEW_NAME, activeCounts, type ViewKind, type ViewState } fr
 import { FieldsPanel, FilterPanel, GroupPanel, Popover, RowHeightPanel, SortPanel, ctl, ghost, type Patch } from "./ViewPanels";
 
 // 顶栏（Notion 式）：左边视图 tab，选中的是浅灰圆角底；右边一排灰色图标（筛选、分组、排序、搜索、字段、行高、重置），
-// 生效的图标变深并带计数；搜索点了才展开输入框；最右蓝色「添加岗位」。
+// 生效的图标变深并带计数；搜索点了才展开输入框；最右墨黑主按钮「添加岗位」（全站唯一实心按钮样式，见 components/ui/Button）。
 const icon = (Icon: typeof Search, name: string, count = 0): ReactNode => (
   <span title={name} aria-label={count ? count + " " + name : name} className="flex items-center gap-1">
     <Icon size={16} strokeWidth={1.75} aria-hidden />
@@ -63,7 +63,7 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
             <button type="button" className={ghost} onClick={reset} title="恢复这个视图默认的筛选、分组、排序、字段和列宽">{icon(RotateCcw, "重置")}</button>
           </>
         )}
-        <button type="button" onClick={onAdd} className="ml-2 rounded-md bg-[#2383e2] px-3 py-1 text-[13.5px] font-medium text-white hover:bg-[#0077d4]">
+        <button type="button" onClick={onAdd} className="ou-button ou-button-primary ml-2">
           {adding ? "收起" : "添加岗位"}
         </button>
       </div>
