@@ -181,7 +181,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
         <main className="workbench-main relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-36 md:px-6 md:py-6 md:pb-8">
           <div className="mx-auto max-w-[1600px]">
             <SectionTabs />
-            {children}
+            <div key={pathname} className="ou-page-enter">{children}</div>
           </div>
         </main>
         {pathname !== "/settings" && <div className="fixed bottom-[72px] left-4 z-40 max-w-[calc(100vw-2rem)] md:hidden">

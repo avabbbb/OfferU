@@ -79,12 +79,13 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
     }
   };
 
-  const card = (job: Job) => {
+  const card = (job: Job, index: number) => {
     const event = upcoming.get(job.id);
     return (
       <li key={job.id} data-testid="job-card" draggable={editing !== job.id}
         onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(job.id)); e.dataTransfer.effectAllowed = "move"; }}
-        className="ou-card group min-h-10 cursor-grab px-3 py-2.5 active:cursor-grabbing">
+        className="ou-card ou-enter group min-h-10 cursor-grab px-3 py-2.5 active:cursor-grabbing"
+        style={{ ["--i" as string]: Math.min(index, 8) }}>
         <Link href={"/jobs/" + job.id} title={[job.company, job.title].filter(Boolean).join(" · ")}
           className="ou-kanban-title block truncate">
           {job.company || <span className={faint}>未填公司</span>}

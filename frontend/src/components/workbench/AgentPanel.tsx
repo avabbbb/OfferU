@@ -17,6 +17,7 @@ import {
   Briefcase,
   ClipboardCheck,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Loader2,
   Plus,
@@ -1159,18 +1160,12 @@ export function AgentPanel() {
                 </div>
               )}
               <ToolExecutionList executions={turn.toolStream.toolExecutions} />
-              <div className="inline-flex items-center gap-1.5 px-0.5 text-[12px] text-[var(--foreground-muted)]">
-                <Loader2 size={12} className="animate-spin" />
-                {turn.progressText}
-              </div>
+              <AgentRunPill text={turn.progressText} steps={Object.keys(turn.toolStream.toolExecutions).length} />
             </div>
           ))}
           {inFlightTurns.length === 0 && <ToolExecutionList executions={toolStream.toolExecutions} />}
           {runActionPending && (
-            <div className="inline-flex items-center gap-1.5 px-0.5 text-[12px] text-[var(--foreground-muted)]">
-              <Loader2 size={12} className="animate-spin" />
-              {progressText}
-            </div>
+            <AgentRunPill text={progressText} />
           )}
         </div>
       </div>
@@ -1531,13 +1526,52 @@ function JobCardList({ jobs }: { jobs: AgentJobCard[] }) {
   );
 }
 
+/**
+ * 运行中：一个胶囊 = 呼吸的紫点 + 扫光的一行步骤（换字时就地淡入）+ 已用时间 / 步数。
+ * 参考 Inspora「agent dashboard」的运行胶囊和 Motif 的 thinking-block。
+ */
+function AgentRunPill({ text, steps = 0 }: { text: string; steps?: number }) {
+  const [startedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(startedAt);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const label = (text || "正在思考").replace(/\.{3}$|…$/, "");
+  return (
+    <div className="ou-run-pill" role="status" aria-live="polite">
+      <span className="ou-run-dot" aria-hidden />
+      <span key={label} className="ou-swap min-w-0 truncate">
+        <span className="ou-shimmer">{label}</span>
+      </span>
+      <span className="ou-run-meta">
+        {steps > 0 ? `${steps} 步 · ` : ""}
+        {seconds}s
+      </span>
+    </div>
+  );
+}
+
 function ToolCallList({ calls }: { calls: AgentResponse["tool_calls"] }) {
+  return (
+    <details className="ou-activity">
+      <summary>
+        <ChevronRight size={12} className="ou-chevron" aria-hidden />
+        已处理 · {calls.length} 次工具调用
+      </summary>
+      <ToolCallRows calls={calls} />
+    </details>
+  );
+}
+
+function ToolCallRows({ calls }: { calls: AgentResponse["tool_calls"] }) {
   return (
     <div className="agent-tool-group" role="list" aria-label="本轮工具调用">
       {calls.map((call, index) => {
         const presentation = presentAgentToolCall(call);
         return (
-          <details key={call.tool + "-" + index} role="listitem" className="group">
+          <details key={call.tool + "-" + index} role="listitem" className="group ou-enter" style={{ ["--i" as string]: index }}>
             <summary className="agent-tool-row cursor-pointer list-none">
               <span className="agent-tool-node" aria-hidden>
                 <Wrench size={9} strokeWidth={2} />
