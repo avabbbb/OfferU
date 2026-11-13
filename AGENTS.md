@@ -38,11 +38,24 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
 
 ## 提交和合并
 
-- `main`：review之后可以提交
-- required checks 在 `.github/workflows/build.yml`：`backend-tests`（pytest 全量）、`frontend-quality`（typecheck + vitest + build）。不要绕过 required checks 直接 push `main`；红了先修。
-- `test`：没有保护，不用等 CI，可以直接合进去试。
-- 用户在对话里同意合并后再合；合完同步本地 `main`。
-- 不要碰用户自己没提交的改动；需要干净工作区时用 `git worktree`。
+目标：多数 PR 当天合进 `main`，最多一个人参与（可以就是作者自己）；靠小改动、本地验证和快速回滚兜底，而不是靠等。参考 Anthropic Claude Code 团队的做法（claude.dev《How the Claude Code team does code review》，2026-10-15）。
+
+1. **开 PR 前先自证**：Agent 自己跑完相关检查并贴出结果（前端 `npm run typecheck` + `npm run design:audit` + 相关 vitest；后端相关 pytest；UI 改动附截图或写明怎么看），再用新上下文做一次自审（只看 diff：有没有 bug、能不能更简单）。
+2. **PR 要小**：一天内能合完的大小。大功能拆小、新行为先放在开关后面合进去。
+3. **按风险分档，看改动不看人**（写进 PR 模板的「风险」）：
+
+   | 档 | 典型改动 | 合并方式 |
+   | --- | --- | --- |
+   | 低 | 文档、文案、样式 / Token、`docs/design`、测试、开关后面的新增功能 | required checks 绿了就合（开 auto-merge），不等人 |
+   | 中 | 普通前后端功能和修复 | 作者自审后自己合，合完自己盯 |
+   | 高 | `.github/workflows/`、打包与自动更新（`frontend/src-tauri/`、安装包脚本）、BOSS 登录 / keyring / 凭据、`security_redaction`、数据库迁移与删除数据、发布脚本 | **必须等 @avabbbb 在对话或 PR 里点头** |
+
+   拿不准就往高一档算。
+4. **required checks**（`.github/workflows/build.yml`，按改动路径触发，一般 1–3 分钟）：`Backend tests`、`Frontend typecheck and build`、`Browser extension typecheck, test and build`、`Agent runtime install and audit`。红了先修，不绕过，不直接 push `main`。
+5. **重活不挡合并**：Windows / macOS 安装包、安装后冒烟、跨进程恢复每晚 02:00 CST 跑一次（`schedule`），打 `v*` tag 和手动触发时也跑；成功后发布 rolling nightly。nightly 红了，第二天第一件事是修或 revert。
+6. **你合的你负责**：合进去出问题，作者优先修；修不了就直接 revert（`git revert` 走低档 PR），不追责。
+7. `test` 分支：没有保护，不用等 CI，可以直接合进去试。
+8. 不要碰用户自己没提交的改动；需要干净工作区时用 `git worktree`。合完同步本地 `main`。
 
 ## 文档
 
