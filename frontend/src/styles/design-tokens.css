@@ -69,7 +69,7 @@
 
   /* Glass materials (v3). bg = chrome panes (sidebar, top bars); strong = floating menus / dialogs. */
   --ou-glass-bg: rgba(255, 255, 255, 0.55);
-  --ou-glass-strong: rgba(255, 255, 255, 0.86);
+  --ou-glass-strong: rgba(255, 255, 255, 0.9);
   --ou-glass-subtle: rgba(255, 255, 255, 0.36);
   --ou-glass-blur: 24px;
   --ou-glass-saturate: 170%;

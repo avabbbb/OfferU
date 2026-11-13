@@ -281,7 +281,7 @@ export function RichText({ value, onChange, rows = 2, label, compact, zoomable =
     <div className={"rt" + (compact ? " rt-compact" : "")}>
       <div ref={ref} role="textbox" aria-label={label} aria-multiline={!compact} contentEditable suppressContentEditableWarning
         data-placeholder={placeholder ?? (compact ? "写一条要点，回车新建下一条" : "写几句，输入 / 或 、 选择格式")}
-        className="rf-input rt-edit" style={{ minHeight: (compact ? 0.9 + Math.min(rows, 1) * 1.6 : 1 + rows * 1.6) + "em" }}
+        className="rf-input rt-edit" style={{ minHeight: (compact ? 1.6 : rows * 1.6) + 0.25 + "em" }}
         onInput={onInput} onBlur={() => { sync(); setSlash(null); }} onKeyDown={onKey} onPaste={onPaste} />
       {zoomable && (
         <button type="button" className="rt-zoom-btn" title="放大编辑" aria-label={"放大编辑" + label}

@@ -1088,7 +1088,7 @@ body {
 .offeru-sidebar-mark span { font-size: var(--ou-type-sm); font-weight: 700; }
 
 /* 右上角 Agent 栏开关：一颗磨砂圆钮。 */
-.offeru-rail-toggle { position: fixed; top: 0.875rem; right: 0.875rem; z-index: var(--ou-layer-modal); width: 2.25rem; height: 2.25rem; color: var(--ou-text-secondary); }
+.offeru-rail-toggle { position: fixed; top: 0.875rem; right: 0.875rem; z-index: var(--ou-layer-popover); width: 2.25rem; height: 2.25rem; color: var(--ou-text-secondary); }
 .offeru-rail-toggle:hover { background: var(--ou-capsule-bg); color: var(--ou-text-primary); }
 
 /* 侧栏底部的「使用我的 Agent」：玻璃上的半透明胶囊卡，悬停变实白，不描边。 */
@@ -2124,7 +2124,7 @@ body {
 .resume-shell .rs-head {
   position: sticky; top: 0; z-index: var(--ou-layer-sticky);
   display: flex; align-items: center; gap: 0.75rem; min-width: 0; min-height: 3rem; padding: 0.5rem 0.5rem 0.5rem 1rem; margin-right: 2.75rem; /* 右上角留给 Agent 栏开关 */
-  border-radius: var(--ou-radius-panel); background: var(--ou-glass-bg); box-shadow: var(--ou-glass-highlight), var(--ou-elev-1);
+  border-radius: var(--ou-radius-panel); background: var(--ou-glass-strong); box-shadow: var(--ou-glass-highlight), var(--ou-elev-1); /* 文档在它下面滚，用浓一点的玻璃保证可读 */
   backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
 }
 .resume-shell .rs-saved { display: inline-flex; flex: none; align-items: center; gap: 0.375rem; color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
@@ -2137,8 +2137,12 @@ body {
 @media (prefers-reduced-motion: reduce) { .resume-shell .rs-saved[data-pending]::before { animation: none; } }
 .resume-shell .rs-joblink { flex: none; color: var(--ou-text-secondary); font-size: var(--ou-type-xs); }
 .resume-shell .rs-joblink:hover { color: var(--ou-text-primary); }
-.resume-shell .rs-body { display: flex; flex: 1; min-height: 0; background: transparent; }
-.resume-shell .rs-preview { display: flex; flex: none; flex-direction: column; width: 56%; min-width: 26.25rem; background: transparent; }
+.resume-shell .rs-body { display: flex; flex: 1; gap: 1.25rem; min-height: 0; padding-top: 1rem; background: transparent; }
+/* 右栏预览贴在视口里（左边文档往下写时，导出的样子一直看得见）；纸在自己的画布里滚。 */
+.resume-shell .rs-preview {
+  position: sticky; top: 4.25rem; align-self: flex-start; display: flex; flex: none; flex-direction: column;
+  width: 50%; min-width: 26.25rem; height: calc(100dvh - 6.5rem); background: transparent;
+}
 .resume-shell .rs-bar {
   position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 0.125rem; min-width: 0;
   margin-left: auto; font-size: 0.8125rem; white-space: nowrap;
@@ -2274,130 +2278,168 @@ body {
 .resume-shell .rw-new:hover { background: var(--field); color: var(--ink); }
 
 
-/* v2 左栏：浅灰画布上一组组白色圆角卡（iOS inset grouped），卡片不描边，只用一圈发丝线托出。 */
+/* v3 左栏 = 一页文档（参照 Inspora · Bleep 的文档视图 / Notion）：整栏是一张半透明白纸，模块是粗体标题，
+   正文和要点直接写在纸上，不套灰框；字号 16px / 行高 1.6。低频操作悬停才出现，要点的把手在左侧留白里。 */
 .resume-shell .rf-scroll {
-  min-width: 0; flex: 1; overflow: auto; padding: 1rem 1rem 3rem; display: flex; flex-direction: column; gap: 0.875rem;
-  background: transparent;
+  min-width: 0; flex: 1; align-self: flex-start; display: flex; flex-direction: column; gap: 2.25rem;
+  padding: 2.25rem 2rem 4rem 3.75rem; border-radius: var(--ou-radius-panel);
+  background: var(--ou-bg-surface); box-shadow: var(--ou-elev-2);
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  color: var(--ou-text-primary);
 }
-.resume-shell .rf-card {
-  border: 0; border-radius: var(--ou-radius-card); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-1);
-  padding: 0.875rem 1rem; scroll-margin-top: 4rem; transition: box-shadow var(--ou-motion-base) var(--ou-ease-standard);
-}
-.resume-shell .rf-card:focus-within { box-shadow: var(--ou-elev-2); }
-.resume-shell .rf-card[data-hidden] { opacity: 0.6; }
-.resume-shell .rf-card-dashed { border: 1px dashed var(--ou-line-control); background: transparent; box-shadow: none; }
-.resume-shell .rf-card-head { display: flex; align-items: center; gap: 0.625rem; min-width: 0; }
+.resume-shell .rf-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; scroll-margin-top: 5rem; }
+.resume-shell .rf-card[data-hidden] { opacity: 0.55; }
+.resume-shell .rf-card-dashed { display: flex; flex-direction: column; gap: 0.5rem; }
+.resume-shell .rf-card-head { position: relative; display: flex; align-items: center; gap: 0.375rem; min-width: 0; }
 .resume-shell .rf-card-head > * { flex: none; }
 .resume-shell .rf-card-title {
-  min-width: 2em; max-width: 60%; flex: none; padding: 0 0.125rem; border: 0; border-radius: var(--ou-radius-1); background: transparent; outline: none;
-  font-family: var(--serif); font-size: var(--ou-type-section); font-weight: 600; letter-spacing: -0.01em; color: var(--ou-text-primary);
+  min-width: 2em; max-width: 70%; flex: none; margin-left: -0.25rem; padding: 0.125rem 0.25rem; border: 0; border-radius: var(--ou-radius-1);
+  background: transparent; outline: none; color: var(--ou-text-primary);
+  font-family: var(--font-sans); font-size: var(--ou-type-doc-heading); font-weight: 700; letter-spacing: -0.01em; line-height: 1.3;
 }
 .resume-shell h2.rf-card-title { flex: 1; max-width: none; }
-.resume-shell input.rf-card-title:focus { box-shadow: var(--ou-ring-focus); }
-.resume-shell .rf-card-body { margin-top: 0.875rem; display: flex; flex-direction: column; gap: 0.625rem; }
+.resume-shell input.rf-card-title:hover { background: var(--ou-bg-hover); }
+.resume-shell input.rf-card-title:focus { background: var(--ou-bg-field); }
+.resume-shell .rf-card-body { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .resume-shell .rf-card-body.grid { display: grid; }
+/* 模块图标：标题左侧留白里的磨砂小方块，悬停标题时才显出来，平时标题就是一行粗体字。 */
 .resume-shell .rf-icon {
-  display: inline-flex; width: 1.5rem; height: 1.5rem; flex-shrink: 0; align-items: center; justify-content: center;
-  border-radius: var(--ou-radius-1); background: transparent; color: var(--ou-text-tertiary);
+  position: absolute; right: 100%; margin-right: 0.625rem; display: inline-flex; width: 1.75rem; height: 1.75rem; flex-shrink: 0; align-items: center; justify-content: center;
+  border-radius: var(--ou-radius-tile); background: var(--ou-tile-bg); box-shadow: var(--ou-tile-shadow); color: var(--ou-text-tertiary);
+  opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard);
 }
-.resume-shell .rf-icon svg { width: 1rem; height: 1rem; }
+.resume-shell .rf-card-head:hover .rf-icon { opacity: 1; }
+.resume-shell .rf-icon svg { width: 0.9375rem; height: 0.9375rem; }
 .resume-shell .rf-actions { display: flex; flex-shrink: 0; align-items: center; gap: 0.125rem; margin-left: auto; }
 .resume-shell .rf-btn {
   display: inline-flex; align-items: center; justify-content: center; min-width: 1.75rem; height: 1.75rem; padding: 0 0.3rem;
-  border-radius: 0.375rem; color: var(--foreground-muted); font-size: 0.75rem; line-height: 1;
+  border-radius: var(--ou-radius-pill); color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); line-height: 1;
 }
-.resume-shell .rf-btn:hover:not(:disabled) { background: var(--field); color: var(--foreground); }
+.resume-shell .rf-btn:hover:not(:disabled) { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
 .resume-shell .rf-btn[data-danger]:hover:not(:disabled) { background: var(--ou-tone-red-bg); color: var(--ou-color-danger); }
 .resume-shell .rf-btn:disabled { opacity: 0.3; }
 .resume-shell .rf-glyph { width: 1rem; height: 1rem; }
-.resume-shell .rf-chevron { display: inline-flex; transition: transform 0.15s; }
+.resume-shell .rf-chevron { display: inline-flex; transition: transform var(--ou-motion-base) var(--ou-ease-spring); }
 .resume-shell .rf-chevron[data-open] { transform: rotate(180deg); }
-/* 排序、隐藏这类低频操作平时藏起来，悬停或键盘聚焦时才出现。 */
-.resume-shell .rf-hover { display: inline-flex; align-items: center; gap: 0.125rem; max-width: 0; overflow: hidden; opacity: 0; transition: opacity 0.15s, max-width 0.15s; }
+/* 标题行和条目行的操作（改名、隐藏、排序、删除、收起）平时隐藏，悬停或键盘聚焦时淡入；藏起来时不占文字宽度。 */
+.resume-shell .rf-card-head > .rf-btn, .resume-shell .rf-card-head > .rf-actions, .resume-shell .rf-item-head .rf-actions { opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard); }
+.resume-shell .rf-card-head:hover > :is(.rf-btn, .rf-actions), .resume-shell .rf-card-head:focus-within > :is(.rf-btn, .rf-actions),
+.resume-shell .rf-item-head:hover .rf-actions, .resume-shell .rf-item-head:focus-within .rf-actions, .resume-shell .rf-item[data-open] > .rf-item-head .rf-actions { opacity: 1; }
+.resume-shell .rf-hover { display: inline-flex; align-items: center; gap: 0.125rem; max-width: 0; overflow: hidden; opacity: 0; transition: opacity var(--ou-motion-fast), max-width var(--ou-motion-fast); }
 .resume-shell .rf-card-head:hover .rf-hover, .resume-shell .rf-item-head:hover .rf-hover, .resume-shell .rf-hover:focus-within { max-width: 8rem; opacity: 1; }
-.resume-shell .rf-muted { color: var(--foreground-muted); font-size: 0.75rem; }
-/* 条目像设置列表里的一行：收起时透明，悬停轻灰；展开后整块浅灰底，输入框变白。 */
-.resume-shell .rf-item {
-  border-radius: var(--ou-radius-control); background: transparent; scroll-margin-top: 4rem;
-  transition: background var(--ou-motion-fast) var(--ou-ease-standard);
+.resume-shell .rf-muted { color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
+/* 条目：收起时是一行「标题 / 副标题 · 时间」，悬停浅底；展开后正文直接接在下面，不加框。 */
+.resume-shell .rf-item { margin-inline: -0.75rem; border-radius: var(--ou-radius-control); background: transparent; scroll-margin-top: 5rem; }
+.resume-shell .rf-item-head {
+  display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.5rem 0.5rem 0.75rem; border-radius: var(--ou-radius-control); cursor: pointer;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard);
 }
-.resume-shell .rf-item:not([data-open]):hover { background: var(--ou-bg-hover); }
-.resume-shell .rf-item[data-open] { background: transparent; outline: 1px solid var(--ou-line-separator); outline-offset: -1px; }
-.resume-shell .rf-item-head { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.5rem 0.625rem 0.75rem; cursor: pointer; }
-.resume-shell .rf-item-main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 0.15rem; }
-.resume-shell .rf-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.875rem; font-weight: 600; color: var(--foreground); }
-.resume-shell .rf-item-sub {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground-muted); font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-.resume-shell .rf-item-body { padding: 0.25rem 0.75rem 0.875rem; }
-.resume-shell .rf-field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
-.resume-shell .rf-label { color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rf-item-head:hover { background: var(--ou-bg-hover); }
+.resume-shell .rf-item-main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 0.125rem; }
+.resume-shell .rf-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ou-text-primary); font-size: var(--ou-type-doc); font-weight: 600; }
+.resume-shell .rf-item-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ou-text-tertiary); font-size: var(--ou-type-sm); font-variant-numeric: tabular-nums; }
+.resume-shell .rf-item-body { padding: 0.25rem 0.75rem 1rem; }
+.resume-shell .rf-doc { display: flex; flex-direction: column; gap: 0.75rem; }
+/* 属性行（公司 / 职位 / 城市 / 时间、姓名 / 联系方式）：灰色小标签 + 直接写在纸上的值，悬停浅底、聚焦浅灰底，没有框。 */
+.resume-shell .rf-props { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.375rem 1.5rem; }
+.resume-shell .rf-field { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.resume-shell .rf-label { color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
 .resume-shell .rf-input {
-  width: 100%; border: 1px solid transparent; border-radius: 0.5rem; background: var(--field);
-  padding: 0.4rem 0.625rem; color: var(--foreground); font-size: 0.8125rem; line-height: 1.55; outline: none;
-  transition: border-color 0.15s, background 0.15s;
+  width: calc(100% + 1rem); margin-inline: -0.5rem; padding: 0.25rem 0.5rem; border: 0; border-radius: var(--ou-radius-1);
+  background: transparent; color: var(--ou-text-primary); font-size: var(--ou-type-doc); line-height: var(--ou-line-doc); outline: none;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard);
 }
-.resume-shell .rf-input:focus { border-color: var(--ou-line-strong); background: var(--ou-bg-surface); box-shadow: var(--ou-ring-focus); }
-.resume-shell .rf-bullet { display: flex; align-items: flex-start; gap: 0.5rem; }
-.resume-shell .rf-dot { margin-top: 0.85rem; width: 0.3rem; height: 0.3rem; flex-shrink: 0; border-radius: 999px; background: var(--foreground-muted); }
-.resume-shell .rf-bullet .rf-actions { padding-top: 0.25rem; }
-.resume-shell .rf-link { align-self: flex-start; color: var(--ink); font-size: 0.75rem; }
-/* 块式编辑框（RichText）：平时只有一块输入区；格式条 / 块菜单是跟着选区的 L3 浮层，放大编辑是 L4 弹窗。 */
-:is(.resume-shell, .rt-zoom) .rt { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; border: 1px solid transparent; border-radius: var(--ou-radius-control); background: var(--ou-bg-field); transition: border-color var(--ou-motion-fast) var(--ou-ease-standard); }
-:is(.resume-shell, .rt-zoom) .rt:focus-within { border-color: var(--ou-line-strong); box-shadow: var(--ou-ring-focus); }
-:is(.resume-shell, .rt-zoom) .rt .rt-edit { height: auto; margin: 0; padding: 0.5rem 0.75rem; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; cursor: text; }
-:is(.resume-shell, .rt-zoom) .rt:not(.rt-compact) .rt-edit { padding-right: 2.25rem; }
-:is(.resume-shell, .rt-zoom) .rt-edit:empty::before { content: attr(data-placeholder); color: var(--ou-text-placeholder); pointer-events: none; }
+.resume-shell .rf-input::placeholder { color: var(--ou-text-placeholder); }
+.resume-shell .rf-input:hover { background: var(--ou-bg-hover); }
+.resume-shell .rf-input:focus { background: var(--ou-bg-field); }
+/* 要点：一行一块，圆点 + 正文；左侧留白里悬停出「+」和「⋮⋮」（绝对定位，不占正文宽度）。 */
+.resume-shell .rf-blocks { display: flex; flex-direction: column; gap: 0.125rem; }
+.resume-shell .rf-blocks[data-dragging] { cursor: grabbing; user-select: none; }
+.resume-shell .rf-bullet { position: relative; display: flex; align-items: flex-start; gap: 0.625rem; padding-left: 0.25rem; font-size: var(--ou-type-doc); }
+.resume-shell .rf-bullet[data-dragged] { opacity: 0.4; }
+.resume-shell .rf-bullet[data-drop]::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 0.125rem; border-radius: var(--ou-radius-pill); background: var(--ou-tone-blue-dot); pointer-events: none;
+}
+.resume-shell .rf-bullet[data-drop="before"]::after { top: -0.125rem; }
+.resume-shell .rf-bullet[data-drop="after"]::after { bottom: -0.125rem; }
+.resume-shell .rf-dot { margin-top: 0.7em; width: 0.3125rem; height: 0.3125rem; flex-shrink: 0; border-radius: var(--ou-radius-pill); background: var(--ou-text-primary); }
+.resume-shell .rf-gutter {
+  position: absolute; right: 100%; top: 0.125rem; display: flex; align-items: center; height: 1.6em; padding-right: 0.25rem;
+  opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.resume-shell .rf-bullet:hover .rf-gutter, .resume-shell .rf-gutter:focus-within, .resume-shell .rf-gutter[data-open] { opacity: 1; }
+.resume-shell .rf-blocks[data-dragging] .rf-gutter { opacity: 0; }
+.resume-shell .rf-gutter-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.375rem; height: 1.5rem; border-radius: var(--ou-radius-1);
+  color: var(--ou-text-tertiary); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.resume-shell .rf-gutter-btn:hover, .resume-shell .rf-gutter-btn[data-state="open"] { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.resume-shell .rf-gutter-btn svg { width: 0.875rem; height: 0.875rem; }
+.resume-shell .rf-grip { cursor: grab; touch-action: none; }
+.resume-shell .rf-grip svg path { stroke-width: 3.2; }
+/* 「+ 添加要点」「+ 添加描述」「+ 添加一段…」：纸上一行浅灰字，悬停浅底。 */
+.resume-shell :is(.rf-link, .rf-add) {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 0.375rem; margin-left: -0.5rem; padding: 0.25rem 0.5rem; border: 0;
+  border-radius: var(--ou-radius-1); background: transparent; color: var(--ou-text-tertiary); font-size: var(--ou-type-sm);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.resume-shell :is(.rf-link, .rf-add):hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.resume-shell :is(.rf-link, .rf-add) .rf-glyph { width: 0.875rem; height: 0.875rem; }
+.resume-shell .rf-bullet ~ .rf-add-line { margin-left: -0.25rem; }
+/* 块式编辑框（RichText）：纸上的一段字。没有框、没有聚焦环；空块只有聚焦时才露占位提示。 */
+:is(.resume-shell, .rt-zoom) .rt { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; border: 0; border-radius: 0; background: transparent; }
+:is(.resume-shell, .rt-zoom) .rt .rt-edit {
+  height: auto; margin: 0; padding: 0.125rem 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none;
+  color: var(--ou-text-primary); font-size: var(--ou-type-doc); line-height: var(--ou-line-doc); white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
+}
+:is(.resume-shell, .rt-zoom) .rt:not(.rt-compact) .rt-edit { padding-right: 2rem; }
+:is(.resume-shell, .rt-zoom) .rt-edit:empty:focus::before { content: attr(data-placeholder); color: var(--ou-text-placeholder); pointer-events: none; }
 :is(.resume-shell, .rt-zoom) .rt-edit ul, :is(.resume-shell, .rt-zoom) .rt-edit ol { margin: 0.125rem 0; padding-left: 1.4em; }
 :is(.resume-shell, .rt-zoom) .rt-edit ul { list-style: disc; }
 :is(.resume-shell, .rt-zoom) .rt-edit ol { list-style: decimal; }
 :is(.resume-shell, .rt-zoom) .rt-edit blockquote { margin: 0 0 0 2em; }
-:is(.resume-shell, .rt-zoom) .rt-edit b, :is(.resume-shell, .rt-zoom) .rt-edit strong { font-weight: 600; }
-:is(.resume-shell, .rt-zoom) .rt-edit a { color: var(--ou-text-primary); text-decoration: underline; text-underline-offset: 2px; }
-.resume-shell .rt-zoom-btn { position: absolute; top: 0.375rem; right: 0.375rem; display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--ou-radius-control); color: var(--ou-text-tertiary); opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard); }
+:is(.resume-shell, .rt-zoom) .rt-edit b, :is(.resume-shell, .rt-zoom) .rt-edit strong { font-weight: 650; }
+:is(.resume-shell, .rt-zoom) .rt-edit a { color: var(--ou-text-primary); text-decoration: underline; text-decoration-color: var(--ou-line-strong); text-underline-offset: 2px; }
+:is(.resume-shell, .rt-zoom) .rt-edit code { padding: 0 0.25em; border-radius: var(--ou-radius-1); background: var(--ou-highlight-code); font-family: var(--ou-font-mono); font-size: 0.9em; }
+.resume-shell .rt-zoom-btn {
+  position: absolute; top: 0.125rem; right: 0; display: inline-flex; align-items: center; justify-content: center; width: 1.625rem; height: 1.625rem;
+  border-radius: var(--ou-radius-pill); color: var(--ou-text-tertiary); opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard);
+}
 .resume-shell .rt:hover .rt-zoom-btn, .resume-shell .rt:focus-within .rt-zoom-btn, .resume-shell .rt-zoom-btn:focus-visible { opacity: 1; }
 .resume-shell .rt-zoom-btn:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
 .resume-shell .rt-zoom-btn svg { width: 0.875rem; height: 0.875rem; }
-.ou-dialog.rt-zoom { width: min(48rem, calc(100vw - 2 * var(--ou-gutter))); }
+/* 放大编辑：同一份内容的大纸面（L4 玻璃弹窗），文档列宽。 */
+.ou-dialog.rt-zoom { width: min(var(--ou-width-doc), calc(100vw - 2 * var(--ou-gutter))); padding: var(--ou-space-6) var(--ou-space-8) var(--ou-space-6); }
 .ou-dialog.rt-zoom .rt { margin-top: var(--ou-space-4); }
-.ou-dialog.rt-zoom .rt-edit { max-height: calc(100dvh - 16rem); overflow: auto; font-size: var(--ou-type-section); padding-right: 0.75rem; }
-/* 浮层：格式条（飞书式：文本类型 ▾ · 对齐 ▾ | B I | 链接 清除）与 / 块菜单 */
-.rt-bubble { padding: var(--ou-space-1); }
+.ou-dialog.rt-zoom .rt-edit { max-height: calc(100dvh - 16rem); overflow: auto; padding-right: 0.75rem; }
+/* 浮层：格式条（飞书式：文本类型 ▾ · 对齐 ▾ | B I | 链接 清除）与 / 块菜单，都是磨砂 L3。 */
+.rt-bubble { padding: var(--ou-space-1); border-radius: var(--ou-radius-pill); }
+.rt-bubble:has(.rt-sub) { border-radius: var(--ou-radius-floating); }
 .rt-bar { display: flex; align-items: center; color: var(--ou-text-secondary); }
 .rt-group { display: inline-flex; align-items: center; gap: 0.0625rem; padding: 0 0.25rem; }
 .rt-group + .rt-group { border-left: 1px solid var(--ou-line-separator); }
-.rt-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.0625rem; min-width: 1.75rem; height: 1.75rem; padding: 0 0.25rem; border-radius: var(--ou-radius-control); color: inherit; }
+.rt-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.0625rem; min-width: 1.875rem; height: 1.875rem; padding: 0 0.25rem; border-radius: var(--ou-radius-pill); color: inherit; }
 .rt-btn svg { width: 0.95rem; height: 0.95rem; }
 .rt-btn:hover, .rt-btn[aria-pressed="true"], .rt-btn[aria-expanded="true"] { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
 .rt-chevron svg { width: 0.625rem; height: 0.625rem; }
 .rt-sub { display: flex; flex-direction: column; margin-top: var(--ou-space-1); padding-top: var(--ou-space-1); border-top: 1px solid var(--ou-line-separator); }
-.rt-slash { min-width: 11rem; }
-.rt-option { display: flex; align-items: center; gap: var(--ou-space-2); width: 100%; padding: 0.375rem 0.5rem; border-radius: var(--ou-radius-control); color: var(--ou-text-primary); font-size: var(--ou-type-sm); text-align: left; }
+.rt-slash { min-width: 12rem; }
+.rt-option { display: flex; align-items: center; gap: var(--ou-space-2); width: 100%; min-height: 2rem; padding: 0.25rem 0.5rem; border-radius: var(--ou-radius-1); color: var(--ou-text-primary); font-size: var(--ou-type-sm); text-align: left; }
 .rt-option svg { width: 0.95rem; height: 0.95rem; color: var(--ou-text-tertiary); }
 .rt-option:hover, .rt-option[aria-selected="true"] { background: var(--ou-bg-hover); }
-/* 要点块：一行一块，排序 / 删除悬停或聚焦时才出现 */
-.resume-shell .rf-blocks { display: flex; flex-direction: column; gap: 0.375rem; }
-.resume-shell .rf-bullet .rf-actions { opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard); }
-.resume-shell .rf-bullet:hover .rf-actions, .resume-shell .rf-bullet:focus-within .rf-actions { opacity: 1; }
-.resume-shell .rf-add {
-  align-self: flex-start; display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.375rem 0.75rem; border: 0; border-radius: var(--ou-radius-control);
-  background: transparent; color: var(--ou-text-secondary); font-size: var(--ou-type-sm);
-  transition: background var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
-}
-.resume-shell .rf-add:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
-/* 收起的正文模块（个人总结）露前两行。 */
+/* 收起的正文模块（个人总结）露前两行，底部渐隐（不硬裁切）。 */
 .resume-shell .rf-clamp {
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: pre-line;
-  color: var(--foreground-muted); font-size: 0.8125rem; line-height: 1.6;
+  max-height: 3.4em; overflow: hidden; white-space: pre-line; color: var(--ou-text-secondary); font-size: var(--ou-type-doc); line-height: var(--ou-line-doc);
+  -webkit-mask-image: linear-gradient(to bottom, black 45%, transparent); mask-image: linear-gradient(to bottom, black 45%, transparent);
 }
+/* 联系方式快捷项、添加模块：无描边的浅底胶囊。 */
 .resume-shell .rf-chip {
-  padding: 0.3rem 0.75rem; border: 1px solid var(--border); border-radius: 999px; background: var(--card);
-  color: var(--foreground); font-size: 0.75rem;
+  display: inline-flex; align-items: center; min-height: 1.875rem; padding: 0 0.75rem; border: 0; border-radius: var(--ou-radius-pill);
+  background: var(--ou-bg-control); color: var(--ou-text-secondary); font-size: var(--ou-type-sm);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
 }
-.resume-shell .rf-chip:hover { border-color: var(--ink); color: var(--ink); }
+.resume-shell .rf-chip:hover { background: var(--ou-bg-selected); color: var(--ou-text-primary); }
 
-/* 正文 / 要点的所见即所得编辑框：正文工具栏常驻，要点（一行字）只在聚焦时露出工具栏。 */
 
 
 /* 预览：和左侧编辑栏同色的中性底（--background）上放一张 A4，只用一层浅阴影托出纸面，不要深色边框。 */
@@ -2429,12 +2471,12 @@ body {
 
 .resume-shell .rf-contact-label { min-width: 0; flex: 1; border: 0; background: transparent; padding: 0; color: var(--foreground-muted); font-size: 0.75rem; outline: none; }
 .resume-shell .rf-contact-label:focus { color: var(--foreground); }
-.resume-shell .rf-media { display: flex; flex-wrap: wrap; gap: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.resume-shell .rf-media { display: flex; flex-wrap: wrap; gap: 1.5rem; padding-top: 0.5rem; }
 .resume-shell .rf-media-box { display: flex; flex-direction: column; gap: 0.4rem; }
-.resume-shell .rf-thumb { display: inline-flex; flex: none; align-items: center; justify-content: center; overflow: hidden; border-radius: 0.375rem; border: 1px dashed var(--border); background: var(--field); color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rf-thumb { display: inline-flex; flex: none; align-items: center; justify-content: center; overflow: hidden; border: 0; border-radius: var(--ou-radius-tile); background: var(--ou-bg-field); color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard); }
 .resume-shell .rf-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .resume-shell .rf-thumb-photo { width: 4.5rem; height: 6rem; }
-.resume-shell .rf-thumb-photo:hover { border-color: var(--ink); }
+.resume-shell .rf-thumb-photo:hover { background: var(--ou-bg-selected); color: var(--ou-text-primary); }
 .resume-shell .rf-thumb-logo { width: 3.5rem; height: 3.5rem; }
 .resume-shell .rf-thumb-logo img { object-fit: contain; }
 .resume-shell .rf-check { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--foreground-muted); font-size: 0.75rem; }

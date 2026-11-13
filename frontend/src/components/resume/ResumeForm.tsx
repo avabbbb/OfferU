@@ -3,7 +3,9 @@
 // 左侧表单：只改 doc.resume 这棵树（基本信息 + 模块 / 条目 / 要点），增删、排序、隐藏都在这里。
 // 每个模块一张卡；条目平时只露一行摘要（标题 | 副标题 · 时间），点开才编辑。
 // 预览里点到的 data-path 由上层换成 focus（模块 / 条目 id），这里展开并滚过去。
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
+
+import { Menu } from "@/components/ui";
 
 import {
   CONTACT_PRESETS, contactText, emptyItem, emptySection, ITEM_FIELDS, move, type Resume, type ResumeBasics, type ResumeContact,
@@ -52,6 +54,8 @@ const GLYPH = {
   eyeOff: "M3 3l18 18M10.6 6.1Q11.3 6 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.6M6.5 6.6C3.8 8.3 2 12 2 12s3.6 6 10 6c1.5 0 2.9-.3 4.1-.9M9.9 9.9a3 3 0 0 0 4.2 4.2",
   pencil: "M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4",
   chevron: "M6 9l6 6 6-6",
+  plus: "M12 5v14M5 12h14",
+  grip: "M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01",
 } as const;
 
 function Glyph({ name }: { name: keyof typeof GLYPH }) {
@@ -114,32 +118,81 @@ function ContactField({ contact, onChange, onDelete }: {
   );
 }
 
-// 要点 = 一行一块：回车在下面新建、空块退格删掉并回到上一块、↑↓ 在块之间走；排序和删除按钮悬停才出现。
+// 要点 = 一行一块（文档式，参照 Notion / Bleep）：回车在下面新建、空块退格删掉并回到上一块、↑↓ 在块之间走。
+// 悬停时左侧留白里浮出「+」（下面加一条）和「⋮⋮」把手：拖动把手排序，单击把手开菜单（上移 / 下移 / 删除）。
+// 把手和按钮都绝对定位在左边留白里，藏起来时不占正文宽度。
 function Bullets({ bullets, onChange }: { bullets: string[]; onChange: (next: string[]) => void }) {
   const [focus, setFocus] = useState<{ i: number; n: number }>({ i: -1, n: 0 });
+  const [menuFor, setMenuFor] = useState(-1);
+  const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
+  const list = useRef<HTMLDivElement>(null);
   const go = (i: number) => setFocus((f) => ({ i, n: f.n + 1 }));
   const set = (i: number, value: string) => onChange(bullets.map((b, k) => (k === i ? value : b)));
   const insert = (i: number) => { onChange([...bullets.slice(0, i), "", ...bullets.slice(i)]); go(i); };
+  const remove = (i: number) => onChange(bullets.filter((_, k) => k !== i));
+
+  // 按下把手：移动超过 4px 就是拖动排序（落点 = 指针在哪一行的上半 / 下半），否则松手时当单击，打开菜单。
+  const grab = (i: number, e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); // 不让 Radix 在按下时就开菜单
+    const x0 = e.clientX, y0 = e.clientY;
+    let to = -1;
+    const onMove = (ev: PointerEvent) => {
+      if (to < 0 && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      const rows = Array.from(list.current?.querySelectorAll<HTMLElement>(":scope > .rf-bullet") ?? []);
+      const at = rows.findIndex((row) => { const r = row.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+      to = at < 0 ? rows.length : at;
+      setDrag({ from: i, to });
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setDrag(null);
+      if (to < 0) { setMenuFor(i); return; }
+      const dest = to > i ? to - 1 : to;
+      if (dest !== i) onChange(move(bullets, i, dest));
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
   return (
-    <div className="rf-blocks">
+    <div ref={list} className="rf-blocks" data-dragging={drag ? "" : undefined}>
       {bullets.map((b, i) => (
-        <div key={i} className="rf-bullet">
+        <div key={i} className="rf-bullet" data-dragged={drag?.from === i || undefined}
+          data-drop={drag && drag.to !== drag.from && drag.to !== drag.from + 1 ? (drag.to === i ? "before" : drag.to === i + 1 && i === bullets.length - 1 ? "after" : undefined) : undefined}>
+          <div className="rf-gutter" data-open={menuFor === i || undefined}>
+            <button type="button" className="rf-gutter-btn" aria-label={"在要点 " + (i + 1) + " 下面加一条"} title="在下面加一条"
+              onClick={() => insert(i + 1)}>
+              <Glyph name="plus" />
+            </button>
+            <Menu align="start" side="bottom" open={menuFor === i} onOpenChange={(open) => setMenuFor(open ? i : -1)}
+              trigger={
+                <button type="button" className="rf-gutter-btn rf-grip" aria-label={"要点 " + (i + 1) + "：拖动排序，单击更多操作"}
+                  title="拖动排序 · 单击更多" onPointerDown={(e) => grab(i, e)}>
+                  <Glyph name="grip" />
+                </button>
+              }
+              items={[
+                { label: "上移", icon: <Glyph name="up" />, disabled: i === 0, onSelect: () => onChange(move(bullets, i, i - 1)) },
+                { label: "下移", icon: <Glyph name="down" />, disabled: i === bullets.length - 1, onSelect: () => onChange(move(bullets, i, i + 1)) },
+                { label: "在下面加一条", icon: <Glyph name="plus" />, onSelect: () => insert(i + 1) },
+                "separator",
+                { label: "删除要点", icon: <Glyph name="trash" />, danger: true, onSelect: () => remove(i) },
+              ]} />
+          </div>
           <span className="rf-dot" aria-hidden />
           <RichText value={b} rows={1} compact label={"要点 " + (i + 1)} onChange={(v) => set(i, v)}
             focusSignal={focus.i === i ? focus.n : 0}
             keys={{
               onEnter: () => insert(i + 1),
-              onRemove: () => { onChange(bullets.filter((_, k) => k !== i)); if (i > 0) go(i - 1); },
+              onRemove: () => { remove(i); if (i > 0) go(i - 1); },
               onPrev: i > 0 ? () => go(i - 1) : undefined,
               onNext: i < bullets.length - 1 ? () => go(i + 1) : undefined,
             }} />
-          <div className="rf-actions">
-            <Arrows index={i} count={bullets.length} onMove={(to) => onChange(move(bullets, i, to))} />
-            <Btn label="删除要点" danger onClick={() => onChange(bullets.filter((_, k) => k !== i))}><Glyph name="trash" /></Btn>
-          </div>
         </div>
       ))}
-      <button type="button" className="rf-link" onClick={() => insert(bullets.length)}>+ 添加要点</button>
+      <button type="button" className="rf-link rf-add-line" onClick={() => insert(bullets.length)}><Glyph name="plus" />添加要点</button>
     </div>
   );
 }
@@ -153,28 +206,21 @@ function ItemForm({ type, item, onPatch }: { type: SectionType; item: ResumeItem
   ) : null;
   const [desc, setDesc] = useState(0);
   return (
-    <div className="space-y-3">
+    <div className="rf-doc">
       {fields && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="rf-props">
           {field("title", fields.title)}{field("subtitle", fields.subtitle)}{field("location", fields.location)}{field("date", fields.date)}
         </div>
       )}
       {/* 描述是可选的：没写时只留一行「+ 添加描述」，点开才出编辑框。不用 label 包：里面有放大按钮。 */}
+      {/* 正文直接写在纸面上，不套灰框；标签只给读屏（aria-label）。 */}
       {fields && !item.text && !desc ? (
-        <button type="button" className="rf-link" onClick={() => setDesc(1)}>+ 添加描述</button>
+        <button type="button" className="rf-link rf-add-line" onClick={() => setDesc(1)}><Glyph name="plus" />添加描述</button>
       ) : (
-        <div className="rf-field">
-          <span className="rf-label">{fields ? "描述" : "内容"}</span>
-          <RichText value={item.text} rows={fields ? 3 : 5} label={fields ? "描述" : "内容"} focusSignal={desc} onChange={(text) => onPatch({ text })} />
-        </div>
+        <RichText value={item.text} rows={fields ? 1 : 3} label={fields ? "描述" : "内容"} focusSignal={desc} onChange={(text) => onPatch({ text })} />
       )}
       {/* 个人总结 / 技能这类只有正文的模块不给要点；老数据里已有要点的照常显示，免得看不见。 */}
-      {(fields || item.bullets.length > 0) && (
-        <div className="rf-field">
-          <span className="rf-label">要点</span>
-          <Bullets bullets={item.bullets} onChange={(bullets) => onPatch({ bullets })} />
-        </div>
-      )}
+      {(fields || item.bullets.length > 0) && <Bullets bullets={item.bullets} onChange={(bullets) => onPatch({ bullets })} />}
     </div>
   );
 }
@@ -189,7 +235,7 @@ const detailOf = (item: ResumeItem) =>
 
 const addLabel = (type: SectionType) => {
   const name = SECTION_LABEL[type];
-  return "+ 添加" + (name.endsWith("经历") ? "一段" + name : name);
+  return "添加" + (name.endsWith("经历") ? "一段" + name : name);
 };
 
 function ItemCard({ section, item, index, open, onToggle, onPatch, onMove, onDelete }: {
@@ -255,7 +301,7 @@ function SectionCard({ resume, section, index, open, openItems, onToggle, onTogg
               ? <div id={"rf-item-" + section.items[0].id}>
                   <ItemForm type={section.type} item={section.items[0]} onPatch={(p) => onChange(updateItem(resume, section.id, section.items[0].id, p))} />
                 </div>
-              : <button type="button" className="rf-add" onClick={addItem}>+ 填写{section.title || SECTION_LABEL[section.type]}</button>
+              : <button type="button" className="rf-add" onClick={addItem}><Glyph name="plus" />填写{section.title || SECTION_LABEL[section.type]}</button>
           ) : (
             <>
               {section.items.map((item, j) => (
@@ -265,7 +311,7 @@ function SectionCard({ resume, section, index, open, openItems, onToggle, onTogg
                   onMove={(to) => patch((s) => ({ ...s, items: move(s.items, j, to) }))}
                   onDelete={() => patch((s) => ({ ...s, items: s.items.filter((it) => it.id !== item.id) }))} />
               ))}
-              <button type="button" className="rf-add" onClick={addItem}>{addLabel(section.type)}</button>
+              <button type="button" className="rf-add" onClick={addItem}><Glyph name="plus" />{addLabel(section.type)}</button>
             </>
           )}
         </div>
@@ -327,7 +373,7 @@ export function ResumeForm({ resume, onChange, focus, basicsExtra, readOnly }: P
         </header>
         {basicsOpen ? (
           <div className="rf-card-body">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-props">
               <Field name="姓名">
                 <input value={resume.basics.name} onChange={(e) => setBasics({ name: e.target.value })} className="rf-input" />
               </Field>

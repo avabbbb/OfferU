@@ -1,32 +1,37 @@
-# OfferU Visual System · v2
+# OfferU Visual System · v3 Glass
 
-> 状态：**有效规范**（2026-11-13 起）。取代 [v1](archive/visual-system-v1.md)。所有新增或迁移的界面以本文件为准；Token 在 `frontend/src/styles/design-tokens.css`，组件在 `frontend/src/components/ui/`，组件规格见 [components.md](components.md)。
+> 状态：**有效规范**（2026-11-13 起）。取代 [v2 Minimal](archive/visual-system-v2.md)（v2 取代 [v1](archive/visual-system-v1.md)）。所有新增或迁移的界面以本文件为准；Token 在 `frontend/src/styles/design-tokens.css`，组件在 `frontend/src/components/ui/`，组件规格见 [components.md](components.md)。
 >
-> 参考：Apple HIG（Color / Layout / Materials / Accessibility）、Radix Colors 12 级色阶用途表、Figma 设计系统「原始色 → 语义 → 组件」三层 Token、Notion / 飞书的数据库视图、Inspora 上 Jessy Barret 的 *agent dashboard*（Minimal / Rounded）。只借思路，不声称与这些产品有设计关联。
+> 参考：主参考 Inspora · Rolando「[Bleep App](https://www.inspora.design/posts/bleep-app)」（Glass / Soft / Rounded）；辅参考 Inspora · Jeet「[Coding agent](https://www.inspora.design/posts/coding-agent)」（灰壳 + 白卡、状态单色、mono 只给机器信息）；以及 Apple HIG（Materials / Color / Accessibility）、Radix Colors 色阶用途表、Notion / 飞书的文档与数据库视图。只借思路，不声称与这些产品有设计关联。
+>
+> **v3 相对 v2 改了什么**（用户 2026-11-13 拍板，「之前那个没有这个好看」）：v2 的「黑白灰为主、不用渐变」硬规则作废。画布换成冷暖渐变，内容面换成半透明白玻璃，L1–L2 去掉 1px 描边环只留柔和大阴影，圆角整体加大，悬停 / 选中从「灰底」改成「白胶囊」，图标放进磨砂小方块，简历编辑器改成一页文档。**没变的**：墨黑主按钮、橙色 = 紧急 / 委托、紫色 = Agent、状态胶囊九色、字号阶梯、间距、动效 Token。
 
 ## 中文速览（新 Agent 先读这一节）
 
-1. **风格：Minimal。** 一条暖中性色阶撑起约 90% 的界面；墨黑做主按钮；橙色只表示「紧急 / 委托给 Agent」；紫色只属于 Agent；状态和标签一律「浅底 + 深字 + 同色描边 + 圆点」。
-2. **按用途取色，不按深浅取色。** 页面里只写语义 Token（`--ou-bg-*`、`--ou-text-*`、`--ou-line-*`、`--ou-tone-*`），不直接写色阶编号，更不写 Hex。
-3. **层级 L0–L4。** 画布 → 内容面 → 卡片 → 浮层 → 弹窗，每一级是一对固定的「描边 + 阴影」（`--ou-elev-*`）。同一视图最多一层带描边的容器。
+1. **风格：Glass（Bleep）。** 整页底是一层很淡的冷暖渐变（左上冷蓝 `#C9D6F2` → 右下桃色 `#F6E3D2`，`--ou-bg-wash`）；侧栏、顶栏是磨砂玻璃窗格；内容是半透明白纸面；文字是暖近黑。墨黑做主按钮；橙色只表示「紧急 / 委托给 Agent」；紫色只属于 Agent；状态和标签一律「浅底 + 深字 + 圆点」胶囊。
+2. **按用途取色，不按深浅取色。** 页面里只写语义 Token（`--ou-bg-*`、`--ou-glass-*`、`--ou-capsule-*`、`--ou-text-*`、`--ou-line-*`、`--ou-tone-*`），不直接写色阶编号，更不写 Hex / rgba。
+3. **层级 L0–L4 靠透明度和阴影，不靠描边。** 渐变底 → 玻璃窗格 / 白纸面 → 卡片 → 浮层 → 弹窗。L1–L2 只有宽而淡的阴影（`--ou-elev-1/2`），L3–L4 多一圈 0.5px 极淡环保证可读。几乎不出现 1px 分隔线。
 4. **先有组件，再有页面。** 新 UI 只组合 `components/ui`；没有合适组件就先补组件。禁止裸 `<select>`、手写菜单 / 弹层 / 阴影（`design:audit` 会拦）。
 5. **弹性布局。** 页面容器按类型取宽（reading / page / wide），留白 `--ou-gutter` 随视口从 390 流到 1920；二维数据（表格、看板、甘特）在自己的容器里横向滚动，不让整页滚。
 
 ![色卡 v2](assets/palette-v2.png)
+
+（色卡里的文字色阶和九色胶囊在 v3 仍有效；画布、面、材质以 §2.1a 为准。）
 
 ## 0. 优先级
 
 1. 产品行为：`docs/PRD.md`；架构：`docs/DESIGN.md`。
 2. 视觉、交互、响应式：**本文件** + [components.md](components.md)。
 3. 数值：`frontend/src/styles/design-tokens.css`（唯一允许写字面值的地方）。
-4. `globals.css` 里的旧变量（`--foreground`、`--surface`、`--border`…）已全部用 `var()` 桥接到 `--ou-*`，旧页面自动跟随色卡 v2；新代码不要再引用旧变量。
+4. `globals.css` 里的旧变量（`--foreground`、`--surface`、`--border`…）已全部用 `var()` 桥接到 `--ou-*`，旧页面自动跟随 v3 Glass（`--surface` → 半透明纸面、`--surface-opaque` / `--background` → 实白，整页底由 `body` 的渐变提供）；新代码不要再引用旧变量。
 5. 简历 PDF 模板是用户文档，配色独立于应用外壳，不随本规范改动。
 
 ## 1. 原则
 
-- **内容优先**（HIG Deference）：界面退后，岗位、简历、Agent 的产出站前面。装饰性的色块、渐变、网格底、KPI 卡、徽章都不要。
+- **内容优先**（HIG Deference）：界面退后，岗位、简历、Agent 的产出站前面。渐变只有画布这一层（`--ou-bg-wash`），不在卡片、按钮、标题上另加渐变；KPI 卡、徽章墙、网格底仍然不要。
+- **玻璃分层**（HIG Materials / Bleep）：层次来自「越靠上越白、越实」和柔和阴影；悬停 / 选中是一颗实白胶囊浮起，不加描边。
 - **一个颜色只表达一种意思**（HIG Color）：墨黑 = 主操作；橙 = 紧急 / 委托；紫 = Agent 来源；蓝 = 「已投递」状态；红 = 错误 / 截止 / 今天线。
-- **层级靠字号、字重、颜色、留白**，边框和阴影只用于表达「浮起」。
+- **层级靠字号、字重、颜色、留白**，阴影只用于表达「浮起」；1px 线只在必须分组的地方用（格式条分组、菜单分隔），而且是半透明的。
 - **渐进式披露**：当前状态 → 一个下一步 → 次要探索。长说明折进「了解更多」，表单里每个字段的提示不超过一行。
 - **不只靠颜色**：每个状态色都配文字或图标。
 
@@ -36,20 +41,40 @@
 
 | 级 | Token | 用途 | 语义别名 |
 | --- | --- | --- | --- |
-| 1 | `--ou-neutral-1` `#fffcf9` | 画布 L0 | `--ou-bg-canvas` |
-| 2 | `--ou-neutral-2` `#fcf6f1` | 侧栏、Agent 栏 | `--ou-bg-sidebar` |
-| 3 | `--ou-neutral-3` `#f6efeb` | 控件底、看板列底 | `--ou-bg-control` |
-| 4 | `--ou-neutral-4` `#f1e9e4` | 悬停 | `--ou-bg-hover` |
-| 5 | `--ou-neutral-5` `#ece3de` | 选中、按下 | `--ou-bg-selected` |
-| 6 | `--ou-neutral-6` `#e3dad5` | 分隔线、非交互描边 | `--ou-line-separator` |
-| 7 | `--ou-neutral-7` `#d7cec8` | 控件描边 | `--ou-line-control` |
-| 8 | `--ou-neutral-8` `#c4bab4` | 强描边、焦点环 | `--ou-line-strong` / `--ou-focus-ring` |
+| 1 | `--ou-neutral-1` `#fffcf9` | v2 画布（v3 画布见 §2.1a） | — |
+| 2 | `--ou-neutral-2` `#fcf6f1` | 降低透明度时的侧栏实底 | — |
+| 3 | `--ou-neutral-3` `#f6efeb` | 降低透明度时的玻璃实底 | — |
+| 4 | `--ou-neutral-4` `#f1e9e4` | （v3 悬停改用半透明墨 / 白胶囊） | — |
+| 5 | `--ou-neutral-5` `#ece3de` | （v3 选中改用半透明墨 / 白胶囊） | — |
+| 6 | `--ou-neutral-6` `#e3dad5` | 深色 / 高对比度下的分隔线 | — |
+| 7 | `--ou-neutral-7` `#d7cec8` | 深色下的控件描边 | — |
+| 8 | `--ou-neutral-8` `#c4bab4` | 焦点环、高对比度分隔线 | `--ou-focus-ring` |
 | 9 | `--ou-neutral-9` `#928a85` | 占位符 | `--ou-text-placeholder` |
 | 10 | `--ou-neutral-10` `#827a75` | 图标、三级文字 | `--ou-text-tertiary` |
 | 11 | `--ou-neutral-11` `#69625d` | 次要文字（N2 上 5.6:1） | `--ou-text-secondary` |
 | 12 | `--ou-neutral-12` `#231d19` | 主文字、主按钮（N2 上 15.5:1） | `--ou-text-primary` / `--ou-action-primary` |
 
-内容面（表格、卡片、弹层、输入框）是纯白 `--ou-bg-surface`。侧栏 N2 与画布 N1 同一色相，只差一级，靠 1px N6 分隔线区分——不再出现「暖灰侧栏 + 冷白主区」两套颜色。
+色阶仍在（给文字、占位、深色模式用），但 v3 的面不再从色阶里取：
+
+### 2.1a 面与材质（v3）
+
+| Token | 值（浅色） | 用于 |
+| --- | --- | --- |
+| `--ou-bg-wash` | 冷蓝 → 中性 → 桃色的渐变（三层 radial / linear） | `body` 画布，整站只此一处渐变 |
+| `--ou-bg-canvas` | `#EEECF1` | 渐变的实色兜底 |
+| `--ou-glass-bg` / `--ou-bg-sidebar` | 白 55% + `blur(24px) saturate(170%)` | 侧栏、Agent 栏、编辑器顶栏、聚焦顶栏 |
+| `--ou-glass-strong` / `--ou-bg-floating` | 白 90% + 同样的模糊 | 菜单、下拉、Popover、弹窗、⌘K、运行胶囊 |
+| `--ou-glass-subtle` | 白 36% | 分段控件轨道、看板列、按钮组底 |
+| `--ou-bg-surface` | 白 84% | 内容纸面（表格外的面板、今天页白纸、简历文档） |
+| `--ou-bg-surface-solid` | `#FFFFFF` | 内容不能透出的地方：A4 纸、表格单元格、输入框、白胶囊 |
+| `--ou-capsule-bg` / `-hover` / `-shadow` | 白 / 白 62% / 两层极淡阴影 | 玻璃上的悬停与选中（侧栏导航、分段控件、按钮组） |
+| `--ou-bg-hover` / `--ou-bg-selected` | 半透明墨 5.5% / 8.5% | 白面上的悬停与选中（菜单项、表格行、文档里的属性值） |
+| `--ou-bg-control` / `--ou-bg-field` | 半透明墨 5% / 4% | 白面上的浅底胶囊、输入聚焦底 |
+| `--ou-tile-bg` | 白 72% | 磨砂图标小方块 |
+| `--ou-line-separator` / `-control` / `-strong` | 半透明墨 8% / 14% / 24% | 少量必要的线；焦点环 |
+| `--ou-highlight-code` | `#FBEBC8` | 行内代码的浅琥珀底（配 `--ou-font-mono`） |
+
+阴影统一用偏冷的紫灰墨（`rgba(60,50,80,·)`），在渐变上读作「深度」而不是「脏」。`prefers-reduced-transparency` 下玻璃全部回落实底、画布回落纯色；`prefers-contrast: more` 下纸面变实白。
 
 ### 2.2 品牌角色
 
@@ -73,7 +98,7 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 
 ### 2.4 深色与高对比度
 
-- 深色：`:root.dark` 下同名 Token 有一套深色值（色阶反转、色调底 L≈0.29、文字 L≈0.86，对比 ≥ 9:1）。页面不需要写 `dark:` 类。
+- 深色：`:root.dark` 下同名 Token 有一套深色值（色阶反转、色调底 L≈0.29、文字 L≈0.86，对比 ≥ 9:1）。v3 补了一套「深色玻璃」：深蓝 → 赭色的暗渐变、烟色半透明窗格、白 7–12% 的悬停 / 胶囊；能用，未细调。页面不需要写 `dark:` 类。
 - 增强对比度（`prefers-contrast: more`）：分隔线、控件描边各加深一级，次要 / 三级文字各加深一级。旧变量经桥接自动跟随。
 
 ## 3. 字体与字号
@@ -86,28 +111,42 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 | Body | `--ou-type-body` | 14px | 表格、表单、Agent 正文 |
 | Section | `--ou-type-section` | 16px | 区块、弹窗标题 |
 | Page | `--ou-type-page` | clamp 22–28px | 页面标题 |
+| Doc | `--ou-type-doc` / `--ou-line-doc` | 16px / 1.6 | 文档视图正文（简历编辑器、长文） |
+| Doc heading | `--ou-type-doc-heading` | 20px / 700 | 文档视图里的模块标题 |
 
-- 系统字体 + 中文回退；输入框用正文字体，等宽只给代码和 ID。
+- 系统字体 + 中文回退；输入框用正文字体，等宽（`--ou-font-mono`）只给代码和 ID，行内代码配浅琥珀底。
+- 文档视图：单栏、居中、最宽 `--ou-width-doc`（46rem ≈ 736px），正文 16 / 1.6，标题粗体约 20px，段落间距宽。
 - 降一级层级至少同时换颜色，再换字号或字重之一。三级文字（N10）里不放必须读的信息。
 
 ## 4. 间距与圆角
 
 - 间距：`--ou-space-1/2/3/4/6/8`（4 / 8 / 12 / 16 / 24 / 32px）。组内 8，组间 16，区块 24。
-- 圆角：控件 `--ou-radius-control`（6px）、卡片 `--ou-radius-card`（10px）、浮层 / 弹窗 / 看板列 `--ou-radius-floating`（14px）、胶囊 `--ou-radius-pill`。
+- 圆角（v3 整体加大，越浮起来越圆）：
+
+| Token | 值 | 用于 |
+| --- | --- | --- |
+| `--ou-radius-1` | 10px | 菜单项、小控件、文档里的属性值悬停底 |
+| `--ou-radius-tile` | 10px | 磨砂图标小方块（28px） |
+| `--ou-radius-control` / `--ou-radius-input` | 12px | 输入框、搜索胶囊、侧栏行、分段项 |
+| `--ou-radius-floating` | 16px | 菜单、下拉、Popover |
+| `--ou-radius-card` | 18px | 卡片 |
+| `--ou-radius-panel` | 20px | 窗格（侧栏）、面板、纸面、弹窗、看板列 |
+| `--ou-radius-button` / `--ou-radius-pill` | 999px | 所有按钮（胶囊）、图标按钮（圆）、chip、状态胶囊 |
 
 ## 5. 层级（Elevation）L0–L4
 
-| 层 | 是什么 | Token | 描边 | 阴影 |
+| 层 | 是什么 | Token | 材质 | 阴影（v3） |
 | --- | --- | --- | --- | --- |
-| L0 | 画布 | `--ou-elev-0` | 无 | 无 |
-| L1 | 内容面、输入框 | `--ou-elev-1` | 1px N6 | 无 |
-| L2 | 卡片（看板卡、列表卡、次按钮） | `--ou-elev-2` → 悬停 `--ou-elev-2-hover` | 1px N6 → N7 | 0 1 2 / 6% → 0 4 12 / 9%，上移 1px |
-| L3 | 浮层（菜单、下拉、Popover、⌘K 结果） | `--ou-elev-3` | 1px N7 | 0 8 24 / 12% |
-| L4 | 弹窗、⌘K 外壳 | `--ou-elev-4` + `--ou-scrim` | 1px N7 | 0 24 60 / 20% |
+| L0 | 渐变画布 | `--ou-elev-0` | `--ou-bg-wash` | 无 |
+| L1 | 玻璃窗格、纸面、输入 | `--ou-elev-1` / `--ou-elev-pane` | 玻璃或白 84% | 0 1 2 / 4% + 0 6 20 / 6%，**无描边** |
+| L2 | 卡片、纸面、表格白纸、次按钮 | `--ou-elev-2` → 悬停 `--ou-elev-2-hover` | 白 84% / 实白 | 0 12 32 / 10% → 0 18 44 / 16%，悬停上移 2px，**无描边** |
+| L3 | 浮层（菜单、下拉、Popover、格式条、/ 菜单） | `--ou-elev-3` | 白 90% + 模糊 | 0.5px 极淡环 + 0 12 32 / 16% |
+| L4 | 弹窗、⌘K 外壳 | `--ou-elev-4` + `--ou-scrim`（遮罩带 6px 模糊） | 白 90% + 模糊 | 0.5px 极淡环 + 0 28 72 / 24% |
 
-- 每一级都是描边 + 阴影成对出现（飞书 / Apple 的做法），不单独用阴影。
+- v3 去掉了 v2「描边 + 阴影必须成对」的规定：L1–L2 只用阴影和透明度分层（Bleep）；L3–L4 留 0.5px 的极淡环，是为了半透明浮层压在复杂内容上时边缘仍然清楚。
 - z-index 只用 `--ou-layer-*`：sticky 10、popover 20、overlay 30、modal 40、toast 50、command 90（⌘K 必须盖住尚未迁移的旧层）。
-- 毛玻璃（`--ou-glass-*`）只给浮在内容上的导航和控件（⌘K、工具条），内容面一律实底；`prefers-reduced-transparency` 下自动变实底。
+- 毛玻璃（`--ou-glass-*`）用于外壳和浮层：侧栏、Agent 栏、编辑器顶栏、菜单、弹窗、⌘K、运行胶囊。内容纸面是半透明白（不加模糊也可读）；A4 纸、表格单元格、输入框用实白。`prefers-reduced-transparency` 下自动变实底。
+- 组件类：`.ou-glass`（磨砂窗格）、`.ou-sheet`（白纸面）、`.ou-tile`（磨砂图标方块）、`.ou-capsule-row`（玻璃上的白胶囊行）、`.ou-segment`（分段胶囊）、`.ou-button-group`（一串圆形 ghost 钮）、`.ou-chip` + `.ou-chip-check`（圆形勾选筛选）、`.ou-fade-bottom`（底部渐隐），规格见 [components.md](components.md)。
 
 ## 6. 布局与响应式
 
@@ -118,7 +157,7 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 | wide | `.ou-page-wide` | 100rem | 今天（看板）、岗位表格 / 看板 / 甘特 |
 
 - 留白 `--ou-gutter` = clamp(16px … 40px)，随视口流动；顶部留白同理。
-- 侧栏宽 `--ou-sidebar-width` = clamp(13.5rem … 16rem)；`md`（768px）以下收成底部标签栏。
+- 侧栏宽 `--ou-sidebar-width` = clamp(13.5rem … 16rem)，是一块离视口边 `--ou-pane-inset`（8px）的磨砂窗格；`md`（768px）以下收成底部玻璃标签栏。
 - 断点只作为验收档位：**390 / 768 / 1024 / 1440 / 1920**，横竖屏都看；布局本身靠流动宽度，而不是一档一套。
 - 看板列宽 `--ou-kanban-column` = clamp(16rem … 22rem)；放不下时在看板自己的轨道里横向滚动并按列吸附，窄屏（< 40rem）一列约 85vw，强制吸附。轨道左右出血到页面边缘，滚动时不被留白截断。
 - flex / grid 收缩边界写 `min-w-0`、`minmax(0, 1fr)`；不用 `overflow: hidden` 掩盖错位；弹层由 Radix 做碰撞翻转。
@@ -161,7 +200,7 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 
 - [ ] 这一屏的主任务和唯一主按钮是什么？是否只有一个墨黑实心按钮？
 - [ ] 颜色是否都来自语义 Token？每个状态色是否配了文字 / 图标？
-- [ ] 每个容器属于 L0–L4 哪一层？同一视图是否只有一层描边容器？
+- [ ] 每个容器属于 L0–L4 哪一层？有没有新加 1px 描边（v3 原则上不加）？悬停 / 选中在玻璃上是不是白胶囊？
 - [ ] 是否只组合了 `components/ui`？有没有裸 `<select>`、手写菜单 / 弹层 / 阴影？
 - [ ] 390 / 768 / 1024 / 1440 截图：无横向整页滚动、无裁切、无挤压；Agent 栏开 / 关都看过。
 - [ ] 键盘走一遍：Tab 顺序、焦点可见、Esc 返回、焦点归还。
@@ -174,15 +213,26 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 
 ## 11. 迁移状态（2026-11-13）
 
+v3 Glass 落地：Token + 外壳（PR #196），简历编辑器文档化（PR #197）。旧变量（`--surface`、`--border`、`--background`…）全部桥接到 v3，未迁移的页面自动跟随渐变底、半透明面、胶囊按钮；页面里写死的白底 / 1px 边框是历史债，`design:audit` 有统计。
+
+**怎么看**：`frontend/` 里 `npm run build`，`backend/` 里 `OFFERU_RUNTIME_MODE=lite uvicorn app.main:app --port 8766`（后端直接托管 `frontend/dist`），打开 `http://127.0.0.1:8766/#/`（今天）、`#/jobs`（岗位）、`#/resume`（简历编辑器）；开发时 `npm run dev` 看 `http://127.0.0.1:7410`。
+
 | 范围 | 状态 |
 | --- | --- |
-| 旧变量桥接到色卡 v2 | ✅ 全站 |
-| 外壳：侧栏宽度流动、画布 / 侧栏同源 | ✅ |
+| v3 Token（渐变底、玻璃、柔和阴影、大圆角、白胶囊） | ✅ |
+| 外壳：磨砂侧栏窗格、图标小方块、白胶囊导航、分段二级标签、磨砂 Agent 开关 | ✅ |
+| 今天：看板玻璃列 + 白卡、「要做的事 / 最近改动」白纸面 | ✅ |
+| 岗位：表格放在大圆角白纸上、视图分段胶囊、工具按钮组 | ✅ |
+| 简历编辑器：一页文档（无灰框、16 / 1.6、粗体模块标题、左侧留白把手） | ✅ |
+| 设置、面试、档案页内部的写死边框 / 白底 | ⏳ 跟随桥接，逐页清理 |
+| 深色玻璃 | ⏳ 能用，未细调 |
+| 旧变量桥接到 v3 | ✅ 全站 |
+| 外壳：侧栏宽度流动 | ✅ |
 | 今天：wide 容器 + 阅读宽度段落、看板 L2 卡片 + 流动列宽 | ✅ |
 | 岗位：浅色胶囊、墨黑「添加岗位」、wide 容器、甘特状态色 | ✅ |
 | ⌘K：Token 化（L4、毛玻璃、层级） | ✅ |
 | 组件层 `components/ui`（Button / Field / Select / Menu / Popover / Dialog / Panel / Pill / ContextUsageRing） | ✅ 已建，页面逐步替换 |
 | 岗位表格内部的筛选 / 排序 Popover、状态菜单换成 `components/ui` | ⏳ 下一个 PR |
 | Agent 栏：运行胶囊、一行步骤、上下文用量环接数据 | ⏳ 需要后端在 run 事件里给 token 用量 |
-| 简历、设置、面试页 | ⏳ 按页迁移 |
-| 深色模式 | ⏳ Token 已备好，待旧页面迁完再开 |
+| 设置、面试页 | ⏳ 按页迁移 |
+| 深色模式开关 | ⏳ Token 已备好（含 v3 深色玻璃），待旧页面迁完再开 |
