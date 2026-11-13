@@ -30,7 +30,7 @@ export default function TodayPage() {
 
       <JobBoard />
 
-      <section className="ou-reading">
+      <section className="ou-reading ou-sheet ou-today-sheet">
         <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">要做的事</h2>
         {empty && <p className="mt-2 text-[13.5px] text-[var(--foreground-muted)]">还没有。截止、笔试、面试都可以记在这里，也可以让 Agent 帮你记。</p>}
         {BUCKETS.map(([key, name]) => data.todos[key].length > 0 && (
@@ -42,7 +42,7 @@ export default function TodayPage() {
         <AddEvent />
       </section>
 
-      <div className="ou-reading"><RecentChanges items={data.recent_changes} /></div>
+      <div className="ou-reading ou-sheet ou-today-sheet"><RecentChanges items={data.recent_changes} /></div>
     </div>
   );
 }

@@ -37,17 +37,15 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
   const showSearch = searching || search.length > 0;
   return (
     <div className="flex flex-wrap items-center gap-x-1 gap-y-2 pb-1">
-      <div role="tablist" aria-label="视图" className="flex items-center gap-1">
+      <div role="tablist" aria-label="视图" className="ou-segment">
         {VIEW_KINDS.map((k) => (
           <button key={k} type="button" role="tab" aria-selected={state.active === k} onClick={() => setActive(k)}
-            className={"rounded-full px-3 py-1 text-[13.5px] " + (state.active === k
-              ? "bg-[var(--surface-hover)] font-medium text-[var(--foreground)]"
-              : "text-[var(--foreground-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]")}>
+            className="ou-segment-item">
             {VIEW_NAME[k]}
           </button>
         ))}
       </div>
-      <div className="ml-auto flex flex-wrap items-center gap-0.5">
+      <div className="ou-button-group ml-auto flex-wrap">
         {listing && (
           <>
             <Popover label={icon(ListFilter, "筛选", n.filter)} active={n.filter > 0} width={480}><FilterPanel view={view} jobs={jobs} patch={patch} /></Popover>

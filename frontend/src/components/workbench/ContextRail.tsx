@@ -148,7 +148,7 @@ export function ContextRail() {
           aria-label="打开 OfferU 助手"
           title="OfferU 助手"
           onClick={() => setRailOpen(true)}
-          className="fixed right-3 top-3 z-40 hidden h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)] md:flex"
+          className="offeru-rail-toggle ou-icon-button ou-glass hidden md:flex"
         >
           <Bot size={15} strokeWidth={1.75} />
         </button>

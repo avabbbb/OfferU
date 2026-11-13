@@ -96,7 +96,7 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
   const job = jobs.find((j) => j.id === doc.job_id);
   const school = resume.sections.find((s) => s.type === "education")?.items[0]?.title.trim() ?? "";
   return (
-    <div className="resume-shell flex min-w-0 flex-1 flex-col bg-[var(--background)]">
+    <div className="resume-shell flex min-w-0 flex-1 flex-col">
       <header className="rs-head">
         <ResumeSwitcher docs={docs} current={doc} jobs={jobs} title={title} onRename={rename} onCreate={onCreate} onCopy={copy}
           onDelete={(d) => void remove(d)} />
@@ -167,7 +167,7 @@ export default function ResumePage() {
   }
 
   return (
-    <div className="resume-shell flex h-full min-h-0 bg-[var(--background)]">
+    <div className="resume-shell flex h-full min-h-0">
       <Editor key={current.id} doc={current} docs={docs} jobs={jobs} photo={profileData?.record?.photo} onCopy={copy}
         onCreate={(fromProfile) => void create(fromProfile)} />
     </div>
