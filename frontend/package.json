@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "api:types": "openapi-typescript http://127.0.0.1:8766/openapi.json -o src/lib/api-types.generated.ts"
+    "api:types": "openapi-typescript http://127.0.0.1:8766/openapi.json -o src/lib/api-types.generated.ts",
+    "design:audit": "node scripts/design-audit.mjs",
+    "design:audit:test": "node --test scripts/design-audit.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

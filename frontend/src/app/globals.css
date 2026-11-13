@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../styles/design-tokens.css";
 @config "../../tailwind.config.js";
 @source "../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
 
@@ -896,8 +897,9 @@ select {
 
 /* ─────────────────────────────────────────────
    OfferU 外壳皮肤：安静的纸面。
-   保留三样记忆点：暖白纸色 + 极淡网格、宋体标题、标题下一笔红。
-   其余全部退后：细边框、轻阴影、无衬线按钮，内容自己说话。
+   这里是尚未迁移的存量样式，不作为新增 UI 规范；
+   新 UI 使用 docs/design/visual-system.md 与 styles/design-tokens.css。
+   迁移前不得全局替换旧变量以免改变现有页面。
    ───────────────────────────────────────────── */
 :root {
   --background: #f7f6f2;
