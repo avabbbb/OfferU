@@ -133,6 +133,14 @@ Lucide 线性图标，16px，描边 2，颜色跟文字走（多数是 `--ou-tex
 | prefers-contrast: more | 分隔线、描边、次要文字各加深一级 |
 | 审计 | `npm run design:audit` 拦截新增的裸色值、px 字号、自写阴影 / 圆角 / z-index、裸 `<select>` |
 
+## 简历编辑器 · Resume editor (v2, 2026-11-13)
+
+- 顶栏：贴顶毛玻璃（`--ou-glass-bg` + `--ou-glass-blur`），底部一条 `--ou-line-separator`；保存状态是绿点「已保存」/ 灰点呼吸「保存中…」。
+- 左栏：`--ou-bg-canvas` 上的 inset grouped 白卡，`--ou-elev-1`，聚焦时升到 `--ou-elev-2`；条目收起是透明行（悬停 `--ou-bg-hover`），展开整块 `--ou-bg-control`、输入框白底，聚焦用 `--ou-ring-focus`。
+- 右栏：比左栏深一档的 `--ou-bg-sidebar` 画布，A4 纸 `--ou-elev-3`；悬停块用墨色细框 + 「点击编辑」小标签（iframe 内的 token 由 `hintVars()` 从外层抄进去）。
+- 缩放：右下角毛玻璃胶囊（− / 百分比 / + / 适应），档位 50–150%，「适应」按画布宽度铺满。
+- PDF 模板本身不在编辑器 UI 范围内，不改。
+
 ## 规范与禁忌 · Do & Don't
 
 | ✓ Do | ✗ Don't |
