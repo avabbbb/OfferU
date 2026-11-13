@@ -8,7 +8,7 @@ import { mutate } from "swr";
 import { BasicsMedia } from "@/components/resume/BasicsMedia";
 import { DownloadButton } from "@/components/resume/DownloadButton";
 import { BASICS, ModuleList } from "@/components/resume/ModuleList";
-import { type FormFocus, ResumeForm } from "@/components/resume/ResumeForm";
+import { type EditorFocus, ModuleEditor } from "@/components/resume/ModuleEditor";
 import { type PreviewHandle, ResumePreview } from "@/components/resume/ResumePreview";
 import { ResumeSwitcher } from "@/components/resume/ResumeSwitcher";
 import { StylePanel } from "@/components/resume/StylePanel";
@@ -53,13 +53,9 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
   const [resume, setResume] = useState<Resume>(() => normalizeResume(doc.resume));
   const latest = useRef(resume);
   latest.current = resume;
-  const [focus, setFocus] = useState<FormFocus | null>(null);
-  // 左栏选中的模块（BASICS 或 section.id）：右栏跟着滚过去；预览里点到哪个块也切到它所在的模块。
+  const [focus, setFocus] = useState<EditorFocus | null>(null);
+  // 左栏选中的模块（BASICS 或 section.id）：右栏只编辑这一个；预览里点到哪一条就切到它所在的模块并滚过去。
   const [selected, setSelected] = useState<string>(BASICS);
-  const select = (id: string) => {
-    setSelected(id);
-    setFocus(id === BASICS ? { basics: true, at: Date.now() } : { sectionId: id, at: Date.now() });
-  };
   const [title, setTitle] = useState(doc.title ?? "");
   const [saved, setSaved] = useState(true);
   const [style, setStyle] = useState<ResumeStyle>(() => resolveStyle(doc.style, doc.template));
@@ -131,7 +127,7 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
       </header>
       <div className="re-grid">
         <aside className="re-rail">
-          <ModuleList resume={resume} onChange={changeResume} selected={selected} onSelect={select} />
+          <ModuleList resume={resume} onChange={changeResume} selected={selected} onSelect={setSelected} />
         </aside>
         <div className="re-preview">
           <ResumePreview ref={preview} resume={resume} style={style}
@@ -140,11 +136,12 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
             onLocate={(path) => {
               const at = locatePath(resume, path);
               setSelected(at.sectionId ?? BASICS);
-              setFocus({ ...at, at: Date.now() });
+              setFocus({ itemId: at.itemId ?? (at.basics ? BASICS : undefined), at: Date.now() });
             }} />
         </div>
         <section className="re-editor" aria-label="编辑内容">
-          <ResumeForm resume={resume} onChange={changeResume} focus={focus} readOnly={tailoring}
+          <ModuleEditor resume={resume} onChange={changeResume} selected={selected} focus={focus} readOnly={tailoring}
+            doc={{ id: doc.id, title }} canPolish={saved && styleSaved && !tailoring}
             basicsExtra={<BasicsMedia style={style} onStyle={changeStyle} photo={photo} school={school}
               onPhoto={() => void mutate((k) => Array.isArray(k) && k[0] === "tool")} />} />
         </section>

@@ -29,8 +29,54 @@
 .re-preview { grid-area: preview; display: flex; min-width: 0; min-height: 0; flex-direction: column; }
 .re-preview .rp-canvas { padding-top: 0; }
 
-/* 右栏里的旧表单（PR ② 换成按模块编辑）：去掉它自己的纸面，左侧把手区收窄。 */
-.re-editor .rf-scroll { gap: 1.75rem; padding: 1.5rem 1.25rem 3rem 2.75rem; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* ── 右栏：编辑内容（一次一个模块）── */
+.re-module { display: flex; flex-direction: column; gap: var(--ou-space-4); padding: var(--ou-space-4) var(--ou-space-6) var(--ou-space-8); }
+.re-module-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-1); min-width: 0; }
+.re-module-title {
+  min-width: 0; max-width: 100%; margin-left: calc(-1 * var(--ou-space-2)); padding: 0.125rem var(--ou-space-2); border: 0; border-radius: var(--ou-radius-1);
+  background: transparent; color: var(--ou-text-primary); font: inherit; font-size: var(--ou-type-doc-heading); font-weight: 700; line-height: 1.3; outline: none;
+}
+input.re-module-title:hover { background: var(--ou-bg-hover); }
+input.re-module-title:focus { background: var(--ou-bg-field); }
+.re-hidden-note { flex-basis: 100%; color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
+
+/* 条目：「教育经历 1」+ 删除 · 虚线 · ↓ ↑，下面两列表单；不套卡片，靠留白分开。预览里点到时整块闪一下浅底。 */
+.re-item {
+  display: flex; flex-direction: column; gap: var(--ou-space-3); margin-inline: calc(-1 * var(--ou-space-3)); padding: var(--ou-space-3);
+  border-radius: var(--ou-radius-card); scroll-margin-top: var(--ou-space-3);
+  transition: background-color var(--ou-motion-slow) var(--ou-ease-standard);
+}
+.re-item[data-flash] { background: var(--ou-bg-selected); }
+.re-item + .re-item { margin-top: var(--ou-space-2); }
+.re-item-head { display: flex; align-items: center; gap: 0.125rem; min-width: 0; }
+.re-item-title { flex: none; max-width: 60%; overflow: hidden; margin: 0 var(--ou-space-1) 0 0; text-overflow: ellipsis; white-space: nowrap; color: var(--ou-text-primary); font-size: var(--ou-type-body); font-weight: 600; }
+.re-item-rule { flex: 1; min-width: var(--ou-space-4); margin: 0 var(--ou-space-2); border-top: 1px dashed var(--ou-line-control); }
+.re-item-head .ou-icon-button { width: 1.75rem; height: 1.75rem; }
+.re-item-head .ou-icon-button:disabled { opacity: 0.3; cursor: default; }
+.re-icon-danger:hover { background: var(--ou-tone-red-bg); color: var(--ou-color-danger); }
+.re-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ou-space-3) var(--ou-space-4); }
+.re-fields .ou-field-label { color: var(--ou-text-secondary); font-weight: 500; }
+.re-required { color: var(--ou-tone-red-text); }
+.re-rich, .re-bullets, .re-contacts { display: flex; flex-direction: column; gap: var(--ou-space-1); min-width: 0; }
+.re-rich > .ou-field-label, .re-bullets > .ou-field-label, .re-contacts > .ou-field-label { color: var(--ou-text-secondary); }
+/* 要点的「+ / ⋮⋮」把手在左侧留白里：给它留出位置。 */
+.re-bullets .rf-blocks { padding-left: var(--ou-space-8); }
+.re-bullets .rf-bullet { font-size: var(--ou-type-body); }
+.re-item-foot { display: flex; justify-content: flex-end; }
+.re-polish svg { color: var(--ou-tone-purple-dot); }
+.re-add-item { align-self: flex-start; }
+.re-contact { display: grid; grid-template-columns: minmax(4.5rem, 6.5rem) minmax(0, 1fr) auto; align-items: center; gap: var(--ou-space-2); }
+.re-chips { display: flex; flex-wrap: wrap; gap: var(--ou-space-1); margin-top: var(--ou-space-1); }
+.re-chips .ou-chip { gap: var(--ou-space-1); padding: 0 var(--ou-space-3); background: var(--ou-bg-control); }
+
+/* 富文本：一张实白框，顶上常驻格式条（B I U · 列表 · 链接），正文 14px。 */
+.resume-shell .rt.rt-boxed { border-radius: var(--ou-radius-control); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-capsule-shadow); }
+.resume-shell .rt.rt-boxed:focus-within { box-shadow: var(--ou-ring-focus); }
+.rt-fixedbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.125rem; padding: var(--ou-space-1); color: var(--ou-text-secondary); border-bottom: 1px solid var(--ou-line-separator); }
+.rt-fixedbar-sep { width: 1px; height: 1rem; margin: 0 var(--ou-space-1); background: var(--ou-line-separator); }
+.resume-shell .rt.rt-boxed .rt-edit { padding: var(--ou-space-2) 2.25rem var(--ou-space-3) var(--ou-space-3); font-size: var(--ou-type-body); line-height: 1.6; }
+.resume-shell .rt.rt-boxed .rt-zoom-btn { top: 0.25rem; right: 0.25rem; }
+.resume-shell .rt-edit u { text-underline-offset: 2px; }
 
 /* ── 左栏：我的模块 ── */
 .rm { display: flex; flex-direction: column; gap: var(--ou-space-1); }
@@ -90,4 +136,9 @@
   .re-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "rail" "editor" "preview"; }
   .resume-shell.re-shell .rs-head { margin-right: 0; }
 }
-@media (prefers-reduced-motion: reduce) { .rm-row, .rm-more { transition: none; } }
+@container re (max-width: 40rem) {
+  .re-module { padding-inline: var(--ou-space-4); }
+}
+@media (prefers-reduced-motion: reduce) { .rm-row, .rm-more, .re-item { transition: none; } }
+.re-editor .rt .rt-edit { width: 100%; }
+.re-bullets .rt .rt-edit { font-size: var(--ou-type-body); line-height: 1.6; }
