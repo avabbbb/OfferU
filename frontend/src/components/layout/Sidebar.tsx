@@ -10,6 +10,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
 import { useWorkbenchOptional } from "@/lib/workbench";
+import { modifierLabel } from "@/lib/commandPalette";
 import { AgentConnectionStatus } from "@/components/workbench/AgentConnectionPanel";
 import { PRIMARY_NAV, activePrimary, type PrimaryNavItem } from "./navModel";
 
@@ -74,7 +75,7 @@ export function Sidebar() {
           </Link>
         </div>
 
-        {/* Ctrl+K 搜索入口 — 与命令面板联动 */}
+        {/* ⌘K / Ctrl+K 入口 — 与命令面板联动：搜索 + 让 OfferU 办事 */}
         <div className="offeru-sidebar-search px-3 pt-1">
           <button
             type="button"
@@ -82,9 +83,9 @@ export function Sidebar() {
             className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
           >
             <Search size={14} strokeWidth={1.75} />
-            <span className="flex-1 text-left">搜索</span>
+            <span className="flex-1 text-left">搜索或问 OfferU</span>
             <kbd className="font-sans text-[11px] text-[var(--foreground-faint)]">
-              Ctrl K
+              {modifierLabel(typeof navigator === "undefined" ? "" : navigator.platform || navigator.userAgent)} K
             </kbd>
           </button>
         </div>

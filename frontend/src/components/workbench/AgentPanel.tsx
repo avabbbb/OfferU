@@ -1539,11 +1539,16 @@ function ToolCallList({ calls }: { calls: AgentResponse["tool_calls"] }) {
         return (
           <details key={call.tool + "-" + index} role="listitem" className="group">
             <summary className="agent-tool-row cursor-pointer list-none">
-              <Wrench size={11} className="shrink-0 text-[var(--foreground-muted)]" />
+              <span className="agent-tool-node" aria-hidden>
+                <Wrench size={9} strokeWidth={2} />
+              </span>
               <span className="shrink-0 font-mono text-[11px] text-[var(--foreground)]">{call.tool}</span>
               {presentation && (
                 <span className="min-w-0 flex-1 truncate text-[var(--foreground-muted)]">{presentation}</span>
               )}
+              <span className="agent-tool-index" aria-label={`第 ${index + 1} 步，共 ${calls.length} 步`}>
+                {index + 1}/{calls.length}
+              </span>
               <ChevronDown size={11} className="ml-auto shrink-0 text-[var(--foreground-muted)] transition-transform duration-[var(--dur-quick)] group-open:rotate-180" />
             </summary>
             <div className="agent-tool-detail space-y-1">

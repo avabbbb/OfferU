@@ -102,6 +102,13 @@ a {
   text-decoration: none;
 }
 
+/* 键盘焦点统一：只在键盘操作时出现（:focus-visible），2px 环 + 2px 间隙，所有可交互元素一致。
+   Apple HIG：焦点必须清晰可见且风格统一；鼠标点击不出环。文本框自带光标，不在此列。 */
+:where(a, button, [role="button"], [role="tab"], summary):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 button,
 input,
 textarea,
@@ -110,7 +117,7 @@ select {
 }
 
 ::selection {
-  background: rgba(59, 95, 155, 0.18);
+  background: rgba(31, 31, 29, 0.14);
   color: var(--foreground);
 }
 
@@ -120,18 +127,18 @@ select {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(36, 48, 57, 0.04);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(36, 48, 57, 0.16);
+  background: rgba(31, 31, 29, 0.16);
   border: 2px solid transparent;
   background-clip: content-box;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(36, 48, 57, 0.26);
+  background: rgba(31, 31, 29, 0.28);
   background-clip: content-box;
 }
 
@@ -1120,16 +1127,174 @@ body {
   font-size: 0.78rem;
 }
 
+/* ── ⌘K 命令面板 ──
+   一个浮起容器（L4），层级只靠字号 / 字重 / 颜色。材质参照 Apple「Popover」：
+   半透明底 + 背景模糊 + 多层柔和阴影；不支持 backdrop-filter 时回落为不透明白。 */
 .offeru-command-backdrop {
-  background: rgba(31, 31, 29, 0.2) !important;
-  backdrop-filter: blur(4px);
+  background: rgba(31, 31, 29, 0.18);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
 }
 
 .offeru-command-surface {
-  border-color: var(--border) !important;
-  border-radius: 12px !important;
-  background: #fff !important;
-  box-shadow: 0 24px 60px rgba(31, 31, 29, 0.18) !important;
+  border-radius: 14px;
+  background: var(--surface-opaque);
+  box-shadow:
+    0 0 0 1px rgba(31, 31, 29, 0.06),
+    0 4px 12px rgba(31, 31, 29, 0.06),
+    0 24px 64px rgba(31, 31, 29, 0.16);
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .offeru-command-surface {
+    background: rgba(255, 255, 255, 0.86);
+    -webkit-backdrop-filter: saturate(180%) blur(24px);
+    backdrop-filter: saturate(180%) blur(24px);
+  }
+}
+
+.offeru-command-head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem 0.75rem 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.offeru-command-input {
+  min-width: 0;
+  flex: 1;
+  height: 2rem;
+  background: transparent;
+  font-size: clamp(0.9375rem, 0.85rem + 0.2vw, 1rem);
+  color: var(--foreground);
+  outline: none;
+}
+
+.offeru-command-input::placeholder {
+  color: var(--foreground-faint);
+}
+
+/* 分段控件：Apple Segmented Control 的轻量版，选中段是白色浮起胶囊 */
+.offeru-command-segment {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.offeru-command-segment-item {
+  height: 1.5rem;
+  padding: 0 0.625rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: var(--foreground-muted);
+  transition: background-color var(--dur-quick) var(--ease-snap), color var(--dur-quick) var(--ease-snap), box-shadow var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-command-segment-item:hover {
+  color: var(--foreground);
+}
+
+.offeru-command-segment-item[aria-selected="true"] {
+  background: var(--surface-opaque);
+  color: var(--foreground);
+  font-weight: 500;
+  box-shadow: 0 0 0 0.5px rgba(31, 31, 29, 0.08), 0 1px 2px rgba(31, 31, 29, 0.1);
+}
+
+.offeru-command-list {
+  max-height: min(52vh, 26rem);
+  overflow-y: auto;
+  padding: 0.375rem;
+  overscroll-behavior: contain;
+}
+
+.offeru-command-group {
+  padding: 0.625rem 0.625rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--foreground-faint);
+}
+
+.offeru-command-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2.25rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color var(--dur-instant) linear;
+}
+
+.offeru-command-item[data-active] {
+  background: var(--surface-hover);
+}
+
+.offeru-command-icon {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--foreground-muted);
+  background: var(--surface-muted);
+}
+
+.offeru-command-item[data-active] .offeru-command-icon {
+  color: var(--foreground);
+  background: var(--surface-opaque);
+  box-shadow: 0 0 0 0.5px rgba(31, 31, 29, 0.08), 0 1px 2px rgba(31, 31, 29, 0.08);
+}
+
+.offeru-command-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  color: var(--foreground);
+}
+
+.offeru-command-hint {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--foreground-faint);
+}
+
+.offeru-command-item[data-active] .offeru-command-hint {
+  color: var(--foreground-muted);
+}
+
+.offeru-command-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.6875rem;
+  color: var(--foreground-faint);
+}
+
+.offeru-command-foot kbd {
+  display: inline-flex;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  align-items: center;
+  justify-content: center;
+  margin-right: 2px;
+  padding: 0 0.25rem;
+  border-radius: 4px;
+  background: var(--surface-muted);
+  font-family: inherit;
+  font-size: 0.625rem;
+  color: var(--foreground-muted);
 }
 
 .offeru-focus-topbar {
@@ -1415,6 +1580,42 @@ body {
   line-height: 1.4;
   color: var(--foreground-muted);
   transition: background-color var(--dur-quick) var(--ease-snap);
+}
+
+/* 工具步骤画成一条时间线：节点之间用细竖线相连，表达「同一轮里的先后」，不画分隔线（§11.1）。 */
+.offeru-agent-panel .agent-tool-group > details {
+  position: relative;
+}
+
+.offeru-agent-panel .agent-tool-group > details + details::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 17px;
+  width: 1px;
+  height: 12px;
+  background: var(--border-strong);
+  pointer-events: none;
+}
+
+.offeru-agent-panel .agent-tool-node {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--foreground-muted);
+}
+
+.offeru-agent-panel .agent-tool-index {
+  flex-shrink: 0;
+  font-size: var(--agent-fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground-faint);
 }
 
 .offeru-agent-panel .agent-tool-row:hover {
@@ -2210,3 +2411,13 @@ body {
 }
 .tag-menu [aria-selected="true"] button,
 .tag-menu button:hover { background: var(--surface); }
+
+/* 「增强对比度」打开时，边框和弱文字整体加深一档 */
+@media (prefers-contrast: more) {
+  :root {
+    --border: rgba(31, 31, 29, 0.22);
+    --border-strong: rgba(31, 31, 29, 0.36);
+    --foreground-muted: rgba(31, 31, 29, 0.74);
+    --foreground-faint: rgba(31, 31, 29, 0.6);
+  }
+}
