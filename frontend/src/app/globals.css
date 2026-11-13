@@ -1141,7 +1141,7 @@ body {
   background: var(--ou-glass-bg) !important;
   -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
   backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
-  box-shadow: var(--ou-glass-highlight), var(--ou-elev-pane) !important;
+  box-shadow: var(--ou-ring-pane), var(--ou-glass-highlight), var(--ou-elev-pane) !important;
 }
 
 .context-rail-header {
@@ -2051,6 +2051,7 @@ body {
   width: min(92vw, 24rem);
   border-radius: var(--ou-radius-panel);
   background: var(--ou-glass-strong);
+  box-shadow: var(--ou-ring-pane), var(--ou-glass-highlight), var(--ou-elev-pane);
 }
 .offeru-focus-agent[data-below-bar] { top: 3.5rem; }
 .offeru-agent-panel { background: transparent; }
@@ -2147,8 +2148,9 @@ body {
 }
 .offeru-agent-panel .agent-composer-send:hover:not(:disabled) { background: var(--ou-action-primary-hover); }
 .offeru-agent-panel .agent-composer-send:active:not(:disabled) { transform: scale(0.96); }
-.offeru-agent-panel .agent-composer-send:disabled { opacity: 0.32; }
-.offeru-agent-panel .agent-composer-send[data-working] { width: 2.25rem; padding: 0; justify-content: center; opacity: 1; background: var(--ou-action-primary); }
+/* 禁用的发送键：浅色仍是墨黑 32%；暗色用 --ou-action-disabled-*（低调的半透明底 + 占位字色），不再是一块亮灰。 */
+.offeru-agent-panel .agent-composer-send:disabled { opacity: var(--ou-action-disabled-alpha, 0.32); background: var(--ou-action-disabled-bg, var(--ou-action-primary)); color: var(--ou-on-action-disabled, var(--ou-on-action-primary)); }
+.offeru-agent-panel .agent-composer-send[data-working] { width: 2.25rem; padding: 0; justify-content: center; opacity: 1; background: var(--ou-action-primary); color: var(--ou-on-action-primary); }
 /* 5×5 像素格：灰格打底，一个亮格带着尾巴按顺序走一圈（steps，一格一格跳） */
 .offeru-agent-panel .agent-pixel { display: grid; grid-template-columns: repeat(5, 0.1875rem); grid-auto-rows: 0.1875rem; gap: 0.0625rem; }
 .offeru-agent-panel .agent-pixel i { border-radius: var(--ou-radius-pixel); background: var(--ou-on-action-primary); opacity: 0.18; animation: agent-pixel 1.25s steps(1) infinite; animation-delay: calc(var(--p) * 0.05s); }

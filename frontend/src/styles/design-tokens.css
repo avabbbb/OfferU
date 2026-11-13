@@ -230,6 +230,8 @@
   --ou-ring-composer: 0 0 0 1px var(--ou-line-strong), 0 0 0 4px rgba(60, 50, 80, 0.06);
   --ou-ring-agent: 0 0 0 1.5px var(--ou-tone-purple-dot), 0 0 0 5px rgba(158, 136, 218, 0.18);
   --ou-ring-error: inset 0 0 0 1px var(--ou-tone-red-border);
+  /* Agent pane edge: no ring on the light wash (shadow is enough); dark gets a 0.5px rim, see below. */
+  --ou-ring-pane: 0 0 0 0 transparent;
   --ou-radius-pixel: 0.0625rem; /* 1px cells of the composer's pixel loader */
   /* Drawer panes below xl (Agent rail / focus-mode Agent) and their scrim. */
   --ou-layer-drawer-scrim: var(--ou-layer-modal);
@@ -257,11 +259,27 @@
   /* v3 dark glass (coherent, not polished): deep blue → umber wash, smoky translucent panes. */
   --ou-glass-bg: rgba(30, 28, 36, 0.58);
   --ou-glass-strong: rgba(36, 32, 42, 0.88);
-  --ou-glass-subtle: rgba(255, 255, 255, 0.04);
+  --ou-glass-subtle: rgba(255, 255, 255, 0.075); /* kanban lanes, segmented tracks: 4% vanished on the dark wash */
   --ou-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --ou-glass-menu: rgba(36, 32, 42, 0.8);
   --ou-swatch-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   --ou-swatch-mix: 80%;
+  /* Swatch bottom edge: light mode mixes toward the tone's dot (darker there); in dark the dot is the
+   * brightest step, so the edge read as a highlight. Mix toward near-black instead. */
+  --ou-swatch-edge-tint: #0c0a0e;
+  --ou-swatch-edge-mix: 45%;
+  --ou-swatch-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 18px rgba(0, 0, 0, 0.28);
+  --ou-swatch-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.32), 0 18px 32px rgba(0, 0, 0, 0.42);
+  --ou-swatch-shadow-drag: 0 4px 8px rgba(0, 0, 0, 0.36), 0 28px 48px rgba(0, 0, 0, 0.52);
+  /* Rings: the light halo is violet-gray ink, invisible on dark glass — use a white halo. */
+  --ou-ring-focus: 0 0 0 1px var(--ou-line-strong), 0 0 0 4px rgba(255, 255, 255, 0.09);
+  --ou-ring-composer: 0 0 0 1px var(--ou-line-strong), 0 0 0 4px rgba(255, 255, 255, 0.07);
+  --ou-elev-composer: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.35);
+  --ou-ring-pane: 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  /* Disabled primary (ink) button: 50% of near-white ink glared as a pale gray slab; use a quiet fill. */
+  --ou-action-disabled-bg: rgba(255, 255, 255, 0.08);
+  --ou-on-action-disabled: var(--ou-neutral-9);
+  --ou-action-disabled-alpha: 1;
   --ou-line-faint: rgba(255, 255, 255, 0.05);
   --ou-elev-menu: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 24px 60px rgba(0, 0, 0, 0.5);
   --ou-wash-cool: #1d2436;
@@ -296,7 +314,6 @@
   --ou-neutral-1: #120f0c;
   --ou-neutral-2: #191513;
   --ou-neutral-3: #211d1b;
-  --ou-bg-field: #1f1e1d;
   --ou-neutral-4: #272320;
   --ou-neutral-5: #2d2926;
   --ou-neutral-6: #342f2d;

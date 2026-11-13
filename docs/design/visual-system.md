@@ -103,6 +103,7 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 ### 2.4 深色与高对比度
 
 - 深色：`:root.dark` 下同名 Token 有一套深色值（色阶反转、色调底 L≈0.29、文字 L≈0.86，对比 ≥ 9:1）。v3 补了一套「深色玻璃」：深蓝 → 赭色的暗渐变、烟色半透明窗格、白 7–12% 的悬停 / 胶囊；能用，未细调。页面不需要写 `dark:` 类。
+  - 深色细调（v3.1，2026-11-14）：`--ou-bg-field` 只保留白 5% 一处定义（之前被后面的实色 `#1f1e1d` 覆盖）；`--ou-glass-subtle`（看板列、分段轨道）白 4% → 7.5%；色块底边在深色里朝近黑混（`--ou-swatch-edge-tint` / `--ou-swatch-edge-mix`），不再是亮色高光；`--ou-ring-focus`、`--ou-ring-composer`、`--ou-elev-composer`、`--ou-swatch-shadow*` 有深色专用值（白色外晕、黑色阴影）；Agent 窗格加 0.5px 白 10% 边环（`--ou-ring-pane`，浅色为空）；禁用的墨黑主按钮 / 发送键在深色里用 `--ou-action-disabled-bg` + `--ou-on-action-disabled`，不再是 50% 透明的亮灰块。
 - 增强对比度（`prefers-contrast: more`）：分隔线、控件描边各加深一级，次要 / 三级文字各加深一级。旧变量经桥接自动跟随。
 
 ## 3. 字体与字号
