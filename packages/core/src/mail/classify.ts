@@ -3,11 +3,10 @@
 // actor「邮箱」, so it is undoable and the non-user status guard applies.
 
 import { EVENT_KIND, label } from "../labels";
-import { saveRecord, statusMoveError } from "../operations";
+import { MAIL_ACTOR, saveRecord, statusMoveError } from "../operations";
 import type { CoreContext, CoreStore, JobStatus, EventKind, StoredRecord } from "../types";
 import { extractJson, type LlmClient } from "../llm";
 
-export const MAIL_ACTOR = "邮箱";
 
 /** classifier stage → (job status, event kind) */
 export const MAIL_STAGE: Record<string, [JobStatus, EventKind | null]> = {
@@ -56,7 +55,7 @@ async function classifyWithLlm(llm: LlmClient, input: { subject: string; body: s
   if (input.receivedAt) source = `接收时间: ${input.receivedAt}\n${source}`;
   let raw: string | null;
   try {
-    raw = await llm.chat([{ role: "system", content: LLM_PROMPT }, { role: "user", content: source }], { tier: "fast", jsonMode: true, temperature: 0 });
+    raw = await llm.chat([{ role: "system", content: LLM_PROMPT }, { role: "user", content: source }], { tier: "fast", json: true, temperature: 0 });
   } catch {
     return null;
   }
@@ -211,6 +210,10 @@ export async function applyMailSignal(store: CoreStore, signal: MailSignal, ctx:
 
 /** Today's write-back by the mailbox: how many changes and the last one. */
 export async function mailToday(store: CoreStore, today: string): Promise<{ today_changes: number; last_change_at: string | null }> {
+  if (store.changeStats) {
+    const stats = await store.changeStats(MAIL_ACTOR, today);
+    return { today_changes: stats.count, last_change_at: stats.last };
+  }
   const rows = (await store.changes(Number.MAX_SAFE_INTEGER)).filter((row) => row.actor === MAIL_ACTOR && row.at >= today);
   return { today_changes: rows.length, last_change_at: rows.length ? rows.map((row) => row.at).sort().at(-1)! : null };
 }

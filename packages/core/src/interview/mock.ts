@@ -6,7 +6,8 @@
 import { deleteRecord, saveRecord } from "../operations";
 import type { CoreStore, StoredRecord } from "../types";
 import { CoreError } from "../types";
-import { extractJson, requireLlm, type LlmClient, type LlmRuntimeInfo } from "../llm";
+import { extractJson, requireLlm, type LlmClient } from "../llm";
+import { NO_MODEL_HINT, llmRuntime, type LlmRuntimeInfo } from "../llm-endpoint";
 import {
   DEFAULT_SCORING_SKILL,
   buildBehaviorSummary,
@@ -51,13 +52,13 @@ function positiveId(value: unknown, field: string): number {
 }
 
 function runtimeOf(llm: LlmClient): Runtime {
-  const info = llm.runtime("standard");
+  const info = llmRuntime(llm, "standard");
   return { ...info, consent_policy: info.is_local ? "local_runtime_notice" : "explicit_cloud_consent" };
 }
 
 export function interviewRuntime(llm: LlmClient | null | undefined): Record<string, unknown> {
   return {
-    runtime: runtimeOf(requireLlm(llm)),
+    runtime: runtimeOf(requireLlm(llm, NO_MODEL_HINT)),
     available_data_categories: DATA_CATEGORIES,
     privacy: { raw_camera_data_sent_to_backend: false, derived_behavior_events_only: true, raw_audio_stored_by_default: false },
     evaluation_boundary: { content_and_delivery_are_separate: true, combined_score: null, prohibited_inferences: PROHIBITED_INFERENCES },
@@ -185,7 +186,7 @@ async function generateQuestions(llm: LlmClient, input: { type: string; difficul
         output_contract: { questions: [{ question: "string", type: "behavioral|technical|case", focus: "string", tips: "string" }] },
       }),
     },
-  ], { temperature: 0.2, jsonMode: true, maxTokens: 3000, tier: "standard" });
+  ], { temperature: 0.2, json: true, maxTokens: 3000, tier: "standard" });
   const parsed = extractJson(response ?? "");
   if (!parsed) throw new CoreError("模型未返回可解析的问题 JSON；本次未创建面试");
   return validateQuestions(parsed, input.count);
@@ -259,7 +260,7 @@ export async function createInterview(store: CoreStore, args: Args, llm: LlmClie
   if (args.questions !== undefined && args.questions !== null && (!Array.isArray(args.questions) || args.questions.length > 10)) {
     throw new CoreError("questions 最多 10 道");
   }
-  const client = requireLlm(llm);
+  const client = requireLlm(llm, NO_MODEL_HINT);
   const runtime = runtimeOf(client);
   const required = ["interview_configuration", "interview_transcript"];
   if (profileId !== null) required.push("verified_profile_facts");
@@ -368,7 +369,7 @@ async function evaluateAnswer(llm: LlmClient, question: string, answer: string, 
         output_contract: contract,
       }),
     },
-  ], { temperature: 0, jsonMode: true, maxTokens: 2600, tier: "standard" });
+  ], { temperature: 0, json: true, maxTokens: 2600, tier: "standard" });
   const parsed = extractJson(response ?? "");
   if (!parsed) throw new CoreError("模型未返回可解析的评价 JSON；回答未保存");
   return validateContentEvaluation(parsed, answer, definition);
@@ -453,7 +454,7 @@ export async function submitAnswer(store: CoreStore, interviewId: unknown, args:
     if (session.status !== "active") throw new CoreError("只有 active 面试可以提交回答");
     if (index !== session.current_question_index) throw new CoreError("question_index 与服务端当前题目不一致");
     if (index >= session.questions.length) throw new CoreError("所有问题均已完成");
-    const client = requireLlm(llm);
+    const client = requireLlm(llm, NO_MODEL_HINT);
     const current = runtimeOf(client);
     const pinned = isObject(session.model_runtime) ? session.model_runtime : {};
     const consent = isObject(session.data_consent) ? session.data_consent : {};

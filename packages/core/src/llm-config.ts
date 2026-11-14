@@ -4,7 +4,7 @@
 // plain key anywhere but the provider itself.
 
 import { CoreError } from "./types";
-import { PLACEHOLDER_API_KEYS, type LlmApiFormat, type LlmEndpoint } from "./llm";
+import { PLACEHOLDER_API_KEYS, type LlmApiFormat, type LlmEndpoint } from "./llm-endpoint";
 
 export type LlmApiConfig = {
   id: string;

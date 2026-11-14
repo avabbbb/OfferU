@@ -5,7 +5,8 @@ import { nowIso, todayIso } from "../labels";
 import type { CoreStore } from "../types";
 import { CoreError } from "../types";
 import type { LlmClient } from "../llm";
-import { applyMailSignal, classifyMail, MAIL_ACTOR, mailSeen, mailToday } from "./classify";
+import { MAIL_ACTOR } from "../operations";
+import { applyMailSignal, classifyMail, mailSeen, mailToday } from "./classify";
 import { MAX_TRANSIENT_BODY_CHARS } from "./mime";
 
 export type FetchedMail = {

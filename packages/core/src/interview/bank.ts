@@ -7,6 +7,7 @@ import { saveRecord } from "../operations";
 import type { CoreStore, StoredRecord } from "../types";
 import { CoreError } from "../types";
 import { extractJson, requireLlm, type LlmClient } from "../llm";
+import { NO_MODEL_HINT } from "../llm-endpoint";
 import { desensitize, restore } from "./desensitize";
 import { isObject, optionalPositiveInt, stringField, topicDocs, userContext, type Args } from "./common";
 
@@ -161,12 +162,12 @@ export async function extractExperienceQuestions(store: CoreStore, args: Args, l
   const id = args.experience_id;
   if (typeof id !== "number" || !Number.isInteger(id)) throw new CoreError("experience_id 要是整数");
   const doc = await experienceDoc(store, id);
-  const client = requireLlm(llm);
+  const client = requireLlm(llm, NO_MODEL_HINT);
   let rawText = [...String(doc.body ?? "")].slice(0, 6000).join("");
   let mapping: Record<string, string> = {};
   if (!client.local) [rawText, mapping] = desensitize(rawText);
   const raw = await client.chat([{ role: "user", content: EXTRACT_PROMPT(String(doc.company ?? ""), String(doc.role ?? ""), rawText) }], {
-    jsonMode: true, tier: "standard", temperature: 0.2,
+    json: true, tier: "standard", temperature: 0.2,
   });
   const result = raw ? extractJson(Object.keys(mapping).length ? restore(raw, mapping) : raw) : null;
   if (!result || !("questions" in result)) throw new CoreError("LLM 提炼失败，请稍后重试");
@@ -215,7 +216,7 @@ export async function generateBankAnswer(store: CoreStore, args: Args, llm: LlmC
     .map((item) => `- [${item.kind}] ${item.text}`)
     .join("\n");
   if (!bullets) throw new CoreError("Profile 内容为空，请先填写个人经历");
-  const answer = await requireLlm(llm).chat([{
+  const answer = await requireLlm(llm, NO_MODEL_HINT).chat([{
     role: "user",
     content: ANSWER_PROMPT(question.question_text, question.category, question.difficulty, [...bullets].slice(0, 4000).join("")),
   }], { tier: "premium", temperature: 0.5, maxTokens: 1024 });

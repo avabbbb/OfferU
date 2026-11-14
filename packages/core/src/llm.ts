@@ -1,92 +1,113 @@
-// Injected LLM access for the portable core. The core never reads a key or a
-// config file: the host (browser key vault, local companion config file) builds
-// an LlmClient and passes it in. Keys therefore never reach a Worker or a log.
+// LLM access for core tools. Runtime-agnostic: no node:*, no DOM.
 //
-// Minimal definition: no shared LlmClient existed on origin when this was
-// written (origin/ts/core-tools and origin/ts/agent were absent). If another
-// branch lands a richer one, keep `chat` / `runtime` / `transcribe` compatible.
+// Tools never build HTTP requests to a model themselves; they receive an
+// `LlmClient`. The browser builds one from the user's own key (BYOK, direct to
+// the provider), the Node companion builds one from its settings, tests pass a
+// fake. `createOpenAiLlm` is the stock OpenAI-compatible implementation and
+// only needs an injected `fetch`.
+//
+// Semantics mirror Python `app.agents.llm.chat_completion`:
+//   - returns the text, or `null` when the model gave nothing usable
+//     (timeout, transient upstream failure, empty answer);
+//   - throws `CoreError(code="forbidden")` for a rejected key, so the user
+//     sees "fix your key" instead of a silent empty result;
+//   - throws `CoreError(code="unsupported")` when no model is configured.
 
 import { CoreError } from "./types";
 
-export type LlmTier = "fast" | "standard" | "premium";
 export type LlmRole = "system" | "user" | "assistant";
 export type LlmMessage = { role: LlmRole; content: string };
-export type LlmApiFormat = "openai" | "anthropic";
+/** Model tier, same names as Python `resolve_model_for_tier`. */
+export type LlmTier = "fast" | "standard" | "premium";
 
 export type LlmChatOptions = {
-  tier?: LlmTier;
+  /** Default 0.3, like Python. */
   temperature?: number;
-  jsonMode?: boolean;
+  /** Ask for a JSON object (response_format=json_object when supported). */
+  json?: boolean;
+  /** Default 4096, like Python. */
   maxTokens?: number;
-};
-
-/** What the next chat call will use; mirrors Python get_llm_runtime_info + is_local. */
-export type LlmRuntimeInfo = {
-  provider: string;
-  model: string;
-  tier: LlmTier;
-  source: string;
-  model_source: "provider_models" | "llm_model";
-  is_local: boolean;
+  /** Default "standard". */
+  tier?: LlmTier;
+  signal?: AbortSignal;
 };
 
 export interface LlmClient {
-  /** Endpoint is on this machine (loopback): callers may skip PII masking. */
-  readonly local?: boolean;
-  runtime(tier?: LlmTier): LlmRuntimeInfo;
-  /** Text of the first choice; null when the call failed or returned nothing (Python returns None). */
+  /** One chat completion. `null` = no usable answer (see module doc). */
   chat(messages: LlmMessage[], options?: LlmChatOptions): Promise<string | null>;
-  /** Speech to text through the provider's /audio/transcriptions; absent when unsupported. */
-  transcribe?(audio: Blob, fileName: string): Promise<string>;
+  /**
+   * Optional token stream (Python `chat_completion_stream`). Yields text
+   * deltas; ends early (no throw) on timeout/transient failure, throws
+   * CoreError("forbidden") on a rejected key. Use `streamOrChat` to fall back
+   * to one chunk when a client has no stream.
+   */
+  chatStream?(messages: LlmMessage[], options?: LlmChatOptions): AsyncIterable<string>;
+  /**
+   * True when the model runs on this machine (Ollama, LM Studio...). Tools
+   * skip PII desensitization only for local models, like Python
+   * `endpoint_is_local`. Absent = remote.
+   */
+  readonly local?: boolean;
 }
 
-/** One resolved provider endpoint. api_key lives only in the host's local storage. */
-export type LlmEndpoint = {
-  provider_id: string;
-  service_name: string;
-  base_url: string;
-  api_key: string;
-  model: string;
-  models: Record<string, string>;
-  api_format: LlmApiFormat;
-  supports_json_mode: boolean;
-  default_headers: Record<string, string>;
-  source: string;
-  tier_model_map?: Record<string, string>;
-};
+/** Stream when the client can, otherwise yield the whole answer as one chunk. */
+export async function* streamOrChat(llm: LlmClient, messages: LlmMessage[], options: LlmChatOptions = {}): AsyncIterable<string> {
+  if (llm.chatStream) {
+    yield* llm.chatStream(messages, options);
+    return;
+  }
+  const text = await llm.chat(messages, options);
+  if (text) yield text;
+}
 
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+export type FetchLike = (input: string, init?: {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  signal?: AbortSignal;
+}) => Promise<{
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+  /** Needed only for chatStream. */
+  body?: ReadableStream<Uint8Array> | null;
+}>;
 
-export const NO_ASR_HINT = "当前模型服务不支持语音转写。可以先用飞书妙记、通义听悟等工具转成文字，再粘贴进来。";
+/** Throw the standard "no model" error when a tool needs an LLM and none was injected. */
+export function requireLlm(llm: LlmClient | null | undefined, message = "没配模型，没法调用模型"): LlmClient {
+  if (!llm) throw new CoreError(message, "unsupported");
+  return llm;
+}
 
-/** Port of agents/llm.extract_json: whole text, ```json fence, then the first decodable {...}. */
+/**
+ * Pull a JSON object out of model output: plain JSON, a ```json fenced block,
+ * or the first complete {...} object in surrounding prose. Mirrors Python
+ * `extract_json`. Returns null when nothing parses to an object.
+ */
 export function extractJson(text: string | null | undefined): Record<string, unknown> | null {
   if (!text) return null;
   const trimmed = text.trim();
-  const asObject = (value: unknown) => (value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null);
+  const asObject = (value: unknown) =>
+    typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
   try {
-    return asObject(JSON.parse(trimmed));
-  } catch {
-    // fall through
-  }
-  const fence = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(trimmed);
-  if (fence) {
+    const direct = JSON.parse(trimmed);
+    // Python returns whatever json.loads gives; callers only use dicts.
+    if (asObject(direct)) return asObject(direct);
+  } catch { /* fall through */ }
+  const fenced = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(trimmed);
+  if (fenced) {
     try {
-      const parsed = asObject(JSON.parse(fence[1]));
-      if (parsed) return parsed;
-    } catch {
-      // fall through
-    }
+      const value = asObject(JSON.parse(fenced[1]));
+      if (value) return value;
+    } catch { /* fall through */ }
   }
   for (let start = trimmed.indexOf("{"); start >= 0; start = trimmed.indexOf("{", start + 1)) {
     const end = matchingBrace(trimmed, start);
     if (end < 0) continue;
     try {
-      const parsed = asObject(JSON.parse(trimmed.slice(start, end + 1)));
-      if (parsed) return parsed;
-    } catch {
-      // try the next brace
-    }
+      const value = asObject(JSON.parse(trimmed.slice(start, end + 1)));
+      if (value) return value;
+    } catch { /* try next brace */ }
   }
   return null;
 }
@@ -94,245 +115,211 @@ export function extractJson(text: string | null | undefined): Record<string, unk
 function matchingBrace(text: string, start: number): number {
   let depth = 0;
   let inString = false;
-  for (let index = start; index < text.length; index += 1) {
-    const char = text[index];
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
     if (inString) {
-      if (char === "\\") index += 1;
-      else if (char === "\"") inString = false;
+      if (ch === "\\") i += 1;
+      else if (ch === "\"") inString = false;
       continue;
     }
-    if (char === "\"") inString = true;
-    else if (char === "{") depth += 1;
-    else if (char === "}") {
+    if (ch === "\"") inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
       depth -= 1;
-      if (depth === 0) return index;
+      if (depth === 0) return i;
     }
   }
   return -1;
 }
 
+/** chat() + extractJson(); null when the model returned nothing or no JSON object. */
+export async function chatJson(
+  llm: LlmClient,
+  messages: LlmMessage[],
+  options: LlmChatOptions = {},
+): Promise<Record<string, unknown> | null> {
+  return extractJson(await llm.chat(messages, { ...options, json: true }));
+}
+
+export type OpenAiLlmConfig = {
+  /** e.g. https://api.openai.com/v1 or https://api.deepseek.com/v1 (".../chat/completions" is appended). */
+  baseUrl: string;
+  apiKey?: string;
+  /** Default model; `models` overrides it per tier. */
+  model: string;
+  models?: Partial<Record<LlmTier, string>>;
+  /** Local / gateways that reject response_format set this false. Default true. */
+  supportsJsonMode?: boolean;
+  /** Per attempt. Default 120000 ms. */
+  timeoutMs?: number;
+  fetch: FetchLike;
+  extraHeaders?: Record<string, string>;
+  /** Wait between retries; injectable for tests. */
+  sleep?: (ms: number) => Promise<void>;
+};
+
+class HttpFailure extends Error {
+  constructor(readonly status: number, readonly body: string) {
+    super(`HTTP ${status}`);
+  }
+}
+
+/** True for loopback / LAN model endpoints (Python `_is_local_llm`). */
 export function isLocalLlmUrl(baseUrl: string): boolean {
   try {
-    const host = new URL(baseUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
-    return host === "localhost" || host === "::1" || /^127\.\d+\.\d+\.\d+$/.test(host);
+    const host = new URL(baseUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "::1" || host.endsWith(".local")
+      || /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host === "0.0.0.0" || host === "host.docker.internal";
   } catch {
     return false;
   }
 }
 
-/** Port of resolve_model_for_tier for a resolved endpoint. */
-export function modelForTier(endpoint: LlmEndpoint, tier: LlmTier = "standard"): string {
-  return endpoint.models[tier] || endpoint.tier_model_map?.[tier] || endpoint.model;
-}
+type Response = Awaited<ReturnType<FetchLike>>;
 
-export function asrModel(baseUrl: string): string {
-  const host = baseUrl.toLowerCase();
-  if (host.includes("siliconflow")) return "FunAudioLLM/SenseVoiceSmall";
-  if (host.includes("groq")) return "whisper-large-v3-turbo";
-  if (host.includes("api.openai.com")) return "gpt-4o-mini-transcribe";
-  return "whisper-1";
-}
+/** OpenAI-compatible /chat/completions client over an injected fetch. */
+export function createOpenAiLlm(config: OpenAiLlmConfig): LlmClient {
+  const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const sleep = config.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const timeoutMs = config.timeoutMs ?? 120_000;
 
-function redactKey(text: string, key: string): string {
-  return key && key.length >= 6 ? text.split(key).join("[redacted]") : text;
-}
-
-/**
- * OpenAI- or Anthropic-compatible client over an injected fetch. Runs the same
- * in the browser (direct, user's own key) and on the local companion.
- */
-export function createLlmClient(endpoint: LlmEndpoint, options: { fetch: FetchLike; timeoutMs?: number; asrModel?: string }): LlmClient {
-  const timeoutMs = options.timeoutMs ?? 60_000;
-  const local = isLocalLlmUrl(endpoint.base_url);
-  const base = endpoint.base_url.replace(/\/+$/, "");
-  const key = endpoint.api_key || (local ? "local" : "");
-
-  async function post(path: string, body: unknown, headers: Record<string, string>): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      return await options.fetch(`${base}${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers, ...endpoint.default_headers },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-        redirect: "error",
-      });
-    } finally {
-      clearTimeout(timer);
+  /** POST with retry on 408/429/5xx; returns the open response (body unread on success). */
+  async function post(body: Record<string, unknown>, signal: AbortSignal): Promise<Response> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const response = await config.fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+            ...config.extraHeaders,
+          },
+          body: JSON.stringify(body),
+          signal,
+        });
+        if (!response.ok) throw new HttpFailure(response.status, await response.text());
+        return response;
+      } catch (cause) {
+        const status = cause instanceof HttpFailure ? cause.status : 0;
+        const retryable = status === 408 || status === 429 || status >= 500;
+        if (!retryable || attempt === 2 || signal.aborted) throw cause;
+        await sleep(500 * 2 ** attempt);
+      }
     }
   }
 
-  function authFailure(status: number, model: string): never {
-    throw new CoreError(`模型服务拒绝了请求（HTTP ${status}，${endpoint.service_name}/${model}）：检查设置里的 API Key`, "invalid");
+  function request(messages: LlmMessage[], options: LlmChatOptions): { body: Record<string, unknown>; model: string; maxTokens: number } {
+    if (!messages.length) throw new CoreError("消息不能为空");
+    const model = config.models?.[options.tier ?? "standard"] || config.model;
+    let sent = messages;
+    const body: Record<string, unknown> = { model, temperature: options.temperature ?? 0.3 };
+    if (options.json && config.supportsJsonMode !== false) {
+      body.response_format = { type: "json_object" };
+      // Some gateways only accept json_object when the prompt says "json".
+      if (!messages.map((m) => m.content).join(" ").toLowerCase().includes("json")) {
+        const last = messages[messages.length - 1];
+        sent = [...messages.slice(0, -1), { ...last, content: `${last.content}\n\nReturn JSON only.` }];
+      }
+    }
+    body.messages = sent;
+    return { body, model, maxTokens: options.maxTokens ?? 4096 };
+  }
+
+  /** Reasoning models spend max_tokens on thinking: send a total budget, fall back for old endpoints. */
+  async function open(body: Record<string, unknown>, maxTokens: number, signal: AbortSignal): Promise<Response> {
+    try {
+      return await post({ ...body, max_completion_tokens: maxTokens * 3 }, signal);
+    } catch (cause) {
+      if (!(cause instanceof HttpFailure) || !cause.body.toLowerCase().includes("max_completion_tokens")) throw cause;
+      return post({ ...body, max_tokens: maxTokens }, signal);
+    }
+  }
+
+  function authError(cause: unknown, model: string): CoreError | null {
+    return cause instanceof HttpFailure && (cause.status === 401 || cause.status === 403)
+      ? new CoreError(`模型 API Key 无效或没有权限（${model}，HTTP ${cause.status}）；请在设置里检查 Key`, "forbidden")
+      : null;
+  }
+
+  function deadline(signal?: AbortSignal): { signal: AbortSignal; done(): void } {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const onAbort = () => controller.abort();
+    signal?.addEventListener("abort", onAbort);
+    return {
+      signal: controller.signal,
+      done() {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+      },
+    };
   }
 
   return {
-    local,
-    runtime(tier: LlmTier = "standard"): LlmRuntimeInfo {
-      return {
-        provider: endpoint.provider_id,
-        model: modelForTier(endpoint, tier),
-        tier,
-        source: endpoint.source,
-        model_source: Object.keys(endpoint.models).length ? "provider_models" : "llm_model",
-        is_local: endpoint.provider_id === "ollama",
-      };
-    },
+    local: isLocalLlmUrl(config.baseUrl),
 
-    async chat(messages: LlmMessage[], chatOptions: LlmChatOptions = {}): Promise<string | null> {
-      if (!messages.length) throw new CoreError("消息不能为空");
-      const model = modelForTier(endpoint, chatOptions.tier ?? "standard");
-      const maxTokens = chatOptions.maxTokens ?? 4096;
+    async chat(messages, options = {}) {
+      const { body, model, maxTokens } = request(messages, options);
+      const timer = deadline(options.signal);
       try {
-        if (endpoint.api_format === "anthropic") {
-          const system = messages.filter((m) => m.role === "system").map((m) => m.content);
-          const rest = messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: m.content }));
-          if (chatOptions.jsonMode) rest.push({ role: "user", content: "Return JSON only." });
-          const response = await post("/messages", {
-            model,
-            max_tokens: maxTokens,
-            messages: rest,
-            ...(system.length ? { system: system.join("\n\n") } : {}),
-          }, { "x-api-key": key, "anthropic-version": "2023-06-01" });
-          if (response.status === 401 || response.status === 403) authFailure(response.status, model);
-          if (!response.ok) return null;
-          const body = await response.json() as { content?: Array<{ type?: string; text?: string }> };
-          const text = (body.content ?? []).filter((block) => block.type === "text").map((block) => block.text ?? "").join("");
-          return text || null;
-        }
-        let sent = messages;
-        const payload: Record<string, unknown> = {
-          model,
-          messages: sent,
-          temperature: chatOptions.temperature ?? 0.3,
-          max_tokens: maxTokens,
-        };
-        if (chatOptions.jsonMode && endpoint.supports_json_mode) {
-          payload.response_format = { type: "json_object" };
-          if (!sent.map((m) => m.content).join(" ").toLowerCase().includes("json")) {
-            sent = [...sent.slice(0, -1), { ...sent[sent.length - 1], content: `${sent[sent.length - 1].content}\n\nReturn JSON only.` }];
-            payload.messages = sent;
-          }
-        }
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          const response = await post("/chat/completions", payload, { Authorization: `Bearer ${key}` });
-          if (response.status === 401 || response.status === 403) authFailure(response.status, model);
-          if (response.ok) {
-            const body = await response.json() as { choices?: Array<{ message?: { content?: unknown } }> };
-            const content = body.choices?.[0]?.message?.content;
-            return typeof content === "string" ? content : null;
-          }
-          const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
-          if (!retryable || attempt === 2) return null;
-          await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
-        }
-        return null;
+        const response = await open(body, maxTokens, timer.signal);
+        const data = JSON.parse(await response.text()) as { choices?: Array<{ message?: { content?: unknown } }> };
+        const content = data.choices?.[0]?.message?.content;
+        return typeof content === "string" && content ? content : null;
       } catch (cause) {
-        if (cause instanceof CoreError) throw cause;
+        const auth = authError(cause, model);
+        if (auth) throw auth;
         return null;
+      } finally {
+        timer.done();
       }
     },
 
-    async transcribe(audio: Blob, fileName: string): Promise<string> {
-      if (endpoint.api_format === "anthropic") throw new CoreError(NO_ASR_HINT);
-      const form = new FormData();
-      form.append("model", options.asrModel || asrModel(base));
-      form.append("file", audio, fileName);
-      let response: Response;
+    async *chatStream(messages, options = {}) {
+      const { body, model, maxTokens } = request(messages, options);
+      const timer = deadline(options.signal);
       try {
-        response = await options.fetch(`${base}/audio/transcriptions`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${key}`, ...endpoint.default_headers },
-          body: form,
-          redirect: "error",
-        });
-      } catch {
-        throw new CoreError(NO_ASR_HINT);
+        const response = await open({ ...body, stream: true }, maxTokens, timer.signal);
+        if (!response.body) {
+          // Endpoint ignored stream=true: treat the whole reply as one chunk.
+          const data = JSON.parse(await response.text()) as { choices?: Array<{ message?: { content?: unknown } }> };
+          const content = data.choices?.[0]?.message?.content;
+          if (typeof content === "string" && content) yield content;
+          return;
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let newline: number;
+            while ((newline = buffer.indexOf("\n")) >= 0) {
+              const line = buffer.slice(0, newline).trim();
+              buffer = buffer.slice(newline + 1);
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (payload === "[DONE]") return;
+              try {
+                const chunk = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: unknown } }> };
+                const text = chunk.choices?.[0]?.delta?.content;
+                if (typeof text === "string" && text) yield text;
+              } catch { /* keep-alive or partial line */ }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      } catch (cause) {
+        const auth = authError(cause, model);
+        if (auth) throw auth;
+        // Timeout / upstream failure: end the stream like Python does.
+      } finally {
+        timer.done();
       }
-      if (!response.ok) throw new CoreError(NO_ASR_HINT);
-      const body = await response.json().catch(() => ({})) as { text?: unknown };
-      const text = typeof body.text === "string" ? body.text.trim() : "";
-      if (!text) throw new CoreError("没有识别出文字，录音可能太短或没有声音");
-      return text;
     },
   };
-}
-
-export type ProbeResult = { success: boolean; provider: string; model: string; message: string };
-
-/** Port of llm_config_store.probe_llm_endpoint: one tiny real completion, errors kept readable and key-free. */
-export async function probeLlmEndpoint(
-  endpoint: Pick<LlmEndpoint, "base_url" | "api_key" | "model" | "provider_id" | "api_format" | "default_headers">,
-  fetchImpl: FetchLike,
-  timeoutMs = 15_000,
-): Promise<ProbeResult> {
-  const provider = endpoint.provider_id || "custom";
-  const model = endpoint.model;
-  const local = isLocalLlmUrl(endpoint.base_url);
-  const key = endpoint.api_key || (local ? "local" : "");
-  const fail = (message: string): ProbeResult => ({ success: false, provider, model, message });
-  if (!key || PLACEHOLDER_API_KEYS.has(key.toLowerCase())) return fail("API Key 未配置或仍为占位符，请先填写有效的 API Key。");
-  const base = endpoint.base_url.trim().replace(/\/+$/, "");
-  if (!base) return fail("Base URL 未配置。");
-  const anthropic = endpoint.api_format === "anthropic";
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(`${base}${anthropic ? "/messages" : "/chat/completions"}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(anthropic ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : { Authorization: `Bearer ${key}` }),
-        ...(endpoint.default_headers ?? {}),
-      },
-      body: JSON.stringify(anthropic
-        ? { model, max_tokens: 5, messages: [{ role: "user", content: "Hi" }] }
-        : { model, messages: [{ role: "user", content: "Hi" }], max_tokens: 5 }),
-      signal: controller.signal,
-      redirect: "error",
-    });
-    if (response.status === 200) {
-      const body = await response.json().catch(() => ({})) as Record<string, any>;
-      if (anthropic) {
-        const text = Array.isArray(body.content) ? body.content.map((block: any) => String(block?.text ?? "")).join("").trim() : "";
-        return text ? { success: true, provider, model, message: "连接成功，Anthropic 服务返回了文本。" } : fail("服务返回空文本。");
-      }
-      const content = body?.choices?.[0]?.message?.content;
-      if (typeof content !== "string" || !content.trim()) return fail("服务返回了无效或空的文本响应。");
-      const used = typeof body.model === "string" && body.model ? body.model : model;
-      return { success: true, provider, model: used, message: `连接成功！模型 ${used} 可正常使用。` };
-    }
-    let message = "";
-    const raw = await response.text().catch(() => "");
-    try {
-      const parsed = JSON.parse(raw) as Record<string, any>;
-      message = String(parsed?.error?.message || parsed?.message || "");
-    } catch {
-      message = raw.slice(0, 200);
-    }
-    return fail(`API 返回错误 (${response.status}): ${redactKey(message, key).slice(0, 300)}`);
-  } catch (cause) {
-    const aborted = cause instanceof Error && cause.name === "AbortError";
-    return fail(aborted ? `连接超时 (${base})，请检查网络或更换 Base URL。` : `无法连接到 ${base}，请检查 Base URL 是否正确以及网络是否畅通。`);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-export const PLACEHOLDER_API_KEYS = new Set([
-  "sk-your-openai-key-here",
-  "your-openai-api-key",
-  "your-deepseek-api-key",
-  "your-gemini-api-key",
-  "your-api-key",
-  "replace-with-your-api-key",
-  "api-key-here",
-  "sk-your-key",
-]);
-
-/** The host has no model configured: the same error the Python resolver raises. */
-export function requireLlm(llm: LlmClient | null | undefined): LlmClient {
-  if (!llm) throw new CoreError("还没有配置模型服务，请先在设置里添加一个。", "invalid");
-  return llm;
 }
