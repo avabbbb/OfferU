@@ -6,12 +6,13 @@ import { pathToFileURL } from "node:url";
 import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
 import { createApp } from "./app";
-import { llmFromEnv } from "./llm-env";
+import { nodeToolRuntime } from "./node-runtime";
 import { openStore } from "./store";
 import type { SqliteCoreStore } from "./store";
 
 export function createAppServer(store: SqliteCoreStore): Server {
-  const app = createApp({ store, pairingToken, runtime: "node", storage: "sqlite", llm: () => llmFromEnv() });
+  const { llm, search, fetch, companion } = nodeToolRuntime(store);
+  const app = createApp({ store, pairingToken, runtime: "node", storage: "sqlite", llm, search, fetch, companion });
   return createAdaptorServer({ fetch: app.fetch }) as Server;
 }
 

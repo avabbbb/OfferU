@@ -1,0 +1,340 @@
+{
+  "tree": {
+    "简历-2025.md": [
+      "# 张三\n\n\n\n腾讯 产品实习生\n",
+      1700000300
+    ],
+    "notes.txt": [
+      "随便记点什么 简历 草稿",
+      1700000200
+    ],
+    "photo.png": [
+      "not really a png",
+      1700000100
+    ],
+    "老简历.docx": [
+      null,
+      1700000400
+    ],
+    "sub/项目经历.txt": [
+      "推荐系统 项目 腾讯 合作",
+      1700000500
+    ],
+    "sub/deeper/a/b/too-deep.txt": [
+      "腾讯 深层",
+      1700000600
+    ],
+    "sub/deeper/a/three.md": [
+      "腾讯 三层",
+      1700000550
+    ],
+    ".hidden/secret.txt": [
+      "腾讯 隐藏",
+      1700000700
+    ]
+  },
+  "cases": [
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "<ROOT>/简历-2025.md"
+      },
+      "result": {
+        "ok": {
+          "path": "<ROOT>/简历-2025.md",
+          "text": "# 张三\n\n腾讯 产品实习生",
+          "truncated": false
+        }
+      }
+    },
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "<ROOT>/老简历.docx"
+      },
+      "result": {
+        "ok": {
+          "path": "<ROOT>/老简历.docx",
+          "text": "张三\n电话 13812345678 · 邮箱 zs@example.com\n\n腾讯 · 产品实习生 2025.06-2025.09\n负责 3 个需求 & 上线 <A/B> 实验\n技能 | SQL\n语言 | 英语 六级",
+          "truncated": false
+        }
+      }
+    },
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "<ROOT>/photo.png"
+      },
+      "result": {
+        "error": "只支持 PDF、Word（.docx）、txt 和 md"
+      }
+    },
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "<ROOT>/missing.txt"
+      },
+      "result": {
+        "error": "找不到文件 <ROOT>/missing.txt"
+      }
+    },
+    {
+      "tool": "find_files",
+      "args": {
+        "dir": "<ROOT>"
+      },
+      "result": {
+        "ok": {
+          "dir": "<ROOT>",
+          "total": 3,
+          "items": [
+            {
+              "path": "<ROOT>/老简历.docx",
+              "name": "老简历.docx",
+              "size": 36919
+            },
+            {
+              "path": "<ROOT>/简历-2025.md",
+              "name": "简历-2025.md",
+              "size": 35
+            },
+            {
+              "path": "<ROOT>/notes.txt",
+              "name": "notes.txt",
+              "size": 32
+            }
+          ],
+          "truncated": false,
+          "dirs": [
+            "sub"
+          ]
+        }
+      }
+    },
+    {
+      "tool": "find_files",
+      "args": {
+        "dir": "<ROOT>",
+        "docs_only": false
+      },
+      "result": {
+        "ok": {
+          "dir": "<ROOT>",
+          "total": 4,
+          "items": [
+            {
+              "path": "<ROOT>/老简历.docx",
+              "name": "老简历.docx",
+              "size": 36919
+            },
+            {
+              "path": "<ROOT>/简历-2025.md",
+              "name": "简历-2025.md",
+              "size": 35
+            },
+            {
+              "path": "<ROOT>/notes.txt",
+              "name": "notes.txt",
+              "size": 32
+            },
+            {
+              "path": "<ROOT>/photo.png",
+              "name": "photo.png",
+              "size": 16
+            }
+          ],
+          "truncated": false,
+          "dirs": [
+            "sub"
+          ]
+        }
+      }
+    },
+    {
+      "tool": "find_files",
+      "args": {
+        "dir": "<ROOT>",
+        "pattern": "*简历*"
+      },
+      "result": {
+        "ok": {
+          "dir": "<ROOT>",
+          "total": 2,
+          "items": [
+            {
+              "path": "<ROOT>/老简历.docx",
+              "name": "老简历.docx",
+              "size": 36919
+            },
+            {
+              "path": "<ROOT>/简历-2025.md",
+              "name": "简历-2025.md",
+              "size": 35
+            }
+          ],
+          "truncated": false,
+          "dirs": [
+            "sub"
+          ]
+        }
+      }
+    },
+    {
+      "tool": "find_files",
+      "args": {
+        "dir": "<ROOT>",
+        "query": "腾讯"
+      },
+      "result": {
+        "ok": {
+          "dir": "<ROOT>",
+          "total": 4,
+          "items": [
+            {
+              "path": "<ROOT>/sub/deeper/a/three.md",
+              "name": "three.md",
+              "size": 13,
+              "snippet": "腾讯 三层"
+            },
+            {
+              "path": "<ROOT>/sub/项目经历.txt",
+              "name": "项目经历.txt",
+              "size": 33,
+              "snippet": "推荐系统 项目 腾讯 合作"
+            },
+            {
+              "path": "<ROOT>/老简历.docx",
+              "name": "老简历.docx",
+              "size": 36919,
+              "snippet": "张三\n电话 13812345678 · 邮箱 zs@example.com\n\n腾讯 · 产品实习生 2025.06-2025.09\n负责 3 个需求 & 上线 <A/B> 实验\n技能 | SQL\n语言 | 英语 六级"
+            },
+            {
+              "path": "<ROOT>/简历-2025.md",
+              "name": "简历-2025.md",
+              "size": 35,
+              "snippet": "# 张三\n\n腾讯 产品实习生"
+            }
+          ],
+          "truncated": false,
+          "dirs": [
+            "sub"
+          ],
+          "scanned": 5
+        }
+      }
+    },
+    {
+      "tool": "find_files",
+      "args": {
+        "dir": "<ROOT>",
+        "query": "腾讯 项目"
+      },
+      "result": {
+        "ok": {
+          "dir": "<ROOT>",
+          "total": 1,
+          "items": [
+            {
+              "path": "<ROOT>/sub/项目经历.txt",
+              "name": "项目经历.txt",
+              "size": 33,
+              "snippet": "推荐系统 项目 腾讯 合作"
+            }
+          ],
+          "truncated": false,
+          "dirs": [
+            "sub"
+          ],
+          "scanned": 5
+        }
+      }
+    },
+    {
+      "tool": "find_files",
+      "args": {
+        "dir": "<ROOT>",
+        "recursive": true,
+        "limit": 2
+      },
+      "result": {
+        "ok": {
+          "dir": "<ROOT>",
+          "total": 5,
+          "items": [
+            {
+              "path": "<ROOT>/sub/deeper/a/three.md",
+              "name": "three.md",
+              "size": 13
+            },
+            {
+              "path": "<ROOT>/sub/项目经历.txt",
+              "name": "项目经历.txt",
+              "size": 33
+            }
+          ],
+          "truncated": true,
+          "dirs": [
+            "sub"
+          ]
+        }
+      }
+    },
+    {
+      "tool": "find_files",
+      "args": {
+        "dir": "<ROOT>",
+        "query": "简历",
+        "recursive": false
+      },
+      "result": {
+        "ok": {
+          "dir": "<ROOT>",
+          "total": 3,
+          "items": [
+            {
+              "path": "<ROOT>/老简历.docx",
+              "name": "老简历.docx",
+              "size": 36919,
+              "snippet": "张三\n电话 13812345678 · 邮箱 zs@example.com\n\n腾讯 · 产品实习生 2025.06-2025.09\n负责 3 个需求 & 上线 <A/B> 实验\n技能 | SQL\n语言 | 英语 六级"
+            },
+            {
+              "path": "<ROOT>/简历-2025.md",
+              "name": "简历-2025.md",
+              "size": 35,
+              "snippet": "# 张三\n\n腾讯 产品实习生"
+            },
+            {
+              "path": "<ROOT>/notes.txt",
+              "name": "notes.txt",
+              "size": 32,
+              "snippet": "随便记点什么 简历 草稿"
+            }
+          ],
+          "truncated": false,
+          "dirs": [
+            "sub"
+          ],
+          "scanned": 3
+        }
+      }
+    },
+    {
+      "tool": "find_files",
+      "args": {
+        "dir": "relative/dir"
+      },
+      "result": {
+        "error": "dir 要是本机目录的绝对路径，比如 H:\\学习\\留档"
+      }
+    },
+    {
+      "tool": "find_files",
+      "args": {
+        "dir": "<ROOT>/nope"
+      },
+      "result": {
+        "error": "找不到目录 <ROOT>/nope"
+      }
+    }
+  ]
+}

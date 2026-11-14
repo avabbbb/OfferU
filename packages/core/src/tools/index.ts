@@ -36,14 +36,13 @@ export { addJob, enrichJobs } from "./jobs";
 export { APPLY_PROMPT, applyAnswer, attachmentName, draftEmail, mailSubject, reconcileMemory, splitResume } from "./apply";
 export { reconcileScan } from "./reconcile";
 export type { Finding } from "./reconcile";
-export { desensitize, extractResumeItems, normalizeSplitItem, restorePii } from "./resume-split";
+export { extractResumeItems, normalizeSplitItem, SPLIT_PROMPT } from "./resume-split";
 export { sequenceRatio } from "./difflib";
 
 type Args = Record<string, unknown>;
 export type ToolHandler = (args: Args, deps: ToolDeps) => Promise<unknown>;
 
 const num = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
-const ids = (value: unknown): number[] | null => (Array.isArray(value) ? value as number[] : null);
 
 /** evaluate's best-effort pre-step: split job.posting for jobs that have none (Python enrich_jobs). */
 export async function enrichChanges(deps: ToolDeps, jobIds: number[]): Promise<number[]> {
@@ -65,7 +64,6 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
   fetch_page: (a, d) => fetchPage(d.fetch, String(a.url)),
   split_resume: (a, d) => splitResume(d, a.text as string | null | undefined, a.path as string | null | undefined),
   add_job: (a, d) => addJob(d, String(a.text)),
-  enrich_jobs: (a, d) => enrichJobs(d, ids(a.ids), a.redo === true),
   evaluate_jobs: (a, d) => evaluateJobs(d.store, d.llm, a, {
     signal: d.signal,
     enrich: (bare) => enrichChanges(d, bare),

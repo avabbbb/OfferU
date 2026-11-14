@@ -1,8 +1,8 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type CoreErrorCode, type CoreStore, type LlmClient } from "@offeru/core";
+import { isCoreError, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type SearchClient } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
-import { callTool, SUPPORTED_TOOLS } from "./tools";
+import { TOOL_NAMES, type ToolRuntime } from "./tools";
 
 /**
  * Runtime-agnostic HTTP app. No node:* imports here: the same app runs under
@@ -18,6 +18,12 @@ export interface AppDeps {
   storage: "sqlite" | "none";
   /** The user's configured model (BYOK); called per request so a changed key applies at once. Absent/null = no model. */
   llm?: () => LlmClient | null;
+  /** Web search (Bocha / Tavily / Serper) built from the user's keys; absent/null = not configured. */
+  search?: () => SearchClient | null;
+  /** Outbound fetch for fetch_page / add_job (global fetch on Node and Workers). */
+  fetch?: HttpFetch;
+  /** Node companion only: local-file tools (read_file, find_files). */
+  companion?: ToolRuntime["companion"];
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };
@@ -59,6 +65,16 @@ export async function jsonBody(c: Context): Promise<unknown> {
   return text ? JSON.parse(text) : {};
 }
 
+/** x-offeru-actor is percent-encoded by the workbench (Python: unquote); missing = the user. */
+function actorOf(header: string | undefined): string {
+  if (!header) return "你";
+  try {
+    return decodeURIComponent(header) || "你";
+  } catch {
+    return header;
+  }
+}
+
 class BodyTooLarge extends Error {
   constructor() {
     super("请求体超过 2 MB");
@@ -70,7 +86,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
   app.use("*", async (c, next) => {
     c.set("deps", deps);
-    c.set("actor", c.req.header("x-offeru-actor") || "你");
+    c.set("actor", actorOf(c.req.header("x-offeru-actor")));
     const origin = c.req.header("origin");
     if (c.req.method === "OPTIONS") {
       const headers: Record<string, string> = { Vary: "Origin" };
@@ -122,15 +138,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     runtime: deps.runtime,
     version: "0.1.0",
     storage: deps.storage,
-    tools: SUPPORTED_TOOLS,
+    tools: TOOL_NAMES,
   }));
-
-  app.get("/api/tools", (c) => c.json({ tools: SUPPORTED_TOOLS }));
-
-  app.post("/api/tools/:name{[a-z_]+}", async (c) => {
-    const result = await callTool(c.req.param("name"), await jsonBody(c), deps.store, c.get("actor"));
-    return c.json(result as object);
-  });
 
   registerRoutes(app);
 

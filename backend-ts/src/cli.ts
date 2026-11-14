@@ -4,18 +4,22 @@ import { readFileSync } from "node:fs";
 import { runMcpServer } from "./mcp";
 import { dbPath } from "./paths";
 import { startHttpServer } from "./server";
-import { callTool, SUPPORTED_TOOLS } from "./tools";
+import { TOOL_SPECS } from "@offeru/core";
+
+import { nodeToolRuntime } from "./node-runtime";
+import { callTool, TOOL_NAMES } from "./tools";
 import { openStore } from "./store";
 
 const HELP = `OfferU TS CLI
 
 usage:
-  offeru-ts tool <name> [json|@file|-] [--actor name] [--pretty]
+  offeru-ts tool [<name> [json|@file|-]] [--actor name] [--pretty]
+      no name: list the tools. Actor: --actor, else $OFFERU_ACTOR, else "agent" (like Python).
   offeru-ts mcp
   offeru-ts serve
   offeru-ts doctor
 
-tools: ${SUPPORTED_TOOLS.join(", ")}
+tools: ${TOOL_NAMES.join(", ")}
 `;
 
 function takeFlag(args: string[], name: string): string | undefined {
@@ -27,19 +31,20 @@ function takeFlag(args: string[], name: string): string | undefined {
 }
 
 function payloadOf(raw: string | undefined): unknown {
+  // utf-8-sig like Python: PowerShell writes a BOM.
   const text = raw === "-"
     ? readFileSync(0, "utf8")
     : raw?.startsWith("@")
       ? readFileSync(raw.slice(1), "utf8")
       : raw || "{}";
-  return JSON.parse(text);
+  return JSON.parse(text.replace(/^\uFEFF/, "") || "{}");
 }
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
   const command = args.shift() || "help";
   const pretty = args.includes("--pretty");
-  const actor = takeFlag(args, "--actor") || "你";
+  const actor = takeFlag(args, "--actor") || process.env.OFFERU_ACTOR || "agent";
   const prettyIndex = args.indexOf("--pretty");
   if (prettyIndex >= 0) args.splice(prettyIndex, 1);
 
@@ -54,34 +59,34 @@ async function main(): Promise<number> {
       version: "0.1.0",
       runtime: "node",
       database: dbPath(),
-      tools: SUPPORTED_TOOLS,
+      tools: TOOL_NAMES,
     }, null, pretty ? 2 : 0) + "\n");
     return 0;
   }
 
+  if (command === "tool" && !args[0]) {
+    for (const spec of TOOL_SPECS) process.stdout.write(`${spec.name}: ${spec.description}\n`);
+    return 0;
+  }
+
   const store = openStore(dbPath());
+  const runtime = nodeToolRuntime(store);
   try {
     if (command === "tool") {
-      const name = args.shift();
-      if (!name) {
-        process.stderr.write("缺少工具名。\n" + HELP);
-        return 2;
-      }
+      const name = args.shift()!;
       try {
-        const result = await callTool(name, payloadOf(args[0]), store, actor);
+        const result = await callTool(name, payloadOf(args[0]), runtime, actor);
         process.stdout.write(JSON.stringify(result, null, pretty ? 2 : 0) + "\n");
         return 0;
       } catch (cause) {
-        process.stdout.write(JSON.stringify({
-          ok: false,
-          error: cause instanceof Error ? cause.message : "工具调用失败",
-        }, null, pretty ? 2 : 0) + "\n");
+        // Python: {"error": "..."} on stdout, exit 1; shown to the agent as-is.
+        process.stdout.write(JSON.stringify({ error: cause instanceof Error ? cause.message : String(cause) }) + "\n");
         return 1;
       }
     }
 
     if (command === "mcp") {
-      await runMcpServer(store);
+      await runMcpServer(runtime);
       return 0;
     }
 

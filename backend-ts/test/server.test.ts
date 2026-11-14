@@ -35,8 +35,9 @@ describe("TS backend HTTP", () => {
     const { base } = await start();
     const health = await fetch(`${base}/api/health`).then((response) => response.json()) as { status: string; service: string; runtime: string };
     expect(health).toMatchObject({ status: "ok", service: "OfferU", runtime: "node" });
-    const tools = await fetch(`${base}/api/tools`).then((response) => response.json()) as { tools: string[] };
-    expect(tools.tools).toContain("overview");
+    const tools = await fetch(`${base}/api/tools`).then((response) => response.json()) as { tools: Array<{ name: string; description: string; input: object }> };
+    expect(tools.tools.map((tool) => tool.name)).toContain("overview");
+    expect(tools.tools[0]).toEqual({ name: "overview", description: expect.stringContaining("先调这个"), input: expect.any(Object) });
   });
 
   it("writes and reads through /api/tools", async () => {

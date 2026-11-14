@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 
 import type { AppEnv } from "../app";
 import { registerResearch } from "./research";
+import { registerTools } from "./tools";
 
 /**
  * Route modules, one per migrated domain. Each workstream owns its own module
@@ -19,4 +20,5 @@ import { registerResearch } from "./research";
  */
 export function registerRoutes(app: Hono<AppEnv>): void {
   registerResearch(app);
+  registerTools(app);
 }

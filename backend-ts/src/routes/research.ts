@@ -1,9 +1,11 @@
 import type { Hono } from "hono";
 import { stream } from "hono/streaming";
-import { isCoreError, nowIso, prepareEvaluation, runEvaluation, todayIso } from "@offeru/core";
+import { enrichChanges, isCoreError, nowIso, prepareEvaluation, runEvaluation, todayIso } from "@offeru/core";
 
 import { jsonBody, type AppEnv } from "../app";
+import { toolDeps } from "../tools";
 import { registerBossLogin } from "./companion/boss-login";
+import { toolRuntime } from "./tools";
 
 /**
  * Job research / evaluation routes. Runtime-agnostic (Worker + Node).
@@ -38,6 +40,8 @@ export function registerResearch(app: Hono<AppEnv>): void {
       try {
         for await (const event of runEvaluation(deps.store, llm!, prepared, {
           signal: abort.signal,
+          // Python evaluate_stream: split job.posting first for jobs without one (best effort).
+          enrich: (ids, signal) => enrichChanges(toolDeps(toolRuntime(deps), actor, signal), ids),
           context: () => ({ actor, now: nowIso(), today: todayIso() }),
         })) {
           await send(event);

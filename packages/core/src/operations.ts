@@ -387,8 +387,8 @@ async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext, 
     data = { ...data, source: "resume", confirmed: true };
   } else if (type === "memory") {
     if (ctx.actor !== USER_ACTOR) {
-      if (data.confirmed === true) throw new CoreError("只有用户能确认记忆：Agent 存的记忆是待确认", "forbidden");
-      if (data.source === "user") throw new CoreError("memory.source 不能由 Agent 记成 user", "forbidden");
+      if (data.confirmed === true) throw new CoreError("只有用户能确认记忆：Agent 存的记忆是待确认，请用户在档案页点「确认」", "forbidden");
+      if (data.source === "user") throw new CoreError("memory.source 不能由 Agent 记成 user：只有用户本人说的才是 user", "forbidden");
     }
     if (id === undefined) {
       data = { source: ctx.actor === USER_ACTOR ? "user" : "agent", confirmed: ctx.actor === USER_ACTOR, ...data };
