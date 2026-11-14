@@ -55,10 +55,10 @@ const item = {
 };
 
 const categoryConfig: Record<string, { label: string; chipClass: string }> = {
-  behavioral: { label: "行为类", chipClass: "border border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--foreground)] font-semibold" },
-  technical: { label: "技术类", chipClass: "border border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--foreground)] font-semibold" },
-  case: { label: "案例类", chipClass: "border border-[var(--border-strong)] bg-[var(--status-blush)] text-[var(--foreground)] font-semibold" },
-  motivation: { label: "动机类", chipClass: "border border-[var(--border-strong)] bg-white text-[var(--foreground)] font-semibold" },
+  behavioral: { label: "行为类", chipClass: "bg-[var(--ou-bg-control)] text-[var(--ou-text-primary)] font-semibold" },
+  technical: { label: "技术类", chipClass: "bg-[var(--ou-bg-control)] text-[var(--ou-text-primary)] font-semibold" },
+  case: { label: "案例类", chipClass: "bg-[var(--status-blush)] text-[var(--ou-text-primary)] font-semibold" },
+  motivation: { label: "动机类", chipClass: "bg-[var(--ou-bg-surface-solid)] text-[var(--ou-text-primary)] font-semibold" },
 };
 
 const roundConfig: Record<string, string> = {
@@ -159,7 +159,7 @@ export default function InterviewPage() {
       <PageHeader
         title="准备"
         description={`题库 ${questions?.length ?? 0} 道题，面经 ${experiences?.length ?? 0} 篇。`}
-        actions={<Link href="/interview/ai" className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-[13px] font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)]" data-testid="interview-start-mock">模拟面试</Link>}
+        actions={<Link href="/interview/ai" className="ou-button ou-button-secondary ou-button-sm" data-testid="interview-start-mock">模拟面试</Link>}
       />
 
       <motion.section variants={item} className="flex flex-wrap items-center justify-between gap-4">
@@ -207,8 +207,8 @@ export default function InterviewPage() {
         <motion.section variants={item} className="flex flex-wrap gap-2">
           <Chip
             variant="flat"
-            className={`cursor-pointer border border-[var(--border-strong)] font-semibold ${
-              categoryFilter === "all" ? "bg-[var(--surface-muted)] text-[var(--foreground)]" : "bg-white text-[var(--foreground)]"
+            className={`cursor-pointer font-semibold ${
+              categoryFilter === "all" ? "bg-[var(--ou-bg-control)] text-[var(--ou-text-primary)]" : "bg-[var(--ou-bg-surface-solid)] text-[var(--ou-text-primary)]"
             }`}
             onClick={() => setCategoryFilter("all")}
           >
@@ -235,19 +235,19 @@ export default function InterviewPage() {
               const answer = answerMap[question.id] || question.suggested_answer;
               return (
                 <motion.div key={question.id} variants={item}>
-                  <Card className="bauhaus-panel rounded-none bg-white shadow-none">
+                  <Card className="bauhaus-panel">
                     <CardBody className="space-y-4 p-5">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <p className="text-xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">{question.question_text}</p>
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <Chip size="sm" variant="flat" className={cfg.chipClass}>{cfg.label}</Chip>
-                            <Chip size="sm" variant="flat" className="border border-[var(--border-strong)] bg-white font-semibold text-[var(--foreground)]">
+                            <Chip size="sm" variant="flat" className="bg-[var(--ou-bg-surface-solid)] font-semibold text-[var(--ou-text-primary)]">
                               {roundConfig[question.round_type] || question.round_type}
                             </Chip>
                             <span className="text-xs font-bold tracking-[0.08em] text-[var(--foreground-muted)]" aria-label={`难度 ${question.difficulty}/5`}>{difficultyStars(question.difficulty)}</span>
                             {question.frequency > 1 && (
-                              <Chip size="sm" variant="flat" className="border border-[var(--border-strong)] bg-[var(--status-blush)] font-semibold text-[#b7483c]">
+                              <Chip size="sm" variant="flat" className="bg-[var(--status-blush)] font-semibold text-[var(--ou-tone-red-text)]">
                                 出现 {question.frequency} 次
                               </Chip>
                             )}
@@ -265,7 +265,7 @@ export default function InterviewPage() {
                       </div>
 
                       {answer && (
-                        <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                        <div className="bauhaus-panel-sm bg-[var(--ou-bg-control)] p-4">
                           <div className="mb-2 flex items-center gap-1 text-xs font-semibold tracking-[0.04em] text-[var(--foreground-muted)]">
                             <MessageSquare size={12} />
                             推荐回答思路
@@ -282,7 +282,7 @@ export default function InterviewPage() {
             })
           ) : (
             <motion.div variants={item}>
-              <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-[var(--foreground)] shadow-none">
+              <Card className="bauhaus-panel rounded-none bg-[var(--ou-bg-control)] text-[var(--ou-text-primary)] shadow-none">
                 <CardBody className="p-10 text-center">
                   <GraduationCap size={54} className="mx-auto text-[var(--foreground-muted)]" aria-hidden="true" />
                   <p className="mt-4 text-lg font-semibold">题库为空</p>
@@ -301,7 +301,7 @@ export default function InterviewPage() {
           {experiences && experiences.length > 0 ? (
             experiences.map((experience) => (
               <motion.div key={experience.id} variants={item}>
-                <Card className="bauhaus-panel rounded-none bg-white shadow-none">
+                <Card className="bauhaus-panel">
                   <CardBody className="space-y-4 p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
@@ -336,7 +336,7 @@ export default function InterviewPage() {
             ))
           ) : (
             <motion.div variants={item}>
-              <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-[var(--foreground)] shadow-none">
+              <Card className="bauhaus-panel rounded-none bg-[var(--ou-bg-control)] text-[var(--ou-text-primary)] shadow-none">
                 <CardBody className="p-10 text-center">
                   <GraduationCap size={54} className="mx-auto text-[var(--foreground-muted)]" aria-hidden="true" />
                   <p className="mt-4 text-lg font-semibold">暂无经验</p>
@@ -350,7 +350,7 @@ export default function InterviewPage() {
 
       <Modal isOpen={isCollectOpen} onClose={onCollectClose} size="2xl" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="flex items-center gap-2 border-b border-[var(--border-strong)]/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">
+          <ModalHeader className="flex items-center gap-2 border-b border-[var(--ou-line-control)]/12 bg-[var(--ou-bg-control)] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">
             <GraduationCap size={20} aria-hidden="true" />
             粘贴面经原文
           </ModalHeader>
@@ -383,11 +383,11 @@ export default function InterviewPage() {
               onValueChange={setNewRawText}
               classNames={bauhausFieldClassNames}
             />
-            <div className="bauhaus-panel-sm bg-white px-4 py-3 text-xs font-medium text-[var(--foreground-muted)]">
+            <div className="bauhaus-panel-sm bg-[var(--ou-bg-surface-solid)] px-4 py-3 text-xs font-medium text-[var(--ou-text-secondary)]">
               提交后 AI 会自动提炼面试问题，通常耗时 10-20 秒。
             </div>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+          <ModalFooter className="px-6 py-5">
             <Button variant="light" onPress={onCollectClose} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
               取消
             </Button>

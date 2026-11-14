@@ -3,6 +3,7 @@
 import { CalendarCheck, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { type MouseEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { Select } from "@/components/ui";
 import { EVENT_KIND, type Event, type EventKind, type Job, write } from "@/lib/core";
 import { DAY_PX, SCALE_NAME, barLabel, barOf, dragDays, fromDay, rangeOf, shiftAt, ticks, today, type Scale } from "@/lib/jobGantt";
 import { STATUS_TONE, groupJobs, type ViewConfig } from "@/lib/jobView";
@@ -270,6 +271,11 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
   );
 }
 
+const KIND_OPTIONS = (Object.keys(EVENT_KIND) as EventKind[]).map((k) => ({ value: k, label: EVENT_KIND[k] }));
+// Radix 的下拉内容挂在 body 上（portal），焦点进出它时 relatedTarget 不在表单里、但 React 事件仍会冒泡回表单。
+// 焦点去了 / 来自这类浮层都不算「点别处」；浮层关掉时 Radix 会把焦点还给触发器（在表单里）。
+const inFloating = (el: EventTarget | null) => el instanceof Element && !!el.closest("[data-radix-popper-content-wrapper]");
+
 // 点空白处弹出的小表单：类型 + 标题，日期就是点的那天；回车保存，Esc 或点别处取消。
 function AddEvent({ jobId, day, left, onDone }: { jobId: number; day: number; left: number; onDone: () => void }) {
   const [title, setTitle] = useState("");
@@ -283,12 +289,13 @@ function AddEvent({ jobId, day, left, onDone }: { jobId: number; day: number; le
       className="absolute z-30 flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-opaque)] p-1 text-[12px] shadow-sm"
       style={{ left, top: 3, height: ROW - 6 }}
       onSubmit={(e) => { e.preventDefault(); void save(); }}
-      onKeyDown={(e) => { if (e.key === "Escape") onDone(); }}
-      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onDone(); }}>
+      onKeyDown={(e) => { if (e.key === "Escape" && !e.defaultPrevented) onDone(); }}
+      onBlur={(e) => {
+        if (inFloating(e.target) || inFloating(e.relatedTarget)) return;
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onDone();
+      }}>
       <span className="shrink-0 whitespace-nowrap px-1 tabular-nums text-[var(--foreground-muted)]">{fromDay(day).slice(5)}</span>
-      <select value={kind} onChange={(e) => setKind(e.target.value as EventKind)} aria-label="事项类型" className="bg-transparent">
-        {(Object.keys(EVENT_KIND) as EventKind[]).map((k) => <option key={k} value={k}>{EVENT_KIND[k]}</option>)}
-      </select>
+      <Select size="sm" aria-label="事项类型" value={kind} options={KIND_OPTIONS} onValueChange={(k) => setKind(k as EventKind)} className="shrink-0" />
       <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="事项标题，回车保存" aria-label="事项标题"
         className="w-44 bg-transparent outline-none" />
     </form>

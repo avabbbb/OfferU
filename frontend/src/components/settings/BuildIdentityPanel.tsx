@@ -56,7 +56,7 @@ export default function BuildIdentityPanel() {
       : "未知";
 
   return (
-    <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5" data-testid="build-identity-panel">
+    <section className="ou-sheet p-5" data-testid="build-identity-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">应用版本与运行身份</h2>

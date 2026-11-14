@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { Select } from "@/components/ui";
 import { apiUrl, MEMORY_KIND, MEMORY_MODE, type Memory, type MemoryKind, type Profile, tool, upload, useTool, write } from "@/lib/core";
 
 const FIELDS: Array<[Exclude<keyof Profile, "id">, string, string]> = [
@@ -9,7 +10,7 @@ const FIELDS: Array<[Exclude<keyof Profile, "id">, string, string]> = [
   ["school", "学校", "复旦大学"], ["major", "专业", "计算机科学与技术"], ["degree", "学历", "本科"], ["grad_year", "毕业年份", "2026"],
   ["target", "求职方向", "后端开发 / 产品经理"],
 ];
-const input = "w-full rounded-md bg-transparent px-2 py-1 text-[13.5px] text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-muted)] placeholder:opacity-50 hover:bg-[var(--surface)] focus:bg-[var(--surface)]";
+const input = "w-full rounded-md bg-transparent px-2 py-1 text-[length:var(--ou-type-body)] text-[var(--ou-text-primary)] outline-none placeholder:text-[var(--ou-text-secondary)] placeholder:opacity-50 hover:bg-[var(--ou-bg-surface)] focus:bg-[var(--ou-bg-surface)]";
 
 /** 失焦就存；空字符串等于删掉这个字段。 */
 function Field({ value, onSave, ...rest }: { value?: string; onSave: (v: string | null) => void } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value">) {
@@ -29,6 +30,9 @@ function Body({ value, onSave }: { value?: string; onSave: (v: string | null) =>
     className={`${input} resize-none overflow-hidden leading-6 text-[var(--foreground-muted)] focus:text-[var(--foreground)]`} />;
 }
 
+// Radix Select 不接受空字符串作值，用一个占位值表示「未填」。
+const NO_MODE = "__none";
+
 function MemoryItem({ memory }: { memory: Memory }) {
   const save = (data: Record<string, unknown>) => void write("save", { type: "memory", id: memory.id, data });
   return (
@@ -36,22 +40,20 @@ function MemoryItem({ memory }: { memory: Memory }) {
       <div className="flex items-center gap-2">
         <Field value={memory.title} placeholder="标题，比如：字节跳动 | 后端开发实习生" aria-label="经历标题" className="font-medium" onSave={(title) => save({ title })} />
         {MEMORY_MODE[memory.kind] && (
-          <select value={memory.mode ?? ""} aria-label="性质" onChange={(e) => save({ mode: e.target.value || null })}
-            className="shrink-0 rounded-md bg-transparent px-1 py-1 text-[12.5px] text-[var(--foreground-muted)] outline-none hover:bg-[var(--surface)] focus:bg-[var(--surface)]">
-            <option value="">性质未填</option>
-            {MEMORY_MODE[memory.kind]?.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
+          <Select size="sm" className="shrink-0" aria-label="性质" value={memory.mode || NO_MODE}
+            onValueChange={(mode) => save({ mode: mode === NO_MODE ? null : mode })}
+            options={[{ value: NO_MODE, label: "性质未填" }, ...(MEMORY_MODE[memory.kind] ?? []).map((m) => ({ value: m, label: m }))]} />
         )}
         <Field value={memory.start} placeholder="开始" aria-label="开始时间" className="!w-20 text-right text-[12.5px] text-[var(--foreground-muted)]" onSave={(start) => save({ start })} />
         <span className="text-[var(--foreground-muted)]">–</span>
         <Field value={memory.end} placeholder="结束" aria-label="结束时间" className="!w-20 text-[12.5px] text-[var(--foreground-muted)]" onSave={(end) => save({ end })} />
         {memory.confirmed === false && (
           <>
-            <span className="shrink-0 text-[12px] text-amber-600" title="确认前不会写进定制简历">
+            <span className="shrink-0 text-[length:var(--ou-type-xs)] text-[var(--ou-tone-yellow-text)]" title="确认前不会写进定制简历">
               待确认{memory.source === "agent" ? " · 来源：Agent 推断" : ""}
             </span>
             <button type="button" onClick={() => save({ confirmed: true })}
-              className="shrink-0 rounded-md border border-[var(--border-strong)] px-2 py-0.5 text-[12px] text-[var(--foreground)] hover:bg-[var(--surface-muted)]">确认</button>
+              className="shrink-0 ou-button ou-button-secondary ou-button-sm">确认</button>
           </>
         )}
         <button type="button" onClick={() => void write("delete", { type: "memory", id: memory.id })}
@@ -68,7 +70,7 @@ type Finding = {
   proposed: { type: "memory"; id: number; data: Record<string, unknown> } | null;
 };
 const FINDING_KIND: Record<Finding["kind"], string> = { conflict: "说法冲突", status_drift: "进度对不上", duplicate: "可能重复", stale_gap: "待补太久" };
-const small = "shrink-0 rounded-md border border-[var(--border-strong)] px-2 py-0.5 text-[12px] text-[var(--foreground)] hover:bg-[var(--surface-muted)]";
+const small = "shrink-0 ou-button ou-button-secondary ou-button-sm";
 
 /** 待核对：reconcile_memory 找出的前后对不上的地方。采纳走 save（进最近改动，可撤销）；忽略只在本页隐藏。 */
 function Reconcile() {
@@ -79,12 +81,12 @@ function Reconcile() {
   if (!items.length) return null;
   return (
     <section>
-      <div className="border-b border-[var(--border)] pb-1.5"><h2 className="text-[13px] font-medium text-[var(--foreground)]">待核对</h2></div>
-      <ul className="divide-y divide-[var(--border)]">
+      <div className="border-b border-[var(--ou-line-separator)] pb-1.5"><h2 className="text-[length:var(--ou-type-sm)] font-medium text-[var(--ou-text-primary)]">待核对</h2></div>
+      <ul className="divide-y divide-[var(--ou-line-separator)]">
         {items.map((f) => (
           <li key={f.key} className="space-y-1 py-2">
             <div className="flex items-center gap-2 text-[13px]">
-              <span className="shrink-0 text-[12px] text-amber-600">{FINDING_KIND[f.kind]}</span>
+              <span className="shrink-0 text-[length:var(--ou-type-xs)] text-[var(--ou-tone-yellow-text)]">{FINDING_KIND[f.kind]}</span>
               <span className="flex-1 text-[var(--foreground)]">{f.suggestion}</span>
               {f.proposed && (
                 <button type="button" className={small} title={String(f.proposed.data.body ?? "")}
@@ -149,7 +151,7 @@ export default function ProfilePage() {
           <p className="mt-1 text-[13.5px] text-[var(--foreground-muted)]">简历、网申、面试都从这里取。Agent 听到你的新经历，也会直接记在这里。</p>
         </div>
         <button type="button" onClick={() => fileRef.current?.click()} style={{ fontSize: 13 }}
-          className="shrink-0 rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-[var(--surface)]">导入旧简历</button>
+          className="shrink-0 ou-button ou-button-secondary ou-button-sm">导入旧简历</button>
         <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importResume(f); e.target.value = ""; }} />
       </header>
       {importing && <p className="-mt-6 flex flex-wrap items-center gap-3 text-[13px] text-[var(--foreground-muted)]">{importing}{lastImport.length > 0 && <button type="button" onClick={() => void undoImport()} className="underline">撤销这次导入</button>}</p>}
@@ -164,7 +166,7 @@ export default function ProfilePage() {
           ))}
         </dl>
         <button type="button" onClick={() => photoRef.current?.click()} aria-label="证件照"
-          className={`flex h-[112px] w-[84px] shrink-0 items-center justify-center overflow-hidden rounded-md ${profile.photo ? "" : "border border-dashed border-[var(--border)]"} text-[12px] text-[var(--foreground-muted)] hover:border-[var(--foreground-muted)]`}>
+          className={`flex h-[112px] w-[84px] shrink-0 items-center justify-center overflow-hidden rounded-md ${profile.photo ? "" : "border border-dashed border-[var(--ou-line-separator)]"} text-[length:var(--ou-type-xs)] text-[var(--ou-text-secondary)] hover:border-[var(--foreground-muted)]`}>
           {profile.photo ? <img src={apiUrl(`/api/files/${profile.photo}`)} alt="证件照" className="h-full w-full object-cover" /> : "证件照"}
         </button>
         <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" hidden
@@ -178,12 +180,12 @@ export default function ProfilePage() {
         if (!items.length && (kind === "preference" || kind === "note")) return null;
         return (
           <section key={kind}>
-            <div className="flex items-baseline justify-between border-b border-[var(--border)] pb-1.5">
+            <div className="flex items-baseline justify-between border-b border-[var(--ou-line-separator)] pb-1.5">
               <h2 className="text-[13px] font-medium text-[var(--foreground)]">{MEMORY_KIND[kind]}</h2>
               <button type="button" className="text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
                 onClick={() => void write("save", { type: "memory", data: { kind, title: `新的${MEMORY_KIND[kind]}` } })}>添加</button>
             </div>
-            {items.length ? <ul className="divide-y divide-[var(--border)]">{items.map((m) => <MemoryItem key={m.id} memory={m} />)}</ul>
+            {items.length ? <ul className="divide-y divide-[var(--ou-line-separator)]">{items.map((m) => <MemoryItem key={m.id} memory={m} />)}</ul>
               : <p className="py-2 text-[13px] text-[var(--foreground-muted)]">还没有。</p>}
           </section>
         );

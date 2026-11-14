@@ -1,13 +1,13 @@
 // 正文的存储格式：带轻量标记的纯文本，和后端 backend/app/core/resume.py 的 _text_html / _inline 一一对应。
 // 一行一块：行首每 2 个空格缩进一级（最多 4 级），接着可选 {center} / {right} / {justify} 对齐，再可选 "- " / "1. " 列表；
-// 行内 **粗体**、*斜体*、[文字](https://链接)。编辑框（components/resume/RichText）显示成 HTML，改完再从 DOM 读回这种标记。
+// 行内 **粗体**、*斜体*、++下划线++、[文字](https://链接)。编辑框（components/resume/RichText）显示成 HTML，改完再从 DOM 读回这种标记。
 // 前后端共用用例在 richMarkup.cases.json，vitest 和 backend/tests/test_rich_markup_cases.py 都跑。
 
 export type Align = "" | "center" | "right" | "justify";
 export type Line = { indent: number; align: Align; list: "" | "ul" | "ol"; text: string };
 
 // 只用到 DOM 的这一小部分，单测可以直接拼假节点。
-type StyleLike = { textAlign?: string; marginLeft?: string; paddingLeft?: string; fontWeight?: string; fontStyle?: string };
+type StyleLike = { textAlign?: string; marginLeft?: string; paddingLeft?: string; fontWeight?: string; fontStyle?: string; textDecorationLine?: string };
 export type NodeLike = {
   nodeType: number; nodeName: string; nodeValue: string | null; childNodes: ArrayLike<NodeLike>;
   getAttribute?: (name: string) => string | null; style?: StyleLike;
@@ -43,9 +43,11 @@ const BOLD = /\*\*(.+?)\*\*/g;
 // 后行断言用构造函数写，免得 tsc 按 target 卡正则语法。
 const ITALIC = new RegExp("(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)", "g");
 const LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+// 下划线 ++词++：前面不能紧挨字母数字或 +（「C++、C++11」不算），里面两头不能是空白。和后端 resume._UNDER 一致。
+const UNDER = new RegExp("(?<![\\w+])\\+\\+(?=\\S)(.+?)(?<=\\S)\\+\\+(?![\\w+])", "g");
 
 export function inlineHtml(text: string): string {
-  return esc(text).replace(BOLD, "<strong>$1</strong>").replace(ITALIC, "<em>$1</em>")
+  return esc(text).replace(BOLD, "<strong>$1</strong>").replace(ITALIC, "<em>$1</em>").replace(UNDER, "<u>$1</u>")
     .replace(LINK, (_m, label: string, url: string) => '<a href="' + url.replace(/"/g, "%22") + '">' + label + "</a>");
 }
 
@@ -86,7 +88,7 @@ export function markupToHtml(text: string): string {
 // 去掉所有标记，给收起的卡片摘要用。
 export function plainText(text: string): string {
   return text.split("\n")
-    .map((raw) => parseLine(raw).text.replace(LINK, "$1").replace(BOLD, "$1").replace(ITALIC, "$1"))
+    .map((raw) => parseLine(raw).text.replace(LINK, "$1").replace(BOLD, "$1").replace(ITALIC, "$1").replace(UNDER, "$1"))
     .join("\n");
 }
 
@@ -113,7 +115,7 @@ function mark(inner: string, m: string): string {
 }
 
 // 只含文字和行内标签的节点 → 一段行内标记；里面有换行或块就返回 null，交给 walk 拆行。
-function inline(node: NodeLike, bold = false, italic = false): string | null {
+function inline(node: NodeLike, bold = false, italic = false, under = false): string | null {
   if (node.nodeType === 3) return (node.nodeValue ?? "").replace(/\u00a0/g, " ").replace(/[\r\n]+/g, " ");
   if (!isEl(node)) return "";
   const n = name(node);
@@ -121,12 +123,14 @@ function inline(node: NodeLike, bold = false, italic = false): string | null {
   const weight = node.style?.fontWeight ?? "";
   const b = !bold && (n === "B" || n === "STRONG" || weight === "bold" || parseInt(weight, 10) >= 600);
   const i = !italic && (n === "I" || n === "EM" || node.style?.fontStyle === "italic");
+  const u = !under && (n === "U" || (node.style?.textDecorationLine ?? "").includes("underline"));
   let out = "";
   for (const child of Array.from(node.childNodes)) {
-    const s = inline(child, bold || b, italic || i);
+    const s = inline(child, bold || b, italic || i, under || u);
     if (s === null) return null;
     out += s;
   }
+  if (u) out = mark(out, "++");
   if (i) out = mark(out, "*");
   if (b) out = mark(out, "**");
   const href = n === "A" ? node.getAttribute?.("href") ?? "" : "";

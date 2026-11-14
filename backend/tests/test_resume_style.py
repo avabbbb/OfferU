@@ -32,3 +32,17 @@ def test_resume_style_and_render(tmp_path, monkeypatch):
     legacy = resume.resolve_style(None, "photo")
     assert legacy["template"] == "clear" and legacy["photo"] is True
     assert resume.resolve_style({"template": "compact"})["margin"] == {"top": 10, "right": 12, "bottom": 10, "left": 12}
+
+
+def test_render_underline_end_to_end(tmp_path, monkeypatch):
+    """编辑器格式条的下划线存成 ++词++：经 save 存进 doc.resume、再走预览接口，渲染成 <u>；C++ 这种写法不误伤。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    resume = {"basics": {"name": "林同学"}, "sections": [{"type": "skills", "title": "专业技能", "items": [{"text": "熟悉 ++Python++ 和 C++、C++11"}]}]}
+    with TestClient(app, base_url="http://127.0.0.1:8766") as client:
+        doc = client.post("/api/tools/save", json={"type": "doc", "data": {"kind": "resume", "title": "主简历", "resume": resume}}).json()["record"]
+        page = client.post("/api/resume/render", json={"resume": doc["resume"], "style": {}}).text
+    assert "熟悉 <u>Python</u> 和 C++、C++11" in page

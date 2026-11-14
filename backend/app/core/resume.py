@@ -78,6 +78,8 @@ def css(template: str) -> str:
 
 _ITALIC = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
 _LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
+# 下划线 ++词++：前面不能紧挨字母数字或 +（「C++、C++11」不算），两头不能是空白；ASCII 让 \w 和前端 JS 一样只认英文数字。
+_UNDER = re.compile(r"(?<![\w+])\+\+(?=\S)(.+?)(?<=\S)\+\+(?![\w+])", re.ASCII)
 _LINE = re.compile(r"^( *)(?:\{(center|right|justify)\} )?(- |\d+\. )?")
 
 
@@ -90,8 +92,9 @@ def parse_line(raw: str) -> dict[str, Any]:
 
 
 def _inline(text: str) -> str:
-    """转义，行内认加粗、斜体和 [文字](链接)。"""
+    """转义，行内认加粗、斜体、++下划线++ 和 [文字](链接)。"""
     out = _ITALIC.sub(r"<em>\1</em>", _BOLD.sub(r"<strong>\1</strong>", html.escape(text, quote=False)))
+    out = _UNDER.sub(r"<u>\1</u>", out)
     return _LINK.sub(lambda m: f'<a href="{m.group(2).replace(chr(34), "%22")}">{m.group(1)}</a>', out)
 
 

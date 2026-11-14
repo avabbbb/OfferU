@@ -7,6 +7,7 @@ import { type DragEvent, type ReactNode, useState } from "react";
 import { JobTag, TagPicker } from "@/components/jobs/JobPickers";
 import { StatusPill } from "@/components/jobs/JobsTable";
 import { liftDragImage } from "@/lib/dragLift";
+import { useScrollEdges } from "@/lib/scrollEdges";
 import { STATUS_TONE } from "@/lib/jobView";
 import { type Event, JOB_STATUS, type Job, type JobStatus, useTool, when, write } from "@/lib/core";
 
@@ -29,6 +30,7 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
   const [over, setOver] = useState<string | null>(null);
   const [showEnded, setShowEnded] = useState(false);
   const [error, setError] = useState("");
+  const trackRef = useScrollEdges<HTMLDivElement>("x");
   if (!jobs) return null;
   const all = jobs.items;
 
@@ -148,7 +150,7 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
           </button>
         )}
       </div>
-      <div className="ou-kanban-track">
+      <div ref={trackRef} className="ou-kanban-track ou-scroll-fade-x">
         {OPEN.map((s) => column(s, shown.filter((job) => job.status === s).sort(byScore), <StatusPill status={s} />, s))}
         {showEnded && column("ended", ended, <span className={muted}>已结束</span>)}
       </div>

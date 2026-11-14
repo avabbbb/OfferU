@@ -18,7 +18,7 @@ export function SettingsRow({
       type="button"
       data-testid={"settings-row-" + rowKey}
       onClick={onOpen}
-      className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[var(--surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--border-strong)]"
+      className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[var(--ou-bg-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--border-strong)]"
     >
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold text-[var(--foreground)]">{title}</span>

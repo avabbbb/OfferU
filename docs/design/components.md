@@ -28,13 +28,34 @@
 
 ## Select（Radix Select）
 
-替代所有原生 `<select>`。触发器同 Input；选项面板是 L3 浮层，至少与触发器同宽；选项可带图标和一行描述（例如模型预设：图标 + 名称 + 「Base URL 自动填好」）。
+替代所有原生 `<select>`。触发器同 Input；选项面板是 L3 浮层，至少与触发器同宽；选项可带图标和一行描述（例如模型预设：图标 + 名称 + 「Base URL 自动填好」）。 支持 `disabled`（整个触发器禁用，如 Agent 正在改写时的「按哪个岗位改」）。
+
+## Switch（开关）
+
+`<Switch checked onCheckedChange aria-label>`：`role="switch"` 的原生按钮（空格 / 回车切换），胶囊轨道 + 白圆钮；开 = 墨黑轨道（同主按钮那支墨，不用彩色），关 = 半透明墨（`--ou-line-control`）；圆钮弹簧滑动，reduced-motion 下不动画；禁用 45% 透明（如简历「基础信息」锁定常开）。只表示「显示 / 启用」这类即时生效的二元状态；要提交的选项用勾选。必须有 `aria-label` 或可见文字。
+
+看：`#/resume` 左栏「我的模块 / 更多模块」。
+
+## DatePicker（`components/ui/DatePicker.tsx`，Radix Popover）
+
+替代原生 `<input type="date">` / `type="datetime-local"`（系统弹层不跟玻璃风格、深色下发白、中文格式不统一）。值的格式与原生一致：`YYYY-MM-DD`，`withTime` 时 `YYYY-MM-DDTHH:mm`，空串 = 未填，可直接替换。
+
+- 触发器同 Input（`size="sm"` 是 28px 胶囊，同 Select）：日历图标 + 「11月16日 周一 14:00」，不是今年才带年份；未填显示占位（默认「选日期」/「选日期和时间」）。
+- 浮层同 Popover 的浅色玻璃：「2026 年 11 月」+ ‹ ›（`.ou-button-group`）→ 周一开头的 6×7 日期格（`.ou-date-day`，圆形；非本月浅色；**今天橙字**、选中墨黑实心，今天又被选中时橙底墨字——与周日历一致）→ `withTime` 时「时间」一行两个 `Select`（时 00–23、分 00/15/30/45）→ 底部「清除」「今天」（ghost），`withTime` 再加「完成」。
+- 只选日期时点一下就关；带时间时选日期不关，接着调时间。键盘：打开后焦点在当前日期，←→ 一天、↑↓ 一周、PageUp / PageDown 换月，回车选中，Esc 关并把焦点还给触发器。
+- 纯逻辑 `parseDateValue / monthGrid / formatDateValue` 有 vitest（`ui.test.ts`）。
+- 表格单元格就地编辑：`defaultOpen` 挂载即打开，`onOpenChange(false)`（选完、清除、Esc、点别处都会触发）时退出编辑态；值在 `onChange` 里即存，不等失焦。
+- 放进自己处理 Esc 的容器（抽屉、行内表单）时，容器先看 `event.defaultPrevented`：Radix 关浮层时会 `preventDefault`，这样 Esc 只关浮层。行内表单「失焦即关」要放过焦点进出 `[data-radix-popper-content-wrapper]`（浮层 portal 在 body 上，但 React 事件仍冒泡回表单）。
+
+看：今天页「要做的事」底部「加一件事」的时间胶囊；`#/jobs?view=calendar` 右上 + →「时间」；面试复盘页的「面试日期」；岗位表格「投递日」双击；岗位详情抽屉「投递日」。
 
 ## Menu（Radix DropdownMenu）
 
 「更多」、行操作、状态切换。v3.1 是**浅色玻璃**（参考 Inspora · Mona「feature menu」改成浅色）：面板 `--ou-glass-menu`（白 70%）+ `--ou-glass-blur-heavy`（40px）模糊、`--ou-radius-menu`（22px）、`--ou-elev-menu`。每项是一行 `--ou-menu-row`（40px）胶囊 = 16px 图标 + 文字 + 可选 `description`（第二行小字）+ 可选快捷键；层级只靠同一支墨色的透明度（`--ou-alpha-*`），不靠字重。悬停 / 键盘高亮 = 白胶囊浮起 + 文字右挪 `--ou-nudge` + 右侧小箭头淡入（`--ou-ease-spring-soft`）。`{ heading }` 项是分组小标题；危险项放最后、红字（`--ou-tone-red-text`），中间用 `"separator"`。可选 `label` 作为浮层的 `aria-label`。
 
 看：`#/jobs` 任一行的「…」、日历色块右上「…」、Agent 头部「…」。
+
+可选 `checked`：单选组（Agent 输入框的模型 / 思考强度 / 模式）里当前那一项，行尾一个对勾，读屏读作 `menuitemradio`；带 `description` 的两行项上下各留 4px。
 
 可选 `side`，以及受控的 `open / onOpenChange`：调用方自己决定何时打开。例：简历要点的「⋮⋮」把手——按下后移动是拖动排序，没移动松手才开菜单；触发器的 `onPointerDown` 里 `preventDefault()` 就能跳过 Radix 默认的「按下即开」，键盘 Enter / Space 仍由 Radix 打开。可选 `onCloseAutoFocus`：某一项要把焦点放到别处（如「在下面加一条」后的新块）时在这里 `preventDefault()`，否则关菜单会把焦点还给触发器。
 
@@ -47,6 +68,7 @@
 参考 Inspora · kian bazza「Morphing braille loader」。
 
 - **LabelPicker**：标签（多选）或状态（`multiple={false}`，点一下选中并关闭）选择器。浅色玻璃浮层，顶上一行搜索（`placeholder` 默认「搜索或创建标签…」）；下面一行一个「色点 + 名字」（`.ou-label-row`），悬停 / 方向键高亮是浅灰圆角底；勾选框（`--ou-check-size` 18px、`--ou-radius-check`）只在悬停或已选时出现，已选 = 墨黑实心 + 白勾。传了 `onCreate` 才出现「创建标签：xxx」行；返回的 Promise 结束前整块浮层变淡（`data-busy`）。选项颜色走 `toneOf()`，与表格 / 看板 / 甘特同色。
+- 列表放不下时底部渐隐（`.ou-scroll-fade-y`，`--ou-scroll-fade-y` 2rem），滚到底渐隐消失，不再硬切半行。
 - **Tag**：`<Tag tone>` = 色点（`--ou-tag-dot` 8px）+ 名字的 chip（`.ou-tag`），和选择器里的行一个样子；传 `onClick` 时是按钮。
 - **BrailleLoader**：`state = idle | creating | created`，同一个字形位置上 标签图标 → 2×4 盲文点阵轮流亮 → 对勾画出；头部动词同步「创建 → 创建中 → 已创建」。`prefers-reduced-motion` 下不轮播。
 
@@ -82,7 +104,12 @@ L2：白 84%、**无描边**、`--ou-elev-2`（0 12 32 / 10%）、18px 圆角；
 | `.ou-button-group` | 一串圆形 ghost 钮的磨砂胶囊 | 岗位工具条 |
 | `.ou-chip` + `.ou-chip-check` | 筛选 chip，空心圆勾选，`aria-pressed` 时填墨黑 | 筛选（待接入） |
 | `.ou-fade-bottom` | 底部渐隐遮罩 | 卡片放不下的文字 |
+| `.ou-scroll-fade-x` / `-y` + `useScrollEdges()`（`lib/scrollEdges.ts`） | 滚动容器边缘渐隐：只在那一侧还有内容时出现（`data-more-start / -end`），滚到头消失；横向尾部宽 `--ou-scroll-fade-x`（5rem），一眼看出还能横滚 | 看板轨道、LabelPicker 列表 |
 | `.ou-jobs-sheet` | 岗位表格的大圆角实白纸 | JobsTable |
+
+## 简历编辑器三栏（v3.1，2026-11-14，参考 offershow）
+
+左栏 `ModuleList`（`.rm-*`：把手 · 名字 · … · Switch，选中白胶囊）· 中 `ResumePreview` · 右栏 `.ou-segment` 标签 + `ModuleEditor`（`.re-item`：条目头「名称 N · 删除 · 虚线 · ↓ ↑」+ `.re-fields` 两列 `Field / Input / Select` + 带常驻格式条的 `RichText toolbar`）/ `StyleTab` / `TemplateTab`；顶栏 `ResumeActions`（保存 · 导出 ▾ 主按钮 · 分享 ▾，菜单都是 `Menu`）。样式在 `styles/resume-editor.css`，规格见 DESIGN.md「简历编辑器」。
 
 ## 文档视图（简历编辑器，v3）
 
@@ -103,7 +130,7 @@ L2：白 84%、**无描边**、`--ou-elev-2`（0 12 32 / 10%）、18px 圆角；
 ## 看板（JobBoard）
 
 - 今天页「投递看板」和岗位页看板是同一个组件。
-- 轨道 `.ou-kanban-track`：横向滚动、按列吸附（proximity），左右出血到页面边缘，右缘渐隐提示还能滚。
+- 轨道 `.ou-kanban-track`：横向滚动、按列吸附（proximity），左右出血到页面边缘。放不下时（开着 Agent 栏、窄窗口）右缘 5rem 渐隐（`.ou-scroll-fade-x`），滚过之后左缘也渐隐，滚到最右边右缘渐隐消失。
 - 列 `.ou-kanban-column`：玻璃底（`--ou-glass-subtle`）、20px 圆角、8px 内边距；`flex: 1 0 0`，在 `--ou-kanban-column-min`（12.5rem）和 `--ou-kanban-column`（≤ 22rem）之间平分宽度——1440×900 下五列完整放下。列头「状态胶囊 + 灰色数量」。
 - 卡片 `.ou-kanban-card` = `.ou-swatch` + 按状态取色（想投灰、已投递蓝、笔试黄、面试橙、offer 绿）；公司 600、岗位 / 元数据用 `--ou-pill-text`；标签是 `Tag`。悬停放大、拖动倾斜同色块。
 - 标签筛选是分段胶囊（`.ou-segment`）；「已结束 N」收起钮在筛选那一行右端，不占轨道宽度。
@@ -126,7 +153,7 @@ Notion 式：整张表放在 20px 圆角的实白纸上（`.ou-jobs-sheet`，L2 
 - **窗格**：`ContextRail` / 专注模式的 `.offeru-focus-agent` 都是 `.ou-glass` 浮动窗格，和左侧侧栏对称（离边 `--ou-pane-inset`、`--ou-radius-panel`）；`xl` 以下是抽屉，层级 `--ou-layer-drawer`，遮罩 `.offeru-rail-scrim`（`--ou-layer-drawer-scrim` + `--ou-scrim`）。
 - **头部一行**（`.agent-head`）：紫色身份小方块（`--ou-tone-purple-*`，紫色只属于 Agent）+「对话标题 ▾」胶囊（展开历史）+ 圆形 ghost 钮「…」（Menu：新对话 / 历史对话 / 外部执行器会话）和「×」收起。标题行下不画分隔线。
 - **空状态**：只有欢迎语时画成问候「今天想让 OfferU 帮你做什么？」+ 一行说明 + 建议胶囊（量化实习、今天要做的事、整理面试邀约、先投哪个），点了直接发。
-- **输入框**（`.agent-composer`，`data-testid="agent-composer"`）：一张 `--ou-radius-composer`（26px）浅色玻璃卡、`--ou-elev-composer`；从上到下 正文 → 附件 → 底栏（方形「+」附件钮、模型 / 模式胶囊、右侧墨黑「发送 ↑」胶囊，没东西可发时 32% 透明度）。聚焦是整卡 `--ou-ring-composer`；拖入文件是整卡紫环 `--ou-ring-agent` + 一行「松开即可添加…」，不用虚线框。回车发送（输入法选词时不发），Shift+Enter 换行。发送时整卡轻压（`data-sent`）；正在跑且没东西可发时，发送键收成 5×5 像素格加载（`.agent-pixel`，格子圆角 `--ou-radius-pixel`，`steps()`，reduced-motion 下静止）。
+- **输入框**（`.agent-composer`，`data-testid="agent-composer"`）：一张 `--ou-radius-composer`（26px）浅色玻璃卡、`--ou-elev-composer`；从上到下 正文 → 附件 → 底栏（方形「+」附件钮、模型 / 模式胶囊——点开是 `Menu`（`side="top"`，模型 + 思考强度一张、模式一张，当前项打勾）、右侧墨黑「发送 ↑」胶囊，没东西可发时 32% 透明度）。聚焦是整卡 `--ou-ring-composer`；拖入文件是整卡紫环 `--ou-ring-agent` + 一行「松开即可添加…」，不用虚线框。回车发送（输入法选词时不发），Shift+Enter 换行。发送时整卡轻压（`data-sent`）；正在跑且没东西可发时，发送键收成 5×5 像素格加载（`.agent-pixel`，格子圆角 `--ou-radius-pixel`，`steps()`，reduced-motion 下静止）。
 - **附件**（`AgentAttachmentTray`）：图片按 1 → 2 → 1+2 → 田字拼贴（`.agent-mosaic`，`--ou-radius-swatch`），悬停出删除钮，超过 4 张显示「+N」；文档是小胶囊，出错时红色内环 `--ou-ring-error`。
 
 看：任意页点右上角 bot 钮（1440 宽约在 (1408, 32)），再在输入框里打字。

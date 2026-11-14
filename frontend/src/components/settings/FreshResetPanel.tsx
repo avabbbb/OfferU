@@ -97,7 +97,7 @@ function FreshResetPanelContent() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="bauhaus-panel-sm space-y-2 bg-[var(--surface-muted)] p-4">
+        <div className="bauhaus-panel-sm space-y-2 bg-[var(--ou-bg-control)] p-4">
           <p className="text-sm font-semibold">当前数据位置</p>
           <p className="break-all font-mono text-xs" data-testid="fresh-reset-data-root">
             {loading ? "正在读取…" : identity?.data_root || "未知；无法确认安全清理范围"}
@@ -112,13 +112,13 @@ function FreshResetPanelContent() {
             Profile、岗位、简历、投递、面试、待确认的职业建议和后台任务；OfferU 内的对话/Agent 执行记录、运行文件、导出物及旧岗位/简历搜索索引。
           </p>
         </div>
-        <div className="bauhaus-panel-sm space-y-2 bg-[var(--surface-muted)] p-4">
+        <div className="bauhaus-panel-sm space-y-2 bg-[var(--ou-bg-control)] p-4">
           <p className="text-sm font-semibold">保留对象</p>
           <p className="text-xs leading-relaxed">
             本地配置、系统钥匙串与模型密钥、连接账号元数据、已安装 Skill、OfferU 数据目录外的源简历和外部 Agent Memory、审计及全部备份。
           </p>
         </div>
-        <div className="bauhaus-panel-sm space-y-2 bg-[var(--surface-muted)] p-4">
+        <div className="bauhaus-panel-sm space-y-2 bg-[var(--ou-bg-control)] p-4">
           <p className="text-sm font-semibold">恢复方式</p>
           <p className="text-xs leading-relaxed">
             执行前自动创建 SQLite 一致性备份，并把受管文件与 Agent session 一并归档；之后可在数据安全区选择备份恢复。

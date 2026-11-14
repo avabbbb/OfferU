@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mic, Plus, Square, Trash2, Upload, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { DatePicker } from "@/components/ui";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
   createReview,
@@ -80,7 +81,7 @@ function QuestionBlock({ index, item, onChange, onRemove, practiceHref }: { inde
     </div>
   );
   return (
-    <li className="group border-t border-[var(--border)] py-4 first:border-t-0" data-testid="review-question">
+    <li className="group border-t border-[var(--ou-line-separator)] py-4 first:border-t-0" data-testid="review-question">
       <div className="flex items-start gap-3">
         <span className="w-5 shrink-0 pt-[2px] text-[13px] tabular-nums text-[var(--foreground-faint)]">{index + 1}</span>
         <div className="min-w-0 flex-1">
@@ -93,9 +94,9 @@ function QuestionBlock({ index, item, onChange, onRemove, practiceHref }: { inde
         </div>
         <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
           {practiceHref && item.question.trim() && (
-            <Link href={practiceHref} className="rounded-md px-2 py-1 text-[12.5px] text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]">练这题</Link>
+            <Link href={practiceHref} className="rounded-md px-2 py-1 text-[length:var(--ou-type-pill)] text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]">练这题</Link>
           )}
-          <button type="button" onClick={onRemove} aria-label={`删除第 ${index + 1} 题`} className="grid h-7 w-7 place-items-center rounded-md text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"><X size={14} /></button>
+          <button type="button" onClick={onRemove} aria-label={`删除第 ${index + 1} 题`} className="grid h-7 w-7 place-items-center rounded-md text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]"><X size={14} /></button>
         </div>
       </div>
     </li>
@@ -167,9 +168,9 @@ function TranscriptPanel({ transcript, onTranscript, onQuestions }: { transcript
     }
   };
 
-  const quiet = "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-40";
+  const quiet = "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[length:var(--ou-type-sm)] text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)] disabled:opacity-40";
   return (
-    <section className="rounded-xl border border-[var(--border)] px-4 py-3" data-testid="review-transcript">
+    <section className="ou-sheet px-4 py-3" data-testid="review-transcript">
       <div className="flex flex-wrap items-center gap-1">
         <span className="mr-2 text-[13px] font-medium text-[var(--foreground)]">从录音整理</span>
         {recording ? (
@@ -185,7 +186,7 @@ function TranscriptPanel({ transcript, onTranscript, onQuestions }: { transcript
         {busy === "transcribe" && <span className="text-[12.5px] text-[var(--foreground-muted)]">正在转写…</span>}
       </div>
       {open && (
-        <div className="mt-3 border-t border-[var(--border)] pt-3">
+        <div className="mt-3 border-t border-[var(--ou-line-separator)] pt-3">
           <textarea
             aria-label="面试原文"
             value={transcript}
@@ -195,7 +196,7 @@ function TranscriptPanel({ transcript, onTranscript, onQuestions }: { transcript
           />
           <div className="flex items-center justify-between gap-3">
             <p className="text-[12px] text-[var(--foreground-faint)]">录音转完文字就删除，只保留原文。</p>
-            <button type="button" onClick={extract} disabled={!transcript.trim() || Boolean(busy)} className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-[13px] font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)] disabled:opacity-40" data-testid="review-extract">
+            <button type="button" onClick={extract} disabled={!transcript.trim() || Boolean(busy)} className="ou-button ou-button-secondary ou-button-sm disabled:opacity-40" data-testid="review-extract">
               {busy === "extract" ? "正在拆题…" : "拆成题目"}
             </button>
           </div>
@@ -224,8 +225,8 @@ function RejectPrompt({ review, onDone }: { review: InterviewReview; onDone: () 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]" data-testid="review-reject-prompt">
       <span className="text-[var(--foreground)]">要把投递也标成未通过吗？</span>
-      <button type="button" onClick={confirm} disabled={state === "busy"} className="rounded-md border border-[var(--border-strong)] px-2.5 py-1 font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)] disabled:opacity-40">标成未通过</button>
-      <button type="button" onClick={onDone} className="rounded-md px-2.5 py-1 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)]">不用</button>
+      <button type="button" onClick={confirm} disabled={state === "busy"} className="ou-button ou-button-secondary ou-button-sm disabled:opacity-40">标成未通过</button>
+      <button type="button" onClick={onDone} className="rounded-md px-2.5 py-1 text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)]">不用</button>
       {error && <span className="text-[var(--danger,#b42318)]">{error}</span>}
     </div>
   );
@@ -250,18 +251,18 @@ function Editor({ review, onChange, onDelete }: { review: InterviewReview; onCha
       <div className="flex items-start justify-between gap-4">
         <input aria-label="公司" value={review.company} onChange={(e) => set("company", e.target.value)} placeholder="公司" style={{ fontSize: 22 }} className="min-w-0 flex-1 bg-transparent text-[22px] font-semibold tracking-tight text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)]" />
         <div className="flex shrink-0 items-center gap-1">
-          {allPractice && <Link href={allPractice} className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-[13px] font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)]" data-testid="review-practice-all">模拟练习这 {Math.min(10, review.questions.filter((q) => q.question.trim()).length)} 题</Link>}
-          <button type="button" onClick={onDelete} aria-label="删除这场复盘" title="删除这场复盘" className="grid h-8 w-8 place-items-center rounded-md text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"><Trash2 size={15} /></button>
+          {allPractice && <Link href={allPractice} className="ou-button ou-button-secondary ou-button-sm" data-testid="review-practice-all">模拟练习这 {Math.min(10, review.questions.filter((q) => q.question.trim()).length)} 题</Link>}
+          <button type="button" onClick={onDelete} aria-label="删除这场复盘" title="删除这场复盘" className="grid h-8 w-8 place-items-center rounded-md text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]"><Trash2 size={15} /></button>
         </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--foreground-muted)]">
         <input aria-label="岗位" value={review.role} onChange={(e) => set("role", e.target.value)} placeholder="岗位" className={`${meta} w-44`} />
         <input aria-label="轮次" value={review.round_label} onChange={(e) => set("round_label", e.target.value)} placeholder="一面 / 二面 / HR 面" list="review-rounds" className={`${meta} w-32`} />
         <datalist id="review-rounds">{["一面", "二面", "三面", "HR 面", "终面", "笔试"].map((r) => <option key={r} value={r} />)}</datalist>
-        <input aria-label="面试日期" type="date" value={review.interviewed_on ?? ""} onChange={(e) => set("interviewed_on", e.target.value || null)} className={`${meta} w-36`} />
-        <div role="radiogroup" aria-label="结果" className="inline-flex rounded-lg bg-[var(--surface-muted)] p-0.5">
+        <DatePicker size="sm" aria-label="面试日期" placeholder="面试日期" value={review.interviewed_on ?? ""} onChange={(v) => set("interviewed_on", v || null)} className="w-44" />
+        <div role="radiogroup" aria-label="结果" className="inline-flex rounded-lg bg-[var(--ou-bg-control)] p-0.5">
           {OUTCOMES.map((o) => (
-            <button key={o.id} type="button" role="radio" aria-checked={review.outcome === o.id} onClick={() => set("outcome", o.id)} className={`rounded-md px-2.5 py-1 text-[12.5px] ${review.outcome === o.id ? "bg-[var(--surface)] font-medium text-[var(--foreground)] shadow-sm" : "text-[var(--foreground-muted)]"}`}>{o.label}</button>
+            <button key={o.id} type="button" role="radio" aria-checked={review.outcome === o.id} onClick={() => set("outcome", o.id)} className={`rounded-md px-2.5 py-1 text-[length:var(--ou-type-pill)] ${review.outcome === o.id ? "bg-[var(--ou-bg-surface)] font-medium text-[var(--ou-text-primary)]" : "text-[var(--ou-text-secondary)]"}`}>{o.label}</button>
           ))}
         </div>
       </div>
@@ -282,7 +283,7 @@ function Editor({ review, onChange, onDelete }: { review: InterviewReview; onCha
           <QuestionBlock key={index} index={index} item={item} onChange={(next) => setQuestion(index, next)} onRemove={() => set("questions", review.questions.filter((_, i) => i !== index))} practiceHref={practice([index])} />
         ))}
       </ol>
-      <button type="button" onClick={() => set("questions", [...review.questions, emptyQuestion()])} className="mt-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" data-testid="review-add-question">
+      <button type="button" onClick={() => set("questions", [...review.questions, emptyQuestion()])} className="mt-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[length:var(--ou-type-sm)] text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]" data-testid="review-add-question">
         <Plus size={14} /> 添加一道题
       </button>
 
@@ -326,7 +327,7 @@ function SaveToMemory({ review }: { review: InterviewReview }) {
   return (
     <div className="mt-4 flex flex-wrap items-center gap-3 text-[13px]" data-testid="review-save-memory">
       <button type="button" onClick={save} disabled={!items.length || state === "busy"}
-        className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)] disabled:opacity-40">
+        className="ou-button ou-button-secondary ou-button-sm disabled:opacity-40">
         {state === "busy" ? "正在存…" : items.length ? "存进档案（" + items.length + " 条）" : "都存过了"}
       </button>
       {notice && <span role="status" className="text-[var(--foreground-muted)]">{notice}</span>}
@@ -345,7 +346,7 @@ function stuckQuestions(reviews: InterviewReview[]): Stuck[] {
 function StuckItem({ stuck }: { stuck: Stuck }) {
   return (
     <li className="py-2.5">
-      <Link href={`/interview/review?id=${stuck.review.id}`} className="block rounded-md hover:bg-[var(--surface-muted)] -mx-2 px-2 py-1">
+      <Link href={`/interview/review?id=${stuck.review.id}`} className="block rounded-md hover:bg-[var(--ou-bg-control)] -mx-2 px-2 py-1">
         <span className="block text-[14px] text-[var(--foreground)]">{stuck.item.question}</span>
         <span className="mt-1 block text-[13px] text-[var(--foreground-muted)]">{stuck.item.reflection}</span>
         <span className="mt-1 block text-[12px] text-[var(--foreground-faint)]">{reviewTitle(stuck.review)}{stuck.review.interviewed_on ? ` · ${formatDay(stuck.review.interviewed_on)}` : ""}</span>
@@ -388,7 +389,7 @@ function WeakSpots({ reviews }: { reviews: InterviewReview[] }) {
           </p>
         </div>
         {stuck.length > 0 && (
-          <button type="button" onClick={group} disabled={busy} className="shrink-0 rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-[13px] font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)] disabled:opacity-50" data-testid="weak-group">
+          <button type="button" onClick={group} disabled={busy} className="shrink-0 ou-button ou-button-secondary ou-button-sm disabled:opacity-50" data-testid="weak-group">
             {busy ? "正在归类…" : topics ? "重新归类" : "按考察点归类"}
           </button>
         )}
@@ -413,13 +414,13 @@ function WeakSpots({ reviews }: { reviews: InterviewReview[] }) {
                   <Link href={`/interview/ai?from=${refs}&topic=${encodeURIComponent(topic.title)}`} className="shrink-0 text-[13px] font-medium text-[var(--foreground)] underline-offset-4 hover:underline" data-testid="weak-practice">专练这组</Link>
                 </div>
                 {topic.advice && <p className="mt-1 text-[13.5px] text-[var(--foreground)]">{topic.advice}</p>}
-                <ul className="mt-1 divide-y divide-[var(--border)]">{items.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
+                <ul className="mt-1 divide-y divide-[var(--ou-line-separator)]">{items.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
               </section>
             );
           })}
         </div>
       ) : (
-        <ul className="mt-4 divide-y divide-[var(--border)]">{stuck.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
+        <ul className="mt-4 divide-y divide-[var(--ou-line-separator)]">{stuck.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
       )}
     </article>
   );
@@ -493,20 +494,20 @@ export default function InterviewReviewPage() {
     body = (
       <div className="flex gap-10">
         <aside className="w-56 shrink-0" aria-label="复盘列表">
-          <button type="button" onClick={create} className="mb-2 inline-flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" data-testid="review-new">
+          <button type="button" onClick={create} className="mb-2 inline-flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[length:var(--ou-type-sm)] text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]" data-testid="review-new">
             <Plus size={14} /> 新建复盘
           </button>
-          <button type="button" onClick={() => router.push("/interview/review?view=weak")} aria-current={weakView ? "page" : undefined} className={`mb-2 flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[13.5px] font-medium text-[var(--foreground)] ${weakView ? "bg-[var(--surface-muted)]" : "hover:bg-[var(--surface-muted)]"}`} data-testid="review-weak-link">
+          <button type="button" onClick={() => router.push("/interview/review?view=weak")} aria-current={weakView ? "page" : undefined} className={`mb-2 flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[length:var(--ou-type-body)] font-medium text-[var(--ou-text-primary)] ${weakView ? "bg-[var(--ou-bg-control)]" : "hover:bg-[var(--ou-bg-control)]"}`} data-testid="review-weak-link">
             反复卡住的题
             <span className="text-[12px] font-normal text-[var(--foreground-muted)]">{stuckQuestions(reviews).length || ""}</span>
           </button>
-          <ul className="space-y-0.5 border-t border-[var(--border)] pt-2">
+          <ul className="space-y-0.5 border-t border-[var(--ou-line-separator)] pt-2">
             {reviews.map((review) => {
               const active = !weakView && review.id === current.id;
               const outcome = OUTCOMES.find((o) => o.id === review.outcome)?.label;
               return (
                 <li key={review.id}>
-                  <button type="button" onClick={() => select(review.id)} aria-current={active ? "page" : undefined} className={`w-full rounded-md px-2.5 py-2 text-left ${active ? "bg-[var(--surface-muted)]" : "hover:bg-[var(--surface-muted)]"}`}>
+                  <button type="button" onClick={() => select(review.id)} aria-current={active ? "page" : undefined} className={`w-full rounded-md px-2.5 py-2 text-left ${active ? "bg-[var(--ou-bg-control)]" : "hover:bg-[var(--ou-bg-control)]"}`}>
                     <span className="block truncate text-[13.5px] font-medium text-[var(--foreground)]">{reviewTitle(review)}</span>
                     <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">{[formatDay(review.interviewed_on), outcome].filter(Boolean).join(" · ")}</span>
                   </button>

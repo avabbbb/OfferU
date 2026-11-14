@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { JobTag, StatusSelect, TagPicker } from "@/components/jobs/JobPickers";
+import { DatePicker } from "@/components/ui";
 import { type Job } from "@/lib/core";
 
 import { saveJob } from "./JobsTable";
@@ -20,12 +21,12 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Field({ job, field, type = "text", placeholder }: { job: Job; field: "company" | "title" | "city" | "url" | "applied_at"; type?: string; placeholder?: string }) {
-  const initial = field === "applied_at" ? job.applied_at?.slice(0, 10) ?? "" : job[field] ?? "";
+function Field({ job, field, placeholder }: { job: Job; field: "company" | "title" | "city" | "url"; placeholder?: string }) {
+  const initial = job[field] ?? "";
   const [v, setV] = useState(initial);
   useEffect(() => setV(initial), [initial, job.id]);
   return (
-    <input type={type} value={v} placeholder={placeholder} aria-label={field} onChange={(e) => setV(e.target.value)}
+    <input value={v} placeholder={placeholder} aria-label={field} onChange={(e) => setV(e.target.value)}
       onBlur={() => { const t = v.trim(); if (t !== initial) void saveJob(job, { [field]: t || null }); }}
       onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur(); }}
       className={ctl + " w-full"} />
@@ -55,7 +56,8 @@ export function RecordDrawer({ job, index, total, tagOptions, onPrev, onNext, on
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (e.key === "Escape" && !(t && t.closest("input, textarea, select"))) onClose();
+      // 浮层（日期、状态、标签）自己处理 Esc：Radix 关浮层时会 preventDefault，这里就不再连带关掉抽屉。
+      if (e.key === "Escape" && !e.defaultPrevented && !(t && t.closest("input, textarea, select"))) onClose();
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
@@ -107,7 +109,11 @@ export function RecordDrawer({ job, index, total, tagOptions, onPrev, onNext, on
               )}
             </div>
           </Row>
-          <Row label="投递日"><Field job={job} field="applied_at" type="date" /></Row>
+          <Row label="投递日">
+            {/* 选完即存（不等失焦）；清除 = 置空。 */}
+            <DatePicker aria-label="投递日" placeholder="还没投" value={job.applied_at?.slice(0, 10) ?? ""}
+              onChange={(v) => { if (v !== (job.applied_at?.slice(0, 10) ?? "")) void saveJob(job, { applied_at: v || null }); }} className="w-full" />
+          </Row>
           <Row label="链接">
             <div className="flex items-center gap-1">
               <Field job={job} field="url" placeholder="岗位链接" />
