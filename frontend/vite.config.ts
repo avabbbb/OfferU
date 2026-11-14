@@ -49,13 +49,40 @@ function reactionCatalogPlugin(root: string) {
   };
 }
 
+// 校徽 PNG（约 800 个、5.8 MB）放在 backend-ts/assets/school_logos。网页版把它们当静态文件放在 school-logos/ 下，
+// 用户挑中学校时才按文件名单个去取（core 的 staticSchoolLogos），不进 JS 主包；桌面版（Tauri）由本机伴侣提供，不拷。
+const SCHOOL_LOGO_DIR = path.resolve(__dirname, "../backend-ts/assets/school_logos");
+const SCHOOL_LOGO_FILE = /^\d{4}\.png$/;
+
+function schoolLogoAssetsPlugin() {
+  return {
+    name: "offeru-school-logo-assets",
+    configureServer(server: { middlewares: { use: (path: string, fn: (req: { url?: string }, res: { setHeader: (k: string, v: string) => void; end: (b: Buffer) => void }, next: () => void) => void) => void } }) {
+      server.middlewares.use("/school-logos", (req, res, next) => {
+        const file = (req.url || "").replace(/^\/+/, "").split("?")[0];
+        if (!SCHOOL_LOGO_FILE.test(file) || !fs.existsSync(path.join(SCHOOL_LOGO_DIR, file))) return next();
+        res.setHeader("Content-Type", "image/png");
+        res.end(fs.readFileSync(path.join(SCHOOL_LOGO_DIR, file)));
+      });
+    },
+    generateBundle(this: { emitFile: (file: { type: "asset"; fileName: string; source: Uint8Array }) => void }) {
+      if (process.env.TAURI_ENV_PLATFORM || !fs.existsSync(SCHOOL_LOGO_DIR)) return;
+      for (const file of fs.readdirSync(SCHOOL_LOGO_DIR)) {
+        if (SCHOOL_LOGO_FILE.test(file)) {
+          this.emitFile({ type: "asset", fileName: `school-logos/${file}`, source: fs.readFileSync(path.join(SCHOOL_LOGO_DIR, file)) });
+        }
+      }
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "");
   const tauriHost = process.env.TAURI_DEV_HOST;
 
   return {
     base: "./",
-    plugins: [reactionCatalogPlugin(__dirname), react()],
+    plugins: [reactionCatalogPlugin(__dirname), schoolLogoAssetsPlugin(), react()],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "src"),
