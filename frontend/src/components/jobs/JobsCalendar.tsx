@@ -4,7 +4,7 @@ import { CalendarClock, ChevronLeft, ChevronRight, Flag, MoreHorizontal, PenLine
 import { useRouter } from "next/navigation";
 import { type CSSProperties, type DragEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button, Menu, Popover, Select } from "@/components/ui";
+import { Button, DatePicker, Menu, Popover, Select } from "@/components/ui";
 import { liftDragImage } from "@/lib/dragLift";
 import { EVENT_KIND, type Event, type EventKind, write } from "@/lib/core";
 import {
@@ -115,7 +115,7 @@ function AddEventButton({ defaultAt }: { defaultAt: string }) {
         <div className="flex gap-2">
           <Select size="sm" className="w-28 shrink-0" aria-label="类型" value={kind} onValueChange={(v) => setKind(v as EventKind)}
             options={Object.entries(EVENT_KIND).map(([value, label]) => ({ value, label }))} />
-          <input className="ou-input ou-input-sm" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} aria-label="时间" />
+          <DatePicker withTime size="sm" className="min-w-0 flex-1" value={at} onChange={setAt} aria-label="时间" />
         </div>
         <Button type="submit" variant="primary" disabled={!title.trim() || busy}>{busy ? "正在加…" : "加到日历"}</Button>
       </form>

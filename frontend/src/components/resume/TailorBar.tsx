@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { tool, type Job } from "@/lib/core";
+import { Select } from "@/components/ui";
 import { captureImpact, tailorNotes, tailorResume, type ImpactDraft, type ImpactDropped, type TailorAsk, type TailorChecks, type TailorEdit } from "@/lib/tailor";
 
 type Props = {
@@ -163,10 +164,9 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[12px]" style={{ fontSize: 12 }}>
       {jobId == null && (withJd.length ? (
-        <select aria-label="按哪个岗位改" value={picked ?? ""} disabled={running} onChange={(e) => setPicked(Number(e.target.value))}
-          className="max-w-[220px] truncate bg-transparent text-[12px] text-[var(--foreground)] outline-none">
-          {withJd.map((job) => <option key={job.id} value={job.id}>{job.label ?? [job.company, job.title].filter(Boolean).join(" · ")}</option>)}
-        </select>
+        <Select aria-label="按哪个岗位改" size="sm" className="max-w-[220px]" disabled={running}
+          value={picked != null ? String(picked) : undefined} onValueChange={(v) => setPicked(Number(v))}
+          options={withJd.map((job) => ({ value: String(job.id), label: job.label ?? [job.company, job.title].filter(Boolean).join(" · ") }))} />
       ) : <span className={muted}>先在岗位页贴上 JD，才能按岗位改</span>)}
       {running ? (
         <>
