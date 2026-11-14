@@ -7,6 +7,17 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./idb": {
+      "types": "./src/browser/idbStore.ts",
+      "default": "./src/browser/idbStore.ts"
+    },
+    "./testing": {
+      "types": "./testing/storeContract.ts",
+      "default": "./testing/storeContract.ts"
     }
+  },
+  "dependencies": {
+    "idb": "^8.0.4"
   }
 }
