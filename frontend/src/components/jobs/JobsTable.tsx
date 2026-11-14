@@ -5,7 +5,7 @@ import { AlignLeft, Calendar, ChevronRight, CircleChevronDown, Hash, List, Plus 
 import { type ReactNode, useMemo, useRef, useState } from "react";
 
 import { JobTag, StatusPicker, TagPicker } from "@/components/jobs/JobPickers";
-import { LabelPicker } from "@/components/ui";
+import { DatePicker, LabelPicker } from "@/components/ui";
 import { JOB_STATUS, type Job, type JobStatus, write } from "@/lib/core";
 import {
   FIELDS, MAX_WIDTH, MIN_WIDTH, PRIMARY, ROW_HEIGHT, STATUS_ORDER, STATUS_TONE, groupJobs, tagPatch,
@@ -82,11 +82,11 @@ export function presetOf(groups: Group[]): Record<string, unknown> {
   return data;
 }
 
-function TextEdit({ initial, type = "text", onDone, onCancel }: { initial: string; type?: string; onDone: (v: string) => void; onCancel: () => void }) {
+function TextEdit({ initial, onDone, onCancel }: { initial: string; onDone: (v: string) => void; onCancel: () => void }) {
   const [v, setV] = useState(initial);
   const cancelled = useRef(false);
   return (
-    <input autoFocus type={type} value={v} aria-label="编辑" onChange={(e) => setV(e.target.value)}
+    <input autoFocus value={v} aria-label="编辑" onChange={(e) => setV(e.target.value)}
       onBlur={() => { if (!cancelled.current) onDone(v.trim()); }}
       onKeyDown={(e) => {
         if (e.nativeEvent.isComposing) return;
@@ -133,12 +133,15 @@ function CellView({ job, field, editing, setEditing, tagOptions, wrap }: {
       return job.posting?.hire_type ? <span className="flex"><OptionPill text={job.posting.hire_type} /></span> : null;
     case "score":
       return <span className="block text-right tabular-nums" title={(job.reasons ?? []).join("\n") || undefined}>{job.score ?? ""}</span>;
-    case "applied_at":
+    case "applied_at": {
+      // 双击进入编辑：就地挂一个已打开的 DatePicker；选完 / 清除 / Esc / 点别处，浮层关了就退出编辑态。
+      const day = job.applied_at?.slice(0, 10) ?? "";
       if (on) {
-        return <TextEdit type="date" initial={job.applied_at?.slice(0, 10) ?? ""} onCancel={close}
-          onDone={(v) => { close(); if (v !== (job.applied_at?.slice(0, 10) ?? "")) void saveJob(job, { applied_at: v || null }); }} />;
+        return <DatePicker size="sm" defaultOpen aria-label="投递日" value={day} onOpenChange={(open) => { if (!open) close(); }}
+          onChange={(v) => { if (v !== day) void saveJob(job, { applied_at: v || null }); }} />;
       }
-      return <span className="block cursor-text tabular-nums" onDoubleClick={start}>{job.applied_at?.slice(0, 10).replace(/-/g, "/") ?? ""}</span>;
+      return <span className="block cursor-text tabular-nums" onDoubleClick={start}>{day.replace(/-/g, "/")}</span>;
+    }
     case "created_at":
       return <span className="block tabular-nums">{job.created_at?.slice(0, 10).replace(/-/g, "/") ?? ""}</span>;
     default:

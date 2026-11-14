@@ -1,7 +1,8 @@
 import * as RadixPopover from "@radix-ui/react-popover";
 import { Check, Plus, Tag as TagIcon } from "lucide-react";
-import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { useScrollEdges } from "@/lib/scrollEdges";
 import { cx } from "./cx";
 import { type Tone, toneOf } from "./Pill";
 
@@ -58,7 +59,10 @@ export function LabelPicker({
   const [active, setActive] = useState(0);
   const [state, setState] = useState<LabelCreateState>("idle");
   const [pending, setPending] = useState("");
-  const listRef = useRef<HTMLUListElement>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
+  // 列表放不下时底部渐隐（滚到底就消失），不是一刀切掉半行。
+  const watchEdges = useScrollEdges<HTMLUListElement>("y");
+  const setList = useCallback((node: HTMLUListElement | null) => { listRef.current = node; watchEdges(node); }, [watchEdges]);
   const timer = useRef<number | null>(null);
   const baseId = useId();
   const q = query.trim();
@@ -140,7 +144,7 @@ export function LabelPicker({
               aria-label={label} role="combobox" aria-expanded aria-controls={baseId} disabled={state === "creating"}
               aria-activedescendant={rows.length ? `${baseId}-${active}` : undefined} spellCheck={false} />
           </div>
-          <ul ref={listRef} id={baseId} role="listbox" aria-multiselectable={multiple || undefined} className="ou-label-list">
+          <ul ref={setList} id={baseId} role="listbox" aria-multiselectable={multiple || undefined} className="ou-label-list ou-scroll-fade-y">
             {rows.map((row, i) => {
               const isCreate = row.value === "\u0000create";
               const checked = !isCreate && value.includes(row.value);

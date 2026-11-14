@@ -16,8 +16,8 @@ export function SettingsDialog({
 }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="3xl" placement="center" scrollBehavior="inside">
-      <ModalContent className="max-h-[88vh] rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-xl">
-        <ModalHeader className="border-b border-[var(--border)] px-6 py-4 text-lg font-semibold">{title}</ModalHeader>
+      <ModalContent className="max-h-[88vh] ou-sheet bg-[var(--ou-bg-surface-solid)] text-[var(--ou-text-primary)]">
+        <ModalHeader className="px-6 py-4 text-lg font-semibold">{title}</ModalHeader>
         <ModalBody className="space-y-5 overflow-y-auto px-6 py-5">{children}</ModalBody>
       </ModalContent>
     </Modal>
