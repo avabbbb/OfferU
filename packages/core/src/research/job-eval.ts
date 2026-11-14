@@ -175,7 +175,7 @@ export async function evaluateJob(llm: LlmClient, profileText: string, job: Rec,
   const [, where] = sourceFact(job);
   const raw = await llm.chat(
     [{ role: "system", content: JOB_EVAL_PROMPT }, { role: "user", content: jobEvalUserMessage(profileText, job) }],
-    { temperature: 0.2, jsonMode: true, maxTokens: 6000, signal },
+    { temperature: 0.2, json: true, maxTokens: 6000, signal },
   );
   return normalizeEvaluation(extractJson(raw ?? ""), job, where);
 }

@@ -12,7 +12,7 @@ core 里同时导出了工具形态 `evaluateJobs`（Python `evaluate_jobs`：li
 
 ### LlmClient
 `origin/ts/core-tools` 当时不存在，所以在 `packages/core/src/llm.ts` 定义了最小接口：
-`LlmClient.chat(messages, {temperature, jsonMode, maxTokens, tier, signal}) → Promise<string | null>`（失败/超时返回 null，只有 abort 才 reject，对齐 Python chat_completion），外加 `openAiCompatibleClient`（fetch 注入，浏览器/Worker/Node 通用）和 `extractJson`。
+`LlmClient.chat(messages, {temperature, jsonMode, maxTokens, tier, signal}) → Promise<string | null>`（失败/超时返回 null，只有 abort 才 reject，对齐 Python chat_completion），外加 `extractJson`。**已改为**用 `origin/ts/core-tools` 的 `packages/core/src/llm.ts`（`createOpenAiLlm`），本分支自有 llm.ts 删除；`llm-env.ts` 只作开发兜底，正式由配置域注入 `AppDeps.llm`。
 `AppDeps.llm?: () => LlmClient | null`，每次请求现取。Node 伴侣暂时从环境变量读：`OFFERU_LLM_BASE_URL / OFFERU_LLM_API_KEY / OFFERU_LLM_MODEL / OFFERU_LLM_JSON_MODE=0`（`src/llm-env.ts`）；Python 的 config.json + 密钥保险箱解析（resolve_llm_client_config）留给配置域。
 
 ### 与 Python 的行为差异（只在失败路径）

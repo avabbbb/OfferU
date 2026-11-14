@@ -15,8 +15,8 @@ import {
   saveRecord,
   sourceFact,
   todayIso,
-  type ChatMessage,
-  type ChatOptions,
+  type LlmMessage,
+  type LlmChatOptions,
   type EvaluateEvent,
   type LlmClient,
 } from "@offeru/core";
@@ -30,12 +30,12 @@ const parity = JSON.parse(readFileSync(new URL("./fixtures/job-eval-parity.json"
   memories: Array<Record<string, unknown>>;
   profile_text: string;
   empty_profile_text: string;
-  cases: Array<{ job: Record<string, unknown>; raw: string; messages?: ChatMessage[]; options: Record<string, unknown>; result: unknown }>;
-  empty_case: { job: Record<string, unknown>; raw: string; messages: ChatMessage[]; result: unknown };
+  cases: Array<{ job: Record<string, unknown>; raw: string; messages?: LlmMessage[]; options: Record<string, unknown>; result: unknown }>;
+  empty_case: { job: Record<string, unknown>; raw: string; messages: LlmMessage[]; result: unknown };
   source_facts: Array<{ job: Record<string, unknown>; fact: [string, string] }>;
 };
 
-function scripted(raws: Array<string | null>, seen: Array<{ messages: ChatMessage[]; options?: ChatOptions }> = []): LlmClient {
+function scripted(raws: Array<string | null>, seen: Array<{ messages: LlmMessage[]; options?: LlmChatOptions }> = []): LlmClient {
   let call = 0;
   return {
     async chat(messages, options) {
@@ -65,19 +65,20 @@ describe("job evaluation matches Python job_eval", () => {
 
   it("sends the same prompt and normalizes the same way", async () => {
     for (const item of [...parity.cases, { ...parity.empty_case, options: {}, empty: true }] as Array<(typeof parity.cases)[number] & { empty?: boolean }>) {
-      const seen: Array<{ messages: ChatMessage[]; options?: ChatOptions }> = [];
+      const seen: Array<{ messages: LlmMessage[]; options?: LlmChatOptions }> = [];
       const profileText = item.empty ? parity.empty_profile_text : parity.profile_text;
       const result = await evaluateJob(scripted([item.raw || null], seen), profileText, item.job);
       expect(result, item.raw).toEqual(item.result);
       if (item.messages) expect(seen[0].messages).toEqual(item.messages);
-      expect(seen[0].options).toMatchObject({ temperature: 0.2, jsonMode: true, maxTokens: 6000 });
+      expect(seen[0].options).toMatchObject({ temperature: 0.2, json: true, maxTokens: 6000 });
     }
     expect(JOB_EVAL_PROMPT).toContain("不要自己写 score");
   });
 
   it("extracts JSON like Python extract_json", () => {
     expect(extractJson("x {\"a\": \"}{\"} y {\"b\": 1}")).toEqual({ a: "}{" });
-    expect(extractJson("[1]")).toEqual([1]);
+    // core-tools extractJson only returns objects; Python returns the list but job_eval treats non-dicts as no result.
+    expect(extractJson("[1]")).toBeNull();
     expect(extractJson("{bad} {\"ok\": true}")).toEqual({ ok: true });
     expect(extractJson("")).toBeNull();
   });
@@ -223,23 +224,12 @@ else if (cmd === "login-qr") {
   });
 });
 
-describe("openAiCompatibleClient", () => {
-  it("posts chat/completions and returns null on failure", async () => {
-    const { openAiCompatibleClient } = await import("@offeru/core");
-    const calls: Array<{ url: string; body: Record<string, unknown>; auth: string | null }> = [];
-    let status = 200;
-    const fake = (async (url: string, init: RequestInit) => {
-      calls.push({ url, body: JSON.parse(String(init.body)), auth: new Headers(init.headers).get("authorization") });
-      return new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":1}" } }] }), { status });
-    }) as unknown as typeof fetch;
-    const llm = openAiCompatibleClient({ baseUrl: "https://llm.example/v1/", apiKey: "k", model: "m", fetch: fake });
-    expect(await llm.chat([{ role: "user", content: "hi" }], { jsonMode: true, temperature: 0.2, maxTokens: 10 })).toBe("{\"ok\":1}");
-    expect(calls[0]).toEqual({
-      url: "https://llm.example/v1/chat/completions",
-      auth: "Bearer k",
-      body: { model: "m", messages: [{ role: "user", content: "hi" }], temperature: 0.2, max_tokens: 10, response_format: { type: "json_object" } },
-    });
-    status = 500;
-    expect(await llm.chat([{ role: "user", content: "hi" }])).toBeNull();
+describe("llmFromEnv (dev fallback over core createOpenAiLlm)", () => {
+  it("returns null without base url/model and a core client otherwise", async () => {
+    const { llmFromEnv } = await import("../src/llm-env");
+    expect(llmFromEnv({})).toBeNull();
+    const llm = llmFromEnv({ OFFERU_LLM_BASE_URL: "http://127.0.0.1:11434/v1", OFFERU_LLM_MODEL: "m" });
+    expect(llm).not.toBeNull();
+    expect(llm!.local).toBe(true);
   });
 });
