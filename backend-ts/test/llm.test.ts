@@ -285,3 +285,26 @@ describe("chatStream", () => {
     expect(isLocalLlmUrl("https://api.deepseek.com/v1")).toBe(false);
   });
 });
+
+describe("one LlmClient, every method", () => {
+  it("Anthropic endpoints answer chat() through Messages; forbidden on a bad key", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const ok: FetchLike = async (_url, init) => {
+      seen.push(JSON.parse(init?.body ?? "{}"));
+      return { ok: true, status: 200, text: async () => JSON.stringify({ content: [{ type: "text", text: "嗨" }], stop_reason: "end_turn" }) };
+    };
+    const client = createLlmClient({ provider: "anthropic", baseUrl: "https://api.anthropic.com", apiKey: "k", model: "claude", apiFormat: "anthropic", models: { fast: "haiku" } }, { fetch: ok });
+    expect(await client.chat([{ role: "system", content: "s" }, { role: "user", content: "q" }], { tier: "fast" })).toBe("嗨");
+    expect(seen[0]).toMatchObject({ model: "haiku", system: "s", max_tokens: 4096, temperature: 0.3 });
+    const denied: FetchLike = async () => ({ ok: false, status: 401, text: async () => "{}" });
+    const bad = createLlmClient({ provider: "anthropic", baseUrl: "https://api.anthropic.com", apiKey: "k", model: "claude", apiFormat: "anthropic" }, { fetch: denied });
+    await expect(bad.chat([{ role: "user", content: "q" }])).rejects.toMatchObject({ code: "forbidden" });
+  });
+
+  it("createOpenAiLlm clients also do tool calling", async () => {
+    const fetch: FetchLike = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: "", tool_calls: [{ id: "c1", type: "function", function: { name: "get", arguments: "{\"id\":1}" } }] }, finish_reason: "tool_calls" }] }) });
+    const llm = createOpenAiLlm({ baseUrl: "https://x/v1", model: "m", fetch, provider: "deepseek" });
+    const result = await llm.complete({ messages: [{ role: "user", content: "q" }], tools: [{ name: "get", description: "", parameters: {} }] });
+    expect(result).toMatchObject({ provider: "deepseek", finishReason: "tool_calls", toolCalls: [{ id: "c1", name: "get", args: { id: 1 } }] });
+  });
+});

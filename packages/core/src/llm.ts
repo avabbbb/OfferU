@@ -672,7 +672,7 @@ function anthropicBody(endpoint: LlmEndpoint, request: ChatRequest, stream: bool
       if (Array.isArray(content)) {
         blocks = content.map((part) => {
           if (part.type === "text") return { type: "text", text: part.text };
-          const match = /^data:([^;]+);base64,(.*)$/s.exec(part.image_url.url);
+          const match = /^data:([^;]+);base64,([\s\S]*)$/.exec(part.image_url.url);
           return match
             ? { type: "image", source: { type: "base64", media_type: match[1], data: match[2] } }
             : { type: "image", source: { type: "url", url: part.image_url.url } };
