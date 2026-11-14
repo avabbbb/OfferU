@@ -8,7 +8,9 @@
     "start": "tsx src/server.ts",
     "cli": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "worker:dry-run": "npx -y wrangler@4 deploy --dry-run --outdir .wrangler/dry-run",
+    "worker:deploy": "npx -y wrangler@4 deploy"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.19",

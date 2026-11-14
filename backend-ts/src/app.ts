@@ -14,8 +14,9 @@ export interface AppDeps {
   store: CoreStore;
   /** Local pairing secret; undefined on runtimes with no pairing (stateless Worker proxy). */
   pairingToken?: () => string;
-  runtime: "node" | "worker";
-  storage: "sqlite" | "none";
+  /** node = local companion; worker = stateless Cloudflare Worker; browser = in-page app over IndexedDB (memory transport). */
+  runtime: "node" | "worker" | "browser";
+  storage: "sqlite" | "none" | "indexeddb";
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };
@@ -90,10 +91,12 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     }
   });
 
-  // Showcase pages may only reach the local backend with the pairing token.
+  // Showcase pages may only reach the local companion with the pairing token.
+  // The stateless Worker holds no user data, and the in-browser app is only
+  // reachable from its own page, so neither pairs.
   app.use("/api/*", async (c, next) => {
     const origin = c.req.header("origin");
-    if (isBridgeOrigin(origin) && c.req.path !== "/api/health") {
+    if (deps.runtime === "node" && isBridgeOrigin(origin) && c.req.path !== "/api/health") {
       const supplied = c.req.header("x-offeru-pairing") || "";
       if (!deps.pairingToken || !supplied || supplied !== deps.pairingToken()) {
         return c.json({ detail: "请求被拒绝：本机 OfferU 未配对或配对 token 已变化", code: "forbidden" }, 403);
@@ -132,7 +135,9 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
   registerRoutes(app);
 
-  app.notFound((c) => c.json({ detail: "Not found" }, 404));
+  // code "no_route" tells a transport "this runtime has no such endpoint" apart
+  // from a CoreError not_found ("the record does not exist").
+  app.notFound((c) => c.json({ detail: "Not found", code: "no_route" }, 404));
 
   app.onError((cause, c) => {
     if (cause instanceof SyntaxError) return c.json({ detail: "请求体不是合法 JSON", code: "invalid" }, 400);

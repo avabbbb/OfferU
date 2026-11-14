@@ -1,0 +1,8 @@
+# Stateless OfferU API Worker (optional). Deploy: `npx wrangler deploy` from backend-ts/.
+# It stores nothing and holds no secrets; see src/worker.ts and docs/deploy-cloudflare.md.
+name = "offeru-api"
+main = "src/worker.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+# No KV / D1 / R2 bindings on purpose: user data stays on the user's device.
