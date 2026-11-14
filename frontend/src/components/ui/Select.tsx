@@ -6,7 +6,7 @@ import { cx } from "./cx";
 // 下拉选择：行为交给 Radix（键盘、屏幕阅读器、定位、碰撞翻转），外观只用 token。禁止裸 <select>。
 export type SelectOption = { value: string; label: ReactNode; description?: ReactNode; icon?: ReactNode };
 
-export function Select({ value, onValueChange, options, placeholder, id, "aria-label": ariaLabel, size, className }: {
+export function Select({ value, onValueChange, options, placeholder, id, "aria-label": ariaLabel, size, className, disabled }: {
   value?: string;
   onValueChange: (value: string) => void;
   options: SelectOption[];
@@ -16,10 +16,11 @@ export function Select({ value, onValueChange, options, placeholder, id, "aria-l
   /** sm：工具栏 / 浮层里的紧凑版（28px 胶囊）。 */
   size?: "sm";
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <span className={cx("ou-select-wrap", className)}>
-    <RadixSelect.Root value={value} onValueChange={onValueChange}>
+    <RadixSelect.Root value={value} onValueChange={onValueChange} disabled={disabled}>
       <RadixSelect.Trigger id={id} aria-label={ariaLabel} className={cx("ou-input ou-select-trigger", size === "sm" && "ou-select-sm")}>
         <RadixSelect.Value placeholder={placeholder} />
         <RadixSelect.Icon><ChevronDown size={14} aria-hidden /></RadixSelect.Icon>

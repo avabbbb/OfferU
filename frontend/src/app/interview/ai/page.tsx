@@ -310,7 +310,7 @@ export default function AIInterviewPage() {
   if (session && currentQuestion) {
     return (
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-7xl space-y-5">
-        <header className="flex flex-col gap-4 rounded-2xl border border-[var(--border-strong)] bg-white p-5 md:flex-row md:items-center md:justify-between">
+        <header className="flex flex-col gap-4 ou-sheet p-5 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--foreground-muted)]">
               <Chip size="sm" variant="flat" className="bg-[var(--status-sage)] font-semibold text-[var(--primary-green)]">进行中</Chip>
@@ -332,15 +332,15 @@ export default function AIInterviewPage() {
 
         <InterviewStage interviewId={session.id} questionIndex={currentQuestionIndex} onBehaviorSummary={setBehaviorSummary} />
 
-        {error && <div role="alert" className="rounded-xl border border-[#b4451f]/20 bg-[var(--status-blush)] px-4 py-3 text-sm text-[var(--primary-red)]">{error}</div>}
+        {error && <div role="alert" className="rounded-xl border border-[var(--ou-tone-red-border)]/20 bg-[var(--status-blush)] px-4 py-3 text-sm text-[var(--primary-red)]">{error}</div>}
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="rounded-2xl border border-[var(--border-strong)] bg-white p-5 md:p-7">
+          <section className="ou-sheet p-5 md:p-7">
             <div className="flex flex-wrap items-center gap-2">
-              <Chip size="sm" variant="flat" className="bg-[var(--surface-muted)] font-semibold text-[var(--foreground-soft)]">
+              <Chip size="sm" variant="flat" className="bg-[var(--ou-bg-control)] font-semibold text-[var(--foreground-soft)]">
                 {QUESTION_TYPE_LABEL[currentQuestion.type] || "面试题"}
               </Chip>
-              {roleIntelligenceRoute && currentQuestion.mode && <Chip size="sm" variant="flat" className="border border-[var(--border)] bg-[var(--surface-muted)] font-semibold text-[var(--foreground-soft)]">{QUESTION_MODE_LABEL[currentQuestion.mode] || currentQuestion.mode}</Chip>}
+              {roleIntelligenceRoute && currentQuestion.mode && <Chip size="sm" variant="flat" className="bg-[var(--ou-bg-control)] font-semibold text-[var(--foreground-soft)]">{QUESTION_MODE_LABEL[currentQuestion.mode] || currentQuestion.mode}</Chip>}
               {currentQuestion.focus && <span className="text-xs text-[var(--foreground-muted)]">考察：{currentQuestion.focus}</span>}
             </div>
             <h2 className="mt-4 text-2xl font-semibold leading-snug tracking-[-0.035em] text-[var(--foreground)]">{currentQuestion.question}</h2>
@@ -350,7 +350,7 @@ export default function AIInterviewPage() {
                 <button onClick={() => setShowTips((value) => !value)} className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-muted)] transition hover:text-[var(--foreground)]">
                   <Lightbulb size={14} /> {showTips ? "收起回答提示" : "卡住了？查看回答提示"} <ChevronDown size={13} className={`transition-transform ${showTips ? "rotate-180" : ""}`} />
                 </button>
-                {showTips && <p className="mt-2 rounded-xl bg-[var(--surface-muted)] p-3 text-sm leading-relaxed text-[var(--foreground-soft)]">{currentQuestion.tips}</p>}
+                {showTips && <p className="mt-2 rounded-xl bg-[var(--ou-bg-control)] p-3 text-sm leading-relaxed text-[var(--foreground-soft)]">{currentQuestion.tips}</p>}
               </div>
             )}
 
@@ -383,7 +383,7 @@ export default function AIInterviewPage() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-6xl space-y-6">
-      <section className="overflow-hidden rounded-2xl border border-[var(--border-strong)] bg-white">
+      <section className="overflow-hidden ou-sheet">
         <div className="grid gap-8 p-6 md:p-8 lg:grid-cols-[1.12fr_0.88fr] lg:p-10">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--status-sage)] px-3 py-1 text-[11px] font-semibold text-[var(--primary-green)]"><Sparkles size={13} /> {roleIntelligenceRoute ? "ROLE INTELLIGENCE · INTERVIEW LEARNING" : "AI INTERVIEW STUDIO"}</span>
@@ -409,8 +409,8 @@ export default function AIInterviewPage() {
                 { icon: Video, title: "本地视觉反馈", detail: "姿态、笑容与手势实时响应" },
                 { icon: MessageSquareText, title: "逐题复盘", detail: "结构、相关性与具体度" },
               ]).map(({ icon: Icon, title, detail }) => (
-              <div key={title} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-[var(--foreground)]"><Icon size={17} /></div>
+              <div key={title} className="flex items-center gap-3 rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-4">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--ou-bg-surface-solid)] text-[var(--ou-text-primary)]"><Icon size={17} /></div>
                 <div><p className="text-sm font-semibold">{title}</p><p className="mt-0.5 text-xs text-[var(--foreground-muted)]">{detail}</p></div>
               </div>
             ))}
@@ -419,11 +419,11 @@ export default function AIInterviewPage() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px]">
-          <section className="rounded-2xl border border-[var(--border-strong)] bg-white p-6 md:p-8">
+          <section className="ou-sheet p-6 md:p-8">
           <div className="flex items-center gap-2"><Target size={17} /><h2 className="text-base font-semibold">{roleIntelligenceRoute ? "确认专项训练" : "设置本场面试"}</h2></div>
           {roleIntelligenceRoute && focusPlan && <FocusPlanPreview plan={focusPlan} />}
           {fixedQuestions.length > 0 && (
-            <div className="mt-4 rounded-xl border border-[var(--border)] px-4 py-3" data-testid="review-practice-questions">
+            <div className="mt-4 ou-sheet px-4 py-3" data-testid="review-practice-questions">
               <p className="text-[13px] font-medium">练复盘里的 {fixedQuestions.length} 道题</p>
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] text-[var(--foreground-muted)]">
                 {fixedQuestions.map((q, i) => <li key={i}>{q}</li>)}
@@ -439,7 +439,7 @@ export default function AIInterviewPage() {
             <p className="text-xs font-semibold text-[var(--foreground-soft)]">面试类型</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {TYPE_OPTIONS.map((option) => (
-                <button key={option.value} onClick={() => setInterviewType(option.value)} className={`rounded-xl border p-3 text-left transition ${interviewType === option.value ? "border-[var(--foreground)] bg-[var(--surface-muted)]" : "border-[var(--border-strong)] bg-white hover:bg-[var(--surface-muted)]"}`}>
+                <button key={option.value} onClick={() => setInterviewType(option.value)} className={`rounded-xl border p-3 text-left transition ${interviewType === option.value ? "border-[var(--foreground)] bg-[var(--ou-bg-control)]" : "border-[var(--ou-line-control)] bg-[var(--ou-bg-surface-solid)] hover:bg-[var(--ou-bg-control)]"}`}>
                   <p className="text-sm font-semibold">{option.label}</p><p className="mt-1 text-xs text-[var(--foreground-muted)]">{option.detail}</p>
                 </button>
               ))}
@@ -451,7 +451,7 @@ export default function AIInterviewPage() {
               <p className="text-xs font-semibold text-[var(--foreground-soft)]">难度</p>
               <div className="mt-2 flex gap-2">
                 {DIFFICULTY_OPTIONS.map((option) => (
-                  <button key={option.value} onClick={() => setDifficulty(option.value)} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${difficulty === option.value ? "border-[var(--foreground)] bg-[var(--foreground)] text-white" : "border-[var(--border-strong)] bg-white text-[var(--foreground-soft)]"}`}>{option.label}</button>
+                  <button key={option.value} onClick={() => setDifficulty(option.value)} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${difficulty === option.value ? "border-[var(--foreground)] bg-[var(--foreground)] text-white" : "border-[var(--ou-line-control)] bg-[var(--ou-bg-surface-solid)] text-[var(--foreground-soft)]"}`}>{option.label}</button>
                 ))}
               </div>
             </div>
@@ -459,13 +459,13 @@ export default function AIInterviewPage() {
               <p className="text-xs font-semibold text-[var(--foreground-soft)]">题目数量</p>
               <div className="mt-2 flex gap-2">
                 {[3, 5, 8].filter((count) => !roleIntelligenceRoute || count >= 5).map((count) => (
-                  <button key={count} onClick={() => setQuestionCount(count)} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${questionCount === count ? "border-[var(--foreground)] bg-[var(--foreground)] text-white" : "border-[var(--border-strong)] bg-white text-[var(--foreground-soft)]"}`}>{count} 题</button>
+                  <button key={count} onClick={() => setQuestionCount(count)} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${questionCount === count ? "border-[var(--foreground)] bg-[var(--foreground)] text-white" : "border-[var(--ou-line-control)] bg-[var(--ou-bg-surface-solid)] text-[var(--foreground-soft)]"}`}>{count} 题</button>
                 ))}
               </div>
             </div>}
           </div>
 
-          <div className="mt-6 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-muted)] p-4">
+          <div className="mt-6 rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-4">
             <Checkbox isSelected={dataConsent} onValueChange={setDataConsent} isDisabled={!runtime || (roleIntelligenceRoute && focusLoading)}>
               <span className="text-xs font-medium">确认本场数据范围：配置与回答发给模型，摄像头只同步派生事件</span>
             </Checkbox>
@@ -484,16 +484,16 @@ export default function AIInterviewPage() {
           </Button>
         </section>
 
-        <aside className="rounded-2xl border border-[var(--border-strong)] bg-[var(--surface-muted)] p-6">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white"><Bot size={20} /></div>
+        <aside className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-6">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--ou-bg-surface-solid)]"><Bot size={20} /></div>
           <h2 className="mt-5 text-lg font-semibold tracking-[-0.03em]">{roleIntelligenceRoute ? "训练规则" : "本场预览"}</h2>
           {roleIntelligenceRoute && focusPlan ? (
             <div className="mt-5 space-y-3">
               <p className="text-xs leading-5 text-[var(--foreground-muted)]">样本 {focusPlan.source.valid_sample_count} 个 · {focusPlan.source.company_count} 家公司 · {dataModeLabel(focusPlan.source.data_mode)}</p>
               <div className="space-y-2">
-                {focusPlan.focuses.map((focus) => <div key={focus.capability} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs"><span className="font-semibold">{focus.capability}</span><span className="font-semibold text-[var(--primary-red)]">{focus.priority_percent}%</span></div>)}
+                {focusPlan.focuses.map((focus) => <div key={focus.capability} className="flex items-center justify-between gap-3 rounded-lg bg-[var(--ou-bg-surface-solid)] px-3 py-2 text-xs"><span className="font-semibold">{focus.capability}</span><span className="font-semibold text-[var(--primary-red)]">{focus.priority_percent}%</span></div>)}
               </div>
-              <p className="border-t border-[var(--border-strong)] pt-4 text-xs leading-6 text-[var(--foreground-muted)]">训练中只追问事实、指标、机制和权衡，不给答案或提前评分；新观察不会自动写入正式 Profile。</p>
+              <p className="border-t border-[var(--ou-line-control)] pt-4 text-xs leading-6 text-[var(--ou-text-secondary)]">训练中只追问事实、指标、机制和权衡，不给答案或提前评分；新观察不会自动写入正式 Profile。</p>
             </div>
           ) : (
             <>
@@ -502,7 +502,7 @@ export default function AIInterviewPage() {
             <div><dt className="text-xs text-[var(--foreground-muted)]">目标岗位</dt><dd className="mt-1 font-medium">{position.trim() || "等待填写"}</dd></div>
             <div><dt className="text-xs text-[var(--foreground-muted)]">预计时长</dt><dd className="mt-1 font-medium">约 {questionCount * 3}–{questionCount * 5} 分钟</dd></div>
           </dl>
-          <div className="mt-6 border-t border-[var(--border-strong)] pt-5">
+          <div className="mt-6 border-t border-[var(--ou-line-control)] pt-5">
             <p className="flex items-center gap-2 text-xs font-semibold"><ShieldCheck size={15} /> 隐私边界</p>
             <p className="mt-2 text-xs leading-6 text-[var(--foreground-muted)]">摄像头视频只参与本地姿态、表情和手势推理。回答文本会发送给你在 OfferU 中配置的 AI 服务，用于生成问题与评估。</p>
           </div>
@@ -523,7 +523,7 @@ function FocusPlanPreview({ plan }: { plan: InterviewFocusPlan }) {
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {plan.focuses.map((focus) => (
-          <div key={focus.capability} className="rounded-lg border border-blue-200 bg-white px-3 py-2">
+          <div key={focus.capability} className="rounded-lg border border-[var(--ou-tone-blue-border)] bg-[var(--ou-bg-surface-solid)] px-3 py-2">
             <div className="flex items-center justify-between gap-2"><span className="text-sm font-semibold text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--primary-red)]">{focus.priority_percent}%</span></div>
             <p className="mt-1 text-[11px] font-medium text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 证据强度 {focus.evidence_strength} · 缺口 {focus.evidence_gap}</p>
           </div>
@@ -538,7 +538,7 @@ function InterviewerStatus({ notice }: { notice: string }) {
   return (
     <aside className="flex min-h-72 flex-col justify-between rounded-2xl border border-[var(--primary-blue)] bg-blue-50 p-6" data-testid="interviewer-mode-status">
       <div>
-        <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-white font-semibold text-[var(--primary-blue)]">INTERVIEWER MODE</Chip>
+        <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-[var(--ou-bg-surface-solid)] font-semibold text-[var(--primary-blue)]">INTERVIEWER MODE</Chip>
         <h3 className="mt-4 text-lg font-semibold tracking-[-0.03em] text-[var(--foreground)]">只继续追问</h3>
         <p className="mt-3 text-sm leading-6 text-[var(--foreground-soft)]">本场不会即时夸奖、给答案或提前评分。模糊、缺事实/机制/指标的回答会触发下一条追问；与 Career Evidence 的表述差异会被中性澄清。</p>
       </div>
@@ -550,7 +550,7 @@ function InterviewerStatus({ notice }: { notice: string }) {
 function EvaluationPanel({ evaluation }: { evaluation: AIInterviewEvaluation | null }) {
   if (!evaluation) {
     return (
-      <aside className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] p-6 text-center">
+      <aside className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--ou-line-control)] bg-[var(--ou-bg-control)] p-6 text-center">
         <MessageSquareText size={26} className="text-[var(--foreground-muted)]" />
         <p className="mt-3 text-sm font-semibold">上一题反馈会出现在这里</p>
         <p className="mt-1 text-xs leading-relaxed text-[var(--foreground-muted)]">先完成回答，AI 会按固定版本评分规则引用你的回答原文，再由后端确定性聚合内容分。</p>
@@ -559,16 +559,16 @@ function EvaluationPanel({ evaluation }: { evaluation: AIInterviewEvaluation | n
   }
 
   return (
-    <aside className="rounded-2xl border border-[var(--border-strong)] bg-white p-5">
+    <aside className="ou-sheet p-5">
       <div className="flex items-center justify-between"><div><p className="text-sm font-semibold">上一题内容反馈</p><p className="mt-1 text-[10px] text-[var(--foreground-muted)]">{evaluation.skill_id}@{evaluation.skill_version} · {evaluation.score_band}</p></div><span className="text-3xl font-semibold tracking-[-0.05em]">{evaluation.content_score}</span></div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         {Object.entries(evaluation.dimensions).map(([key, value]) => (
-          <div key={key} className="rounded-lg bg-[var(--surface-muted)] p-2.5"><p className="text-[10px] text-[var(--foreground-muted)]">{DIMENSION_LABEL[key] || key}</p><p className="mt-1 text-sm font-semibold">{value.not_applicable ? "不适用" : value.score}</p>{value.evidence[0] && <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-[var(--foreground-muted)]">“{value.evidence[0]}”</p>}</div>
+          <div key={key} className="rounded-lg bg-[var(--ou-bg-control)] p-2.5"><p className="text-[length:var(--ou-type-xs)] text-[var(--ou-text-secondary)]">{DIMENSION_LABEL[key] || key}</p><p className="mt-1 text-sm font-semibold">{value.not_applicable ? "不适用" : value.score}</p>{value.evidence[0] && <p className="mt-1 line-clamp-2 text-[length:var(--ou-type-xs)] leading-4 text-[var(--ou-text-secondary)]">“{value.evidence[0]}”</p>}</div>
         ))}
       </div>
       {!!evaluation.strengths.length && <FeedbackList title="做得好" items={evaluation.strengths} tone="good" />}
       {!!evaluation.improvements.length && <FeedbackList title="下一题注意" items={evaluation.improvements} tone="improve" />}
-      {evaluation.suggestion && <p className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--status-sage)] p-3 text-xs leading-relaxed text-[var(--foreground-soft)]">{evaluation.suggestion}</p>}
+      {evaluation.suggestion && <p className="mt-4 rounded-[var(--ou-radius-card)] bg-[var(--status-sage)] p-3 text-xs leading-relaxed text-[var(--foreground-soft)]">{evaluation.suggestion}</p>}
     </aside>
   );
 }
@@ -584,7 +584,7 @@ function InterviewReport({ report, session, behaviorSummary, onRestart }: { repo
   const delivery = Object.keys(behaviorSummary).length ? behaviorSummary : report.delivery_feedback;
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-5xl space-y-6">
-      <section className="rounded-2xl border border-[var(--border-strong)] bg-white p-7 md:p-10">
+      <section className="ou-sheet p-7 md:p-10">
         <div className="grid gap-8 md:grid-cols-[220px_1fr] md:items-center">
           <div className="text-center"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-muted)]">CONTENT SCORE</p><p className="mt-2 text-8xl font-semibold tracking-[-0.09em]">{report.content_score}</p><p className="mt-2 text-xs text-[var(--foreground-muted)]">{session.target_position} · {session.questions.length} 题</p></div>
           <div><Chip size="sm" variant="flat" className="bg-[var(--status-sage)] font-semibold text-[var(--primary-green)]">面试完成</Chip><h1 className="mt-4 text-3xl font-semibold tracking-[-0.045em]">本场模拟面试报告</h1><p className="mt-3 text-sm leading-7 text-[var(--foreground-soft)]">{report.summary}</p><Button onPress={onRestart} className="mt-6 bg-[var(--foreground)] font-semibold text-white" startContent={<RotateCcw size={15} />}>再练一场</Button></div>
@@ -593,9 +593,9 @@ function InterviewReport({ report, session, behaviorSummary, onRestart }: { repo
 
       {report.role_intelligence_debrief && <RoleInterviewDebrief debrief={report.role_intelligence_debrief} />}
 
-      {!!dimensions.length && <section className="rounded-2xl border border-[var(--border-strong)] bg-white p-6"><h2 className="text-sm font-semibold">能力维度</h2><div className="mt-5 grid gap-4 sm:grid-cols-2">{dimensions.map(([key, value]) => <div key={key}><div className="mb-2 flex justify-between text-xs"><span className="text-[var(--foreground-soft)]">{DIMENSION_LABEL[key] || key}</span><span className="font-semibold">{value}</span></div><Progress aria-label={DIMENSION_LABEL[key] || key} value={value} size="sm" classNames={{ indicator: "bg-[var(--foreground)]", track: "bg-[var(--surface-hover)]" }} /></div>)}</div></section>}
+      {!!dimensions.length && <section className="ou-sheet p-6"><h2 className="text-sm font-semibold">能力维度</h2><div className="mt-5 grid gap-4 sm:grid-cols-2">{dimensions.map(([key, value]) => <div key={key}><div className="mb-2 flex justify-between text-xs"><span className="text-[var(--foreground-soft)]">{DIMENSION_LABEL[key] || key}</span><span className="font-semibold">{value}</span></div><Progress aria-label={DIMENSION_LABEL[key] || key} value={value} size="sm" classNames={{ indicator: "bg-[var(--foreground)]", track: "bg-[var(--surface-hover)]" }} /></div>)}</div></section>}
 
-      <p className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-xs leading-6 text-[var(--foreground-muted)]">{report.boundary}</p>
+      <p className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-4 text-xs leading-6 text-[var(--ou-text-secondary)]">{report.boundary}</p>
 
       <DeliveryFeedback summary={delivery} />
 
@@ -613,7 +613,7 @@ function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewRep
     <section className="rounded-2xl border-2 border-[var(--primary-blue)] bg-blue-50 p-6" data-testid="role-interview-debrief">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-white font-semibold text-[var(--primary-blue)]">COACH MODE · DEBRIEF</Chip>
+          <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-[var(--ou-bg-surface-solid)] font-semibold text-[var(--primary-blue)]">COACH MODE · DEBRIEF</Chip>
           <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">为什么问这些题</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--foreground-soft)]">以下复盘把实际回答与岗位 Delta、Career Evidence Gap 放在一起；它是本场学习观察，不会自动改写正式 Profile。</p>
         </div>
@@ -621,7 +621,7 @@ function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewRep
       </div>
       <div className="mt-5 space-y-3">
         {debrief.focuses.map((focus) => (
-          <details key={focus.capability} className="rounded-xl border border-blue-200 bg-white">
+          <details key={focus.capability} className="rounded-xl border border-[var(--ou-tone-blue-border)] bg-[var(--ou-bg-surface-solid)]">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4">
               <span className="flex items-center gap-3"><span className="text-sm font-semibold text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 档案证据覆盖缺口 {focus.evidence_gap}</span></span>
               <span className="text-xs font-semibold text-[var(--primary-red)]">训练权重 {focus.priority_percent}%</span>
@@ -665,9 +665,9 @@ function DeliveryFeedback({ summary, questions }: { summary: Record<string, unkn
     (a, b) => Number(a[0]) - Number(b[0])
   );
   return (
-    <section className="rounded-2xl border border-[var(--border-strong)] bg-white p-6">
+    <section className="ou-sheet p-6">
       <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold">可观察表达事件</h2><Chip size="sm" variant="flat">不评分</Chip></div>
-      {items.length ? <div className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-3">{items.map(([key, count]) => <div key={key} className="rounded-lg bg-[var(--surface-muted)] p-3"><p className="text-xs text-[var(--foreground-muted)]">{labels[key] || key}</p><p className="mt-1 text-lg font-semibold">{count} 次</p></div>)}</div> : <p className="mt-4 text-xs text-[var(--foreground-muted)]">本场没有已同步的派生事件。</p>}
+      {items.length ? <div className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-3">{items.map(([key, count]) => <div key={key} className="rounded-lg bg-[var(--ou-bg-control)] p-3"><p className="text-xs text-[var(--ou-text-secondary)]">{labels[key] || key}</p><p className="mt-1 text-lg font-semibold">{count} 次</p></div>)}</div> : <p className="mt-4 text-xs text-[var(--ou-text-secondary)]">本场没有已同步的派生事件。</p>}
       {questionEntries.length > 0 && (
         <div className="mt-5 space-y-2">
           <h3 className="text-xs font-semibold text-[var(--foreground-soft)]">按题分解</h3>
@@ -675,14 +675,14 @@ function DeliveryFeedback({ summary, questions }: { summary: Record<string, unkn
             const questionCounts = Object.entries(bucket.event_counts ?? {});
             if (!questionCounts.length) return null;
             return (
-              <div key={index} className="rounded-lg border border-[var(--border)] p-3">
+              <div key={index} className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-3">
                 <p className="text-xs font-medium text-[var(--foreground-soft)]">
                   第 {Number(index) + 1} 题
                   {questions?.[Number(index)] ? ` · ${questions[Number(index)].slice(0, 40)}` : ""}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {questionCounts.map(([key, count]) => (
-                    <span key={key} className="rounded bg-[var(--surface-muted)] px-2 py-1 text-[11px] text-[var(--foreground-muted)]">
+                    <span key={key} className="rounded bg-[var(--ou-bg-control)] px-2 py-1 text-[length:var(--ou-type-xs)] text-[var(--ou-text-secondary)]">
                       {labels[key] || key} × {count}
                     </span>
                   ))}
@@ -698,5 +698,5 @@ function DeliveryFeedback({ summary, questions }: { summary: Record<string, unkn
 }
 
 function ReportList({ title, items, icon }: { title: string; items: string[]; icon: ReactNode }) {
-  return <section className="rounded-2xl border border-[var(--border-strong)] bg-white p-5"><div className="flex items-center gap-2 text-sm font-semibold">{icon}{title}</div>{items.length ? <ul className="mt-4 space-y-3">{items.map((item) => <li key={item} className="text-xs leading-6 text-[var(--foreground-soft)]">{item}</li>)}</ul> : <p className="mt-4 text-xs text-[var(--foreground-muted)]">本场暂无记录</p>}</section>;
+  return <section className="ou-sheet p-5"><div className="flex items-center gap-2 text-sm font-semibold">{icon}{title}</div>{items.length ? <ul className="mt-4 space-y-3">{items.map((item) => <li key={item} className="text-xs leading-6 text-[var(--foreground-soft)]">{item}</li>)}</ul> : <p className="mt-4 text-xs text-[var(--ou-text-secondary)]">本场暂无记录</p>}</section>;
 }

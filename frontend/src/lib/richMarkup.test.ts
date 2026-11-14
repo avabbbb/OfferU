@@ -37,6 +37,13 @@ describe("正文标记", () => {
     expect(domToMarkup(h("div", null, h("b", null, h("strong", null, "x"))))).toBe("**x**");
   });
 
+  it("下划线：<u> 读成 ++词++，再转回 <u>", () => {
+    expect(domToMarkup(h("div", null, "甲", h("u", null, "乙"), h("span", { style: { textDecorationLine: "underline" } }, "丙")))).toBe("甲++乙++++丙++");
+    expect(domToMarkup(h("div", null, "我", h("u", null, "下划线"), "了"))).toBe("我++下划线++了");
+    expect(inlineHtml("我++下划线++了")).toBe("我<u>下划线</u>了");
+    expect(plainText("熟悉 C++、++重点++")).toBe("熟悉 C++、重点");
+  });
+
   it("往返不丢格式", () => {
     const md = "{right} 落款\n  1. **一**\n  2. *二*";
     expect(markupToHtml(md)).toBe('<div style="text-align: right">落款</div><ol><li style="margin-left: 2em"><strong>一</strong></li><li style="margin-left: 2em"><em>二</em></li></ol>');
