@@ -8,9 +8,8 @@
 import localforage from "localforage";
 import { mutate } from "swr";
 
-import * as core from "@offeru/core";
-import type { PortableState } from "@offeru/core";
-import { IdbCoreStore } from "@offeru/core/idb";
+import { createOpenAiLlm, staticSchoolLogos, type LlmClient, type PortableState } from "@offeru/core";
+import { IdbCoreStore, IdbFileStore } from "@offeru/core/idb";
 import { createApp, type AppDeps } from "@offeru/app";
 
 import { DEMO_SEED } from "./mode";
@@ -55,16 +54,16 @@ export function listenForOtherTabs(): () => void {
   return () => listener.close();
 }
 
-let store: IdbCoreStore | null = null;
+let idb: IdbCoreStore | null = null;
 
 export function browserStore(): IdbCoreStore {
-  store ??= new IdbCoreStore({
+  idb ??= new IdbCoreStore({
     name: DB_NAME,
     migrate: readLegacyState,
     seed: DEMO_SEED ? buildDemoState : undefined,
     onCommit: broadcast,
   });
-  return store;
+  return idb;
 }
 
 // ---- model (BYOK, direct from the browser) --------------------------------
@@ -73,12 +72,11 @@ export function browserStore(): IdbCoreStore {
  * The browser runtime's model comes from the user's own key, kept in this
  * browser (lib/demo/keyVault: encrypted with a non-extractable device key when
  * "remember" is on, memory-only otherwise). Requests go straight from the page
- * to the provider; the key never reaches OfferU or the Worker.
+ * to the provider (it must allow CORS); the key never reaches OfferU or the
+ * Worker. AppDeps.llm is called per request, so a changed key applies at once.
  *
- * AppDeps.llm is a per-request factory (decision 2026-11-15). The LlmClient
- * implementation lives in packages/core/src/llm.ts (ts/core-tools); until that
- * lands on this branch, `createOpenAiLlm` is looked up at runtime and the
- * factory returns null ("没配模型") when it is absent.
+ * When ts/interview-config lands its browser /api/config, the config should
+ * come from there (deps.settings below is the IndexedDB key/value it can use).
  */
 let llmConfig: AgentConfig | null = null;
 
@@ -86,16 +84,19 @@ function refreshLlmConfig(): void {
   void loadAgentConfig().then((config) => { llmConfig = config; }).catch(() => { llmConfig = null; });
 }
 
-type LlmFactory = (options: { baseUrl: string; model: string; apiKey?: string; fetch: typeof fetch }) => unknown;
-
-export function browserLlm(): unknown {
+export function browserLlm(): LlmClient | null {
   const config = llmConfig;
   if (!config?.apiKey || !config.baseUrl || !config.model) return null;
-  const name = "createOpenAiLlm";
-  const factory = (core as Record<string, unknown>)[name] as LlmFactory | undefined;
-  if (typeof factory !== "function") return null;
-  return factory({ baseUrl: config.baseUrl, model: config.model, apiKey: config.apiKey, fetch: (url, init) => fetch(url, init) });
+  return createOpenAiLlm({
+    baseUrl: config.baseUrl,
+    model: config.model,
+    apiKey: config.apiKey,
+    fetch: (url, init) => fetch(url, init),
+  });
 }
+
+/** Bundled school emblems: the web build emits them as static files under ./school-logos/ (vite.config). */
+const SCHOOL_LOGO_BASE = "./school-logos";
 
 // ---- the app --------------------------------------------------------------
 
@@ -107,12 +108,17 @@ export function browserApp(): BrowserApp {
   if (app) return app;
   refreshLlmConfig();
   subscribeAgentConfig(refreshLlmConfig);
+  const store = browserStore();
   const deps: AppDeps = {
-    store: browserStore(),
+    store,
     runtime: "browser",
     storage: "indexeddb",
-    // Extra deps other domains read once their AppDeps fields land (see report).
-    ...({ llm: browserLlm, settings: browserStore() } as unknown as Partial<AppDeps>),
+    llm: browserLlm,
+    files: new IdbFileStore(store),
+    renderer: null, // no Chromium here: PDF goes through window.print (lib/resumeExport)
+    schoolLogos: staticSchoolLogos(SCHOOL_LOGO_BASE, (url) => fetch(url)),
+    // Local key/value for domains that keep browser-side settings (getSetting/setSetting/deleteSetting).
+    ...({ settings: store } as unknown as Partial<AppDeps>),
   };
   const hono = createApp(deps);
   app = { fetch: async (request) => hono.fetch(request) };
