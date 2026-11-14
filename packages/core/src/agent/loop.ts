@@ -8,7 +8,7 @@
 // Pure TS: the LLM is an injected LlmClient, tools are plain async functions.
 
 import { desensitize, restore } from "../desensitize";
-import type { ChatMessage, ChatToolCall, LlmClient, LlmUsage, ParsedToolCall, ToolSpec } from "../llm";
+import { streamCompletion, type ChatMessage, type ChatToolCall, type LlmClient, type LlmUsage, type ParsedToolCall, type ToolSpec } from "../llm";
 
 export interface AgentToolContext {
   callId: string;
@@ -176,7 +176,7 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
     let content = "";
     let toolCalls: ParsedToolCall[] = [];
     let error: string | undefined;
-    for await (const event of options.client.stream({
+    for await (const event of streamCompletion(options.client, {
       messages: [{ role: "system", content: options.systemPrompt }, ...outgoing.messages],
       tools: specs.length ? specs : undefined,
       model: options.model,

@@ -4,7 +4,8 @@
 // SSE event names and payload fields must match what frontend/src/lib/api.ts
 // (agentRuntimeApi.start) and AgentPanel already consume.
 
-import type { AgentRun, Json } from "./run-state";
+import type { Json } from "../types";
+import type { AgentRun } from "./run-state";
 
 export const CANONICAL_AGENT_RUN_EVENT_TYPES = new Set([
   "run.started", "assistant.delta", "assistant.message", "reasoning.status",

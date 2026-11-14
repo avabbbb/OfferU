@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  CoreError,
+  createOpenAiLlm,
+  isLocalLlmUrl,
+  streamOrChat,
   AVAILABLE_PROVIDERS,
   ENDPOINT_PROTOCOL_TEMPLATES,
   PROVIDER_PRESETS,
@@ -36,7 +40,7 @@ type Call = { url: string; headers: Record<string, string>; body: any };
 function fakeFetch(responses: Array<{ status?: number; chunks?: unknown[]; json?: unknown }>): { fetch: FetchLike; calls: Call[] } {
   const calls: Call[] = [];
   const fetch: FetchLike = async (url, init) => {
-    calls.push({ url, headers: init.headers, body: init.body ? JSON.parse(init.body) : null });
+    calls.push({ url, headers: init?.headers ?? {}, body: init?.body ? JSON.parse(init.body) : null });
     const next = responses.shift() || { status: 500, json: { error: { message: "no more" } } };
     const status = next.status || 200;
     return {
@@ -73,7 +77,7 @@ describe("LlmClient (OpenAI-compatible)", () => {
       ],
     }]);
     const client = createLlmClient(endpoint, { fetch });
-    const events = await collect(client.stream({ messages: [{ role: "user", content: "hi" }], tools: [{ name: "get", description: "d", parameters: { type: "object" } }], reasoningEffort: "low" }));
+    const events = await collect(client.completeStream({ messages: [{ role: "user", content: "hi" }], tools: [{ name: "get", description: "d", parameters: { type: "object" } }], reasoningEffort: "low" }));
     expect(calls[0].url).toBe("https://api.deepseek.com/chat/completions");
     expect(calls[0].headers.Authorization).toBe("Bearer sk-test-123456789");
     expect(calls[0].body).toMatchObject({ model: "deepseek-v4-flash", stream: true, stream_options: { include_usage: true }, reasoning_effort: "low" });
@@ -94,7 +98,7 @@ describe("LlmClient (OpenAI-compatible)", () => {
       { status: 400, json: { error: { message: "unknown field stream_options" } } },
       { chunks: [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }] },
     ]);
-    const events = await collect(createLlmClient(endpoint, { fetch }).stream({ messages: [{ role: "user", content: "hi" }], reasoningEffort: "high" }));
+    const events = await collect(createLlmClient(endpoint, { fetch }).completeStream({ messages: [{ role: "user", content: "hi" }], reasoningEffort: "high" }));
     expect(calls).toHaveLength(2);
     expect(calls[1].body.stream_options).toBeUndefined();
     expect(calls[1].body.reasoning_effort).toBeUndefined();
@@ -104,7 +108,7 @@ describe("LlmClient (OpenAI-compatible)", () => {
 
   it("ends the stream with a sanitized error instead of throwing", async () => {
     const { fetch } = fakeFetch([{ status: 401, json: { error: { message: "bad key sk-abcdefghijklmnop" } } }]);
-    const events = await collect(createLlmClient(endpoint, { fetch }).stream({ messages: [{ role: "user", content: "hi" }] }));
+    const events = await collect(createLlmClient(endpoint, { fetch }).completeStream({ messages: [{ role: "user", content: "hi" }] }));
     const done = events.at(-1);
     if (done?.type !== "done") throw new Error("no done");
     expect(done.result.finishReason).toBe("error");
@@ -114,7 +118,7 @@ describe("LlmClient (OpenAI-compatible)", () => {
 
   it("chat() supports json mode and tool calls", async () => {
     const { fetch, calls } = fakeFetch([{ json: { choices: [{ message: { content: "{\"a\":1}", tool_calls: [] }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2 } } }]);
-    const result = await createLlmClient({ ...endpoint, supportsJsonMode: true }, { fetch }).chat({ messages: [{ role: "user", content: "x" }], json: true, maxTokens: 50 });
+    const result = await createLlmClient({ ...endpoint, supportsJsonMode: true }, { fetch }).complete({ messages: [{ role: "user", content: "x" }], json: true, maxTokens: 50 });
     expect(calls[0].body.response_format).toEqual({ type: "json_object" });
     expect(calls[0].body.max_tokens).toBe(50);
     expect(calls[0].body.stream).toBeUndefined();
@@ -124,7 +128,7 @@ describe("LlmClient (OpenAI-compatible)", () => {
 
   it("chat() throws a forbidden CoreError on 401", async () => {
     const { fetch } = fakeFetch([{ status: 401, json: { error: "nope" } }]);
-    await expect(createLlmClient(endpoint, { fetch }).chat({ messages: [] })).rejects.toMatchObject({ code: "forbidden" });
+    await expect(createLlmClient(endpoint, { fetch }).complete({ messages: [] })).rejects.toMatchObject({ code: "forbidden" });
   });
 });
 
@@ -140,7 +144,7 @@ describe("LlmClient (Anthropic Messages)", () => {
       ],
     }]);
     const client = createLlmClient({ provider: "custom", baseUrl: "https://api.anthropic.com", apiKey: "k", model: "claude", apiFormat: "anthropic" }, { fetch });
-    const events = await collect(client.stream({
+    const events = await collect(client.completeStream({
       messages: [
         { role: "system", content: "sys" },
         { role: "user", content: "q" },
@@ -208,5 +212,76 @@ describe("PII desensitize", () => {
     expect(restore(text, mapping)).toBe("电话 13812345678，邮箱 a.b@x.com，身份证 11010119900307123X，再次 13812345678");
     const email = Object.keys(mapping).find((key) => key.includes("EMAIL"))!;
     expect(restore(`发到 ${email.slice(1, -3)}`, mapping)).toBe("发到 a.b@x.com");
+  });
+});
+
+// ---- core-tools chat()/chatStream() surface ----
+
+function fakeTextFetch(replies: Array<{ status: number; body: unknown }>, seen: Array<Record<string, unknown>> = []): FetchLike {
+  return async (_url, init) => {
+    seen.push(JSON.parse(init?.body ?? "{}"));
+    const next = replies.shift() ?? { status: 500, body: {} };
+    return { ok: next.status < 400, status: next.status, text: async () => typeof next.body === "string" ? next.body : JSON.stringify(next.body) };
+  };
+}
+
+const answer = (content: string) => ({ status: 200, body: { choices: [{ message: { content } }] } });
+
+describe("extractJson (Python extract_json parity)", () => {
+  it("parses plain, fenced and embedded objects", () => {
+    expect(extractJson('{"a":1}')).toEqual({ a: 1 });
+    expect(extractJson('看：\n```json\n{"a":2}\n```')).toEqual({ a: 2 });
+    expect(extractJson('前言 {"a":"}"} 后记 {"b":1}')).toEqual({ a: "}" });
+    expect(extractJson("没有 json")).toBeNull();
+    expect(extractJson("")).toBeNull();
+  });
+});
+
+describe("createOpenAiLlm", () => {
+  it("sends json mode, appends the json hint, uses tier model", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const llm = createOpenAiLlm({ baseUrl: "https://x/v1/", model: "m", models: { fast: "f" }, fetch: fakeTextFetch([answer("{}")], seen) });
+    expect(await llm.chat([{ role: "user", content: "hi" }], { json: true, tier: "fast", maxTokens: 10 })).toBe("{}");
+    expect(seen[0].model).toBe("f");
+    expect(seen[0].response_format).toEqual({ type: "json_object" });
+    expect(seen[0].max_completion_tokens).toBe(30);
+    expect((seen[0].messages as Array<{ content: string }>)[0].content).toContain("Return JSON only.");
+  });
+
+  it("retries 429/5xx, falls back to max_tokens, null on failure, throws on bad key", async () => {
+    const sleep = async () => {};
+    const retry = createOpenAiLlm({ baseUrl: "https://x", model: "m", sleep, fetch: fakeTextFetch([{ status: 429, body: "" }, answer("ok")]) });
+    expect(await retry.chat([{ role: "user", content: "q" }])).toBe("ok");
+
+    const seen: Array<Record<string, unknown>> = [];
+    const old = createOpenAiLlm({ baseUrl: "https://x", model: "m", sleep, fetch: fakeTextFetch([{ status: 400, body: "unknown max_completion_tokens" }, answer("ok")], seen) });
+    expect(await old.chat([{ role: "user", content: "q" }], { maxTokens: 7 })).toBe("ok");
+    expect(seen[1].max_tokens).toBe(7);
+
+    const down = createOpenAiLlm({ baseUrl: "https://x", model: "m", sleep, fetch: fakeTextFetch([{ status: 500, body: "" }, { status: 500, body: "" }, { status: 500, body: "" }]) });
+    expect(await down.chat([{ role: "user", content: "q" }])).toBeNull();
+
+    const bad = createOpenAiLlm({ baseUrl: "https://x", model: "m", sleep, fetch: fakeTextFetch([{ status: 401, body: "" }]) });
+    await expect(bad.chat([{ role: "user", content: "q" }])).rejects.toBeInstanceOf(CoreError);
+  });
+});
+
+describe("chatStream", () => {
+  it("parses SSE deltas and falls back to chat in streamOrChat", async () => {
+    const sse = 'data: {"choices":[{"delta":{"content":"你"}}]}\n\ndata: {"choices":[{"delta":{"content":"好"}}]}\n\ndata: [DONE]\n\n';
+    const fetch: FetchLike = async () => ({
+      ok: true, status: 200, text: async () => sse,
+      body: new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(sse)); c.close(); } }),
+    });
+    const llm = createOpenAiLlm({ baseUrl: "http://127.0.0.1:11434/v1", model: "m", fetch });
+    expect(llm.local).toBe(true);
+    const parts: string[] = [];
+    for await (const part of llm.chatStream!([{ role: "user", content: "q" }])) parts.push(part);
+    expect(parts.join("")).toBe("你好");
+    const plain = { chat: async () => "整段" };
+    const out: string[] = [];
+    for await (const part of streamOrChat(plain, [{ role: "user", content: "q" }])) out.push(part);
+    expect(out).toEqual(["整段"]);
+    expect(isLocalLlmUrl("https://api.deepseek.com/v1")).toBe(false);
   });
 });

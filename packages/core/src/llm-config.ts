@@ -4,10 +4,9 @@
 // and, optionally, an env lookup for `env:VAR` key references.
 
 import { CoreError } from "./types";
-import type { LlmApiFormat, LlmEndpoint } from "./llm";
+import type { LlmApiFormat, LlmEndpoint, LlmTier } from "./llm";
 import { providerDefaultModel, providerDefaultUrl, providerTierModels } from "./llm-presets";
 
-export type LlmTier = "fast" | "standard" | "premium";
 
 /** One entry of config.json llm_api_configs. */
 export interface LlmApiConfig {
@@ -218,5 +217,10 @@ export function endpointFromSettings(settings: LlmSettings, tier: LlmTier = "sta
     apiFormat: resolved.api_format,
     supportsJsonMode: resolved.supports_json_mode,
     headers: resolved.default_headers,
+    models: {
+      fast: resolveModelForTier(settings, "fast", options) || undefined,
+      standard: resolveModelForTier(settings, "standard", options) || undefined,
+      premium: resolveModelForTier(settings, "premium", options) || undefined,
+    },
   };
 }

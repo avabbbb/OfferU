@@ -5,10 +5,9 @@
 // Persistence is an injected AgentRunStore (rows only); every rule lives
 // here so the browser (IndexedDB) and the Node companion (SQLite) agree.
 
-import { CoreError } from "../types";
+import { CoreError, type Json } from "../types";
 import type { ChatMessage } from "../llm";
 
-export type Json = Record<string, unknown>;
 
 export const RUN_SCHEMA_VERSION = "offeru.agent_runs.v2";
 export const ACTIVE_STATUSES = new Set(["created", "planning", "executing", "interrupted"]);

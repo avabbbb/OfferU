@@ -17,8 +17,8 @@ import {
   type AgentInputRequest,
   type AgentRun,
   type AgentRunEvent,
-  type Json,
 } from "./run-state";
+import type { Json } from "../types";
 import type { RawRunEvent } from "./events";
 
 export const PROTOCOL_VERSION = "offeru.ts-agent.v1";

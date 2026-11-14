@@ -1,13 +1,370 @@
-// OpenAI-compatible (and Anthropic Messages) LLM client. Pure TS: no node:*,
-// no DOM. Network goes through an injected `fetch`, so the same client runs in
-// the browser with the user's own key, in a Cloudflare Worker, and in Node.
+// LLM access for core tools. Runtime-agnostic: no node:*, no DOM.
 //
-// Mirrors backend/app/agent/provider.py (LlmStreamProvider) and
-// backend/app/agents/llm.py (chat_completion): streamed text / reasoning /
-// tool-call deltas, a single retry without stream_options / reasoning_effort
-// when a gateway rejects them, and json mode.
+// Tools never build HTTP requests to a model themselves; they receive an
+// `LlmClient`. The browser builds one from the user's own key (BYOK, direct to
+// the provider), the Node companion builds one from its settings, tests pass a
+// fake. `createOpenAiLlm` is the stock OpenAI-compatible implementation and
+// only needs an injected `fetch`.
+//
+// Semantics mirror Python `app.agents.llm.chat_completion`:
+//   - returns the text, or `null` when the model gave nothing usable
+//     (timeout, transient upstream failure, empty answer);
+//   - throws `CoreError(code="forbidden")` for a rejected key, so the user
+//     sees "fix your key" instead of a silent empty result;
+//   - throws `CoreError(code="unsupported")` when no model is configured.
+//
+// The Agent loop needs more than text: streamed reasoning / tool-call deltas,
+// tool calling and Anthropic Messages. Those live on the same client as the
+// optional `complete` / `completeStream` methods (port of
+// backend/app/agent/provider.py LlmStreamProvider). `createLlmClient` builds a
+// client with every method from one resolved endpoint (llm-config.ts).
 
 import { CoreError } from "./types";
+
+export type LlmRole = "system" | "user" | "assistant";
+export type LlmMessage = { role: LlmRole; content: string };
+/** Model tier, same names as Python `resolve_model_for_tier`. */
+export type LlmTier = "fast" | "standard" | "premium";
+
+export type LlmChatOptions = {
+  /** Default 0.3, like Python. */
+  temperature?: number;
+  /** Ask for a JSON object (response_format=json_object when supported). */
+  json?: boolean;
+  /** Default 4096, like Python. */
+  maxTokens?: number;
+  /** Default "standard". */
+  tier?: LlmTier;
+  signal?: AbortSignal;
+};
+
+export interface LlmClient {
+  /** One chat completion. `null` = no usable answer (see module doc). */
+  chat(messages: LlmMessage[], options?: LlmChatOptions): Promise<string | null>;
+  /**
+   * Optional token stream (Python `chat_completion_stream`). Yields text
+   * deltas; ends early (no throw) on timeout/transient failure, throws
+   * CoreError("forbidden") on a rejected key. Use `streamOrChat` to fall back
+   * to one chunk when a client has no stream.
+   */
+  chatStream?(messages: LlmMessage[], options?: LlmChatOptions): AsyncIterable<string>;
+  /**
+   * True when the model runs on this machine (Ollama, LM Studio...). Tools
+   * skip PII desensitization only for local models, like Python
+   * `endpoint_is_local`. Absent = remote.
+   */
+  readonly local?: boolean;
+  /** Provider id / default model, for run metadata. */
+  readonly provider?: string;
+  readonly model?: string;
+  /**
+   * Full completion with tool calling (OpenAI tools / Anthropic tool_use).
+   * Throws CoreError on HTTP / auth failure. Present on clients built by
+   * createLlmClient / createOpenAiLlm.
+   */
+  complete?(request: ChatRequest): Promise<ChatResult>;
+  /**
+   * Streamed completion with text / reasoning / tool-call deltas. Never
+   * throws: failures end with done{finishReason:"error"}.
+   */
+  completeStream?(request: ChatRequest): AsyncIterable<LlmStreamEvent>;
+}
+
+/** A client with tool calling (what createLlmClient / createOpenAiLlm return). */
+export type ToolLlmClient = LlmClient & Required<Pick<LlmClient, "complete" | "completeStream" | "chatStream">>;
+
+/** Stream when the client can, otherwise yield the whole answer as one chunk. */
+export async function* streamOrChat(llm: LlmClient, messages: LlmMessage[], options: LlmChatOptions = {}): AsyncIterable<string> {
+  if (llm.chatStream) {
+    yield* llm.chatStream(messages, options);
+    return;
+  }
+  const text = await llm.chat(messages, options);
+  if (text) yield text;
+}
+
+export type FetchLike = (input: string, init?: {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  signal?: AbortSignal;
+}) => Promise<{
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+  /** Needed only for chatStream. */
+  body?: { getReader(): ByteReader } | null;
+}>;
+
+/** Throw the standard "no model" error when a tool needs an LLM and none was injected. */
+export function requireLlm(llm: LlmClient | null | undefined, message = "没配模型，没法调用模型"): LlmClient {
+  if (!llm) throw new CoreError(message, "unsupported");
+  return llm;
+}
+
+/**
+ * Pull a JSON object out of model output: plain JSON, a ```json fenced block,
+ * or the first complete {...} object in surrounding prose. Mirrors Python
+ * `extract_json`. Returns null when nothing parses to an object.
+ */
+export function extractJson(text: string | null | undefined): Record<string, unknown> | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  const asObject = (value: unknown) =>
+    typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  try {
+    const direct = JSON.parse(trimmed);
+    // Python returns whatever json.loads gives; callers only use dicts.
+    if (asObject(direct)) return asObject(direct);
+  } catch { /* fall through */ }
+  const fenced = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(trimmed);
+  if (fenced) {
+    try {
+      const value = asObject(JSON.parse(fenced[1]));
+      if (value) return value;
+    } catch { /* fall through */ }
+  }
+  for (let start = trimmed.indexOf("{"); start >= 0; start = trimmed.indexOf("{", start + 1)) {
+    const end = matchingBrace(trimmed, start);
+    if (end < 0) continue;
+    try {
+      const value = asObject(JSON.parse(trimmed.slice(start, end + 1)));
+      if (value) return value;
+    } catch { /* try next brace */ }
+  }
+  return null;
+}
+
+function matchingBrace(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") i += 1;
+      else if (ch === "\"") inString = false;
+      continue;
+    }
+    if (ch === "\"") inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** chat() + extractJson(); null when the model returned nothing or no JSON object. */
+export async function chatJson(
+  llm: LlmClient,
+  messages: LlmMessage[],
+  options: LlmChatOptions = {},
+): Promise<Record<string, unknown> | null> {
+  return extractJson(await llm.chat(messages, { ...options, json: true }));
+}
+
+export type OpenAiLlmConfig = {
+  /** e.g. https://api.openai.com/v1 or https://api.deepseek.com/v1 (".../chat/completions" is appended). */
+  baseUrl: string;
+  apiKey?: string;
+  /** Default model; `models` overrides it per tier. */
+  model: string;
+  models?: Partial<Record<LlmTier, string>>;
+  /** Local / gateways that reject response_format set this false. Default true. */
+  supportsJsonMode?: boolean;
+  /** Per attempt. Default 120000 ms. */
+  timeoutMs?: number;
+  fetch: FetchLike;
+  extraHeaders?: Record<string, string>;
+  /** Wait between retries; injectable for tests. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Provider id for run metadata. Default "custom". */
+  provider?: string;
+};
+
+class HttpFailure extends Error {
+  constructor(readonly status: number, readonly body: string) {
+    super(`HTTP ${status}`);
+  }
+}
+
+/** True for loopback / LAN model endpoints (Python `_is_local_llm`). */
+export function isLocalLlmUrl(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "::1" || host.endsWith(".local")
+      || /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host === "0.0.0.0" || host === "host.docker.internal";
+  } catch {
+    return false;
+  }
+}
+
+type Response = Awaited<ReturnType<FetchLike>>;
+
+/** OpenAI-compatible /chat/completions client over an injected fetch. */
+export function createOpenAiLlm(config: OpenAiLlmConfig): ToolLlmClient {
+  const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const sleep = config.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const timeoutMs = config.timeoutMs ?? 120_000;
+
+  /** POST with retry on 408/429/5xx; returns the open response (body unread on success). */
+  async function post(body: Record<string, unknown>, signal: AbortSignal): Promise<Response> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const response = await config.fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+            ...config.extraHeaders,
+          },
+          body: JSON.stringify(body),
+          signal,
+        });
+        if (!response.ok) throw new HttpFailure(response.status, await response.text());
+        return response;
+      } catch (cause) {
+        const status = cause instanceof HttpFailure ? cause.status : 0;
+        const retryable = status === 408 || status === 429 || status >= 500;
+        if (!retryable || attempt === 2 || signal.aborted) throw cause;
+        await sleep(500 * 2 ** attempt);
+      }
+    }
+  }
+
+  function request(messages: LlmMessage[], options: LlmChatOptions): { body: Record<string, unknown>; model: string; maxTokens: number } {
+    if (!messages.length) throw new CoreError("消息不能为空");
+    const model = config.models?.[options.tier ?? "standard"] || config.model;
+    let sent = messages;
+    const body: Record<string, unknown> = { model, temperature: options.temperature ?? 0.3 };
+    if (options.json && config.supportsJsonMode !== false) {
+      body.response_format = { type: "json_object" };
+      // Some gateways only accept json_object when the prompt says "json".
+      if (!messages.map((m) => m.content).join(" ").toLowerCase().includes("json")) {
+        const last = messages[messages.length - 1];
+        sent = [...messages.slice(0, -1), { ...last, content: `${last.content}\n\nReturn JSON only.` }];
+      }
+    }
+    body.messages = sent;
+    return { body, model, maxTokens: options.maxTokens ?? 4096 };
+  }
+
+  /** Reasoning models spend max_tokens on thinking: send a total budget, fall back for old endpoints. */
+  async function open(body: Record<string, unknown>, maxTokens: number, signal: AbortSignal): Promise<Response> {
+    try {
+      return await post({ ...body, max_completion_tokens: maxTokens * 3 }, signal);
+    } catch (cause) {
+      if (!(cause instanceof HttpFailure) || !cause.body.toLowerCase().includes("max_completion_tokens")) throw cause;
+      return post({ ...body, max_tokens: maxTokens }, signal);
+    }
+  }
+
+  function authError(cause: unknown, model: string): CoreError | null {
+    return cause instanceof HttpFailure && (cause.status === 401 || cause.status === 403)
+      ? new CoreError(`模型 API Key 无效或没有权限（${model}，HTTP ${cause.status}）；请在设置里检查 Key`, "forbidden")
+      : null;
+  }
+
+  function deadline(signal?: AbortSignal): { signal: AbortSignal; done(): void } {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const onAbort = () => controller.abort();
+    signal?.addEventListener("abort", onAbort);
+    return {
+      signal: controller.signal,
+      done() {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+      },
+    };
+  }
+
+  const provider = config.provider || "custom";
+  const tools = toolCallingMethods({
+    provider,
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey ?? "",
+    model: config.model,
+    models: config.models,
+    apiFormat: "openai",
+    supportsJsonMode: config.supportsJsonMode,
+    headers: config.extraHeaders,
+  }, config.fetch);
+
+  return {
+    local: isLocalLlmUrl(config.baseUrl),
+    provider,
+    model: config.model,
+    ...tools,
+
+    async chat(messages, options = {}) {
+      const { body, model, maxTokens } = request(messages, options);
+      const timer = deadline(options.signal);
+      try {
+        const response = await open(body, maxTokens, timer.signal);
+        const data = JSON.parse(await response.text()) as { choices?: Array<{ message?: { content?: unknown } }> };
+        const content = data.choices?.[0]?.message?.content;
+        return typeof content === "string" && content ? content : null;
+      } catch (cause) {
+        const auth = authError(cause, model);
+        if (auth) throw auth;
+        return null;
+      } finally {
+        timer.done();
+      }
+    },
+
+    async *chatStream(messages, options = {}) {
+      const { body, model, maxTokens } = request(messages, options);
+      const timer = deadline(options.signal);
+      try {
+        const response = await open({ ...body, stream: true }, maxTokens, timer.signal);
+        if (!response.body) {
+          // Endpoint ignored stream=true: treat the whole reply as one chunk.
+          const data = JSON.parse(await response.text()) as { choices?: Array<{ message?: { content?: unknown } }> };
+          const content = data.choices?.[0]?.message?.content;
+          if (typeof content === "string" && content) yield content;
+          return;
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let newline: number;
+            while ((newline = buffer.indexOf("\n")) >= 0) {
+              const line = buffer.slice(0, newline).trim();
+              buffer = buffer.slice(newline + 1);
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (payload === "[DONE]") return;
+              try {
+                const chunk = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: unknown } }> };
+                const text = chunk.choices?.[0]?.delta?.content;
+                if (typeof text === "string" && text) yield text;
+              } catch { /* keep-alive or partial line */ }
+            }
+          }
+        } finally {
+          reader.releaseLock?.();
+        }
+      } catch (cause) {
+        const auth = authError(cause, model);
+        if (auth) throw auth;
+        // Timeout / upstream failure: end the stream like Python does.
+      } finally {
+        timer.done();
+      }
+    },
+  };
+}
+
+// ======== Agent: tool calling, streamed deltas, Anthropic ========
 
 export type LlmApiFormat = "openai" | "anthropic";
 
@@ -17,6 +374,8 @@ export interface LlmEndpoint {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** Per-tier models for chat()/chatStream() `tier`. */
+  models?: Partial<Record<LlmTier, string>>;
   apiFormat?: LlmApiFormat;
   supportsJsonMode?: boolean;
   headers?: Record<string, string>;
@@ -86,6 +445,8 @@ export interface ChatResult {
   finishReason: FinishReason;
   usage: LlmUsage;
   error?: string;
+  /** HTTP status behind `error`, when there was one. */
+  errorStatus?: number;
 }
 
 export type LlmStreamEvent =
@@ -95,36 +456,15 @@ export type LlmStreamEvent =
   /** Always the last event. finishReason "error"/"aborted" instead of throwing. */
   | { type: "done"; result: ChatResult };
 
-export interface LlmClient {
-  readonly provider: string;
-  readonly model: string;
-  /** Non-streamed completion. Throws CoreError on HTTP / auth failure. */
-  chat(request: ChatRequest): Promise<ChatResult>;
-  /** Streamed completion. Never throws: failures end with done{finishReason:"error"}. */
-  stream(request: ChatRequest): AsyncIterable<LlmStreamEvent>;
-}
+// ---- helpers ----
 
-// ---- fetch seam (structural, so core needs no DOM / node types) ----
-
+/** Minimal byte reader (ReadableStreamDefaultReader fits). */
 export interface ByteReader {
   read(): Promise<{ done: boolean; value?: Uint8Array }>;
   cancel?(reason?: unknown): Promise<void>;
   releaseLock?(): void;
 }
 
-export interface FetchResponseLike {
-  ok: boolean;
-  status: number;
-  body: { getReader(): ByteReader } | null;
-  text(): Promise<string>;
-}
-
-export type FetchLike = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
-) => Promise<FetchResponseLike>;
-
-// ---- helpers ----
 
 const SECRET = /(sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+|api[_-]?key[=:]\s*\S+)/gi;
 
@@ -190,15 +530,6 @@ function joinUrl(base: string, path: string): string {
   return base.replace(/\/+$/, "") + path;
 }
 
-function isLocal(baseUrl: string): boolean {
-  try {
-    const host = new URL(baseUrl).hostname.toLowerCase().replace(/\.$/, "");
-    return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1" || host.startsWith("127.");
-  } catch {
-    return false;
-  }
-}
-
 function estimatedUsage(text: string): LlmUsage {
   const out = text ? Math.max(1, Math.floor(text.length / 4)) : 0;
   return { input_tokens: 0, output_tokens: out, total_tokens: out, estimated: true };
@@ -251,7 +582,7 @@ export class LlmHttpError extends CoreError {
   }
 }
 
-async function errorText(response: FetchResponseLike): Promise<string> {
+async function errorText(response: Response): Promise<string> {
   const text = await response.text().catch(() => "");
   try {
     const body = JSON.parse(text) as { error?: { message?: string } | string; message?: string };
@@ -291,7 +622,7 @@ function openAiBody(endpoint: LlmEndpoint, request: ChatRequest, stream: boolean
 
 function headersFor(endpoint: LlmEndpoint): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json", ...(endpoint.headers || {}) };
-  const key = endpoint.apiKey || (isLocal(endpoint.baseUrl) ? "local" : "");
+  const key = endpoint.apiKey || (isLocalLlmUrl(endpoint.baseUrl) ? "local" : "");
   if ((endpoint.apiFormat || "openai") === "anthropic") {
     headers["x-api-key"] = key;
     headers["anthropic-version"] = "2023-06-01";
@@ -309,7 +640,7 @@ async function postWithRetry(
   endpoint: LlmEndpoint,
   build: (full: boolean) => Record<string, unknown>,
   signal: AbortSignal | undefined,
-): Promise<FetchResponseLike> {
+): Promise<Response> {
   const send = (full: boolean) => fetchFn(url, { method: "POST", headers: headersFor(endpoint), body: JSON.stringify(build(full)), signal });
   let response = await send(true);
   // Some OpenAI-compatible gateways reject stream_options / reasoning_effort with 400: retry once without.
@@ -406,8 +737,8 @@ function anthropicChunk(event: Record<string, unknown>): Record<string, unknown>
 
 // ---- client ----
 
-export function createLlmClient(endpoint: LlmEndpoint, options: { fetch: FetchLike }): LlmClient {
-  const fetchFn = options.fetch;
+/** complete / completeStream for one endpoint (provider.py LlmStreamProvider). */
+function toolCallingMethods(endpoint: LlmEndpoint, fetchFn: FetchLike): Required<Pick<LlmClient, "complete" | "completeStream">> {
   const format: LlmApiFormat = endpoint.apiFormat || "openai";
   const provider = endpoint.provider || "custom";
 
@@ -420,13 +751,14 @@ export function createLlmClient(endpoint: LlmEndpoint, options: { fetch: FetchLi
     let usageRaw: Record<string, unknown> | undefined;
     let usageMerged: Record<string, unknown> = {};
     let error: string | undefined;
+    let errorStatus: number | undefined;
     try {
       const response = format === "anthropic"
         ? await fetchFn(joinUrl(endpoint.baseUrl, "/v1/messages").replace(/\/v1\/v1\//, "/v1/"), {
           method: "POST", headers: headersFor(endpoint), body: JSON.stringify(anthropicBody(endpoint, request, true)), signal: request.signal,
         })
         : await postWithRetry(fetchFn, joinUrl(endpoint.baseUrl, "/chat/completions"), endpoint, (full) => openAiBody(endpoint, request, true, full), request.signal);
-      if (!response.ok) throw new Error(authHint(response.status, provider, model, await errorText(response)));
+      if (!response.ok) throw new LlmHttpError(authHint(response.status, provider, model, await errorText(response)), response.status);
       if (!response.body) throw new Error("LLM 流式响应为空");
       for await (const item of readSse(response.body.getReader())) {
         if (request.signal?.aborted) {
@@ -477,6 +809,7 @@ export function createLlmClient(endpoint: LlmEndpoint, options: { fetch: FetchLi
       if (request.signal?.aborted || (cause instanceof Error && cause.name === "AbortError")) finish = "aborted";
       else {
         error = sanitizeLlmError(cause instanceof Error ? cause.message : cause);
+        if (cause instanceof LlmHttpError) errorStatus = cause.status;
         finish = "error";
       }
     }
@@ -491,11 +824,12 @@ export function createLlmClient(endpoint: LlmEndpoint, options: { fetch: FetchLi
         finishReason: finish,
         usage: usageOf(usageRaw, text),
         ...(error ? { error } : {}),
+        ...(errorStatus ? { errorStatus } : {}),
       },
     };
   }
 
-  async function chat(request: ChatRequest): Promise<ChatResult> {
+  async function complete(request: ChatRequest): Promise<ChatResult> {
     const model = request.model || endpoint.model;
     if (format === "anthropic") {
       const response = await fetchFn(joinUrl(endpoint.baseUrl, "/v1/messages").replace(/\/v1\/v1\//, "/v1/"), {
@@ -534,52 +868,86 @@ export function createLlmClient(endpoint: LlmEndpoint, options: { fetch: FetchLi
     };
   }
 
-  return { provider, model: endpoint.model, chat, stream };
+  return { complete, completeStream: stream };
 }
 
-/** End index (exclusive) of the balanced JSON object starting at `start`, or -1. */
-function objectEnd(text: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  for (let i = start; i < text.length; i += 1) {
-    const ch = text[i];
-    if (inString) {
-      if (ch === "\\") i += 1;
-      else if (ch === '"') inString = false;
-    } else if (ch === '"') inString = true;
-    else if (ch === "{") depth += 1;
-    else if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) return i + 1;
-    }
+export type CreateLlmOptions = {
+  fetch: FetchLike;
+  /** Per attempt for chat()/chatStream(). Default 120000 ms. */
+  timeoutMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+};
+
+/**
+ * One client with every method for a resolved endpoint. OpenAI-compatible
+ * endpoints get createOpenAiLlm's chat/chatStream (retry, json hint,
+ * max_completion_tokens); Anthropic endpoints answer chat/chatStream through
+ * the Messages API.
+ */
+export function createLlmClient(endpoint: LlmEndpoint, options: CreateLlmOptions): ToolLlmClient {
+  const provider = endpoint.provider || "custom";
+  if ((endpoint.apiFormat || "openai") === "openai") {
+    return createOpenAiLlm({
+      baseUrl: endpoint.baseUrl,
+      apiKey: endpoint.apiKey || (isLocalLlmUrl(endpoint.baseUrl) ? "local" : ""),
+      model: endpoint.model,
+      models: endpoint.models,
+      supportsJsonMode: endpoint.supportsJsonMode,
+      extraHeaders: endpoint.headers,
+      timeoutMs: options.timeoutMs,
+      sleep: options.sleep,
+      fetch: options.fetch,
+      provider,
+    });
   }
-  return -1;
-}
-
-/** agents/llm.py extract_json: whole text, then a ```json fence, then the first complete {...} object. */
-export function extractJson(text: string): Record<string, unknown> | null {
-  if (!text) return null;
-  const trimmed = text.trim();
-  const asObject = (candidate: string): Record<string, unknown> | null => {
-    try {
-      const parsed: unknown = JSON.parse(candidate);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
-    } catch {
-      return null;
-    }
+  const methods = toolCallingMethods(endpoint, options.fetch);
+  const toRequest = (messages: LlmMessage[], chatOptions: LlmChatOptions): ChatRequest => {
+    if (!messages.length) throw new CoreError("消息不能为空");
+    return {
+      messages,
+      model: endpoint.models?.[chatOptions.tier ?? "standard"] || endpoint.model,
+      temperature: chatOptions.temperature ?? 0.3,
+      maxTokens: chatOptions.maxTokens ?? 4096,
+      json: chatOptions.json,
+      signal: chatOptions.signal,
+    };
   };
-  const direct = asObject(trimmed);
-  if (direct) return direct;
-  const fence = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(trimmed);
-  if (fence) {
-    const fenced = asObject(fence[1]);
-    if (fenced) return fenced;
-  }
-  for (let i = trimmed.indexOf("{"); i >= 0; i = trimmed.indexOf("{", i + 1)) {
-    const end = objectEnd(trimmed, i);
-    if (end < 0) continue;
-    const found = asObject(trimmed.slice(i, end));
-    if (found) return found;
-  }
-  return null;
+  return {
+    local: isLocalLlmUrl(endpoint.baseUrl),
+    provider,
+    model: endpoint.model,
+    ...methods,
+    async chat(messages, chatOptions = {}) {
+      try {
+        const result = await methods.complete(toRequest(messages, chatOptions));
+        return result.content || null;
+      } catch (cause) {
+        if (cause instanceof CoreError && cause.code === "forbidden") throw cause;
+        if (cause instanceof CoreError && !(cause instanceof LlmHttpError)) throw cause;
+        return null;
+      }
+    },
+    async *chatStream(messages, chatOptions = {}) {
+      for await (const event of methods.completeStream(toRequest(messages, chatOptions))) {
+        if (event.type === "text_delta") yield event.text;
+        else if (event.type === "done" && (event.result.errorStatus === 401 || event.result.errorStatus === 403)) {
+          throw new CoreError(event.result.error || "模型 API Key 无效", "forbidden");
+        }
+      }
+    },
+  };
 }
+
+/** Stream one Agent turn; clients without completeStream fall back to complete, then fail. */
+export async function* streamCompletion(llm: LlmClient, request: ChatRequest): AsyncIterable<LlmStreamEvent> {
+  if (llm.completeStream) {
+    yield* llm.completeStream(request);
+    return;
+  }
+  if (!llm.complete) throw new CoreError("当前模型客户端不支持工具调用", "unsupported");
+  const result = await llm.complete(request);
+  if (result.reasoning) yield { type: "thinking_delta", text: result.reasoning };
+  if (result.content) yield { type: "text_delta", text: result.content };
+  yield { type: "done", result };
+}
+
