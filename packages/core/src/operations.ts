@@ -26,6 +26,7 @@ import type {
   StoredRecord,
 } from "./types";
 import { CoreError } from "./types";
+import { checkResumeDocFields, withResume } from "./resume/doc";
 
 type Args = Record<string, unknown>;
 
@@ -213,6 +214,10 @@ async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext):
   }
 
   await checkRecord(type, data, id === undefined, store);
+  if (type === "doc") {
+    checkResumeDocFields(data);
+    data = await withResume(store, data, id);
+  }
 
   if (type === "memory") {
     if (ctx.actor !== "你") {

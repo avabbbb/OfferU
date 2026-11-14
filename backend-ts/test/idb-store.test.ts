@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
 
 import { saveRecord, type PortableState } from "@offeru/core";
-import { IdbCoreStore } from "@offeru/core/idb";
+import { IdbCoreStore, IdbFileStore } from "@offeru/core/idb";
 
 let n = 0;
 const fresh = () => `idb-${Date.now()}-${n++}`;
@@ -93,5 +93,45 @@ describe("IdbCoreStore (browser specifics)", () => {
     await store.replaceState(legacy);
     expect(revs).toEqual([1, 2]);
     expect(await store.storeRev()).toBe(2);
+  });
+
+  it("files: bytes + mime round trip, bare names only", async () => {
+    const store = new IdbCoreStore({ name: fresh() });
+    const files = new IdbFileStore(store);
+    await files.write("../photo.png", new Uint8Array([1, 2, 3]));
+    expect(await files.read("photo.png")).toEqual({ bytes: new Uint8Array([1, 2, 3]), type: "image/png" });
+    expect(await files.read("a/b/photo.png")).toEqual({ bytes: new Uint8Array([1, 2, 3]), type: "image/png" });
+    expect(await files.read("nope.png")).toBeNull();
+    await expect(files.write("..", new Uint8Array())).rejects.toThrow();
+    expect(await files.list()).toEqual(["photo.png"]);
+    expect(JSON.stringify(await store.exportState())).not.toContain("photo.png");
+  });
+
+  it("upgrades a v1 database in place (adds files, keeps records)", async () => {
+    const name = fresh();
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open(name, 1);
+      open.onupgradeneeded = () => {
+        const db = open.result;
+        db.createObjectStore("records", { keyPath: "id" }).createIndex("type", "type");
+        db.createObjectStore("tombstones", { keyPath: "id" });
+        db.createObjectStore("changes", { keyPath: "id" });
+        db.createObjectStore("meta");
+        db.createObjectStore("settings");
+      };
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction(["records", "meta"], "readwrite");
+        tx.objectStore("records").put({ id: 3, type: "job", job_id: null, created_at: "t", updated_at: "t", rev: 1, data: { company: "V1" } });
+        tx.objectStore("meta").put({ rev: 1, nextRecordId: 4, nextChangeId: 1, origin: "empty" }, "state");
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+    const store = new IdbCoreStore({ name });
+    expect((await store.get("job", 3))!.company).toBe("V1");
+    await new IdbFileStore(store).write("x.txt", new Uint8Array([9]));
+    expect((await new IdbFileStore(store).read("x.txt"))!.type).toContain("text/plain");
   });
 });

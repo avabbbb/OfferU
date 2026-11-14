@@ -5,12 +5,27 @@ import { pathToFileURL } from "node:url";
 
 import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
-import { createApp } from "./app";
+import { createApp, type AppDeps } from "./app";
+import { devLlmFromEnv } from "./llm-env";
+import { registerCompanionRoutes } from "./routes/companion";
+import { filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
 import { openStore } from "./store";
 import type { SqliteCoreStore } from "./store";
 
-export function createAppServer(store: SqliteCoreStore): Server {
-  const app = createApp({ store, pairingToken, runtime: "node", storage: "sqlite" });
+export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDeps> = {}): Server {
+  const app = createApp({
+    store,
+    pairingToken,
+    runtime: "node",
+    storage: "sqlite",
+    // The model comes from the user's config (AppDeps.llm, owned by the config domain); env vars are a dev fallback only.
+    llm: "llm" in overrides ? overrides.llm : () => devLlmFromEnv(),
+    files: "files" in overrides ? overrides.files : nodeFileStore(filesDirFor(dbPath())),
+    renderer: "renderer" in overrides ? overrides.renderer : playwrightRenderer(),
+    schoolLogos: "schoolLogos" in overrides ? overrides.schoolLogos : nodeSchoolLogos(),
+    ...overrides,
+  });
+  registerCompanionRoutes(app);
   return createAdaptorServer({ fetch: app.fetch }) as Server;
 }
 

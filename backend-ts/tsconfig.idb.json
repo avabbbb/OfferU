@@ -1,0 +1,15 @@
+{
+  "//": "IndexedDB store + shared store contract: these need the DOM lib (IDB types); the rest of backend-ts must not see DOM globals.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2024",
+      "DOM"
+    ]
+  },
+  "include": [
+    "test/idb-store.test.ts",
+    "test/store-contract.test.ts"
+  ],
+  "exclude": []
+}

@@ -6,6 +6,8 @@
 //   changes     keyPath id                 the change log (undo)
 //   meta        key "state"                { rev, nextRecordId, nextChangeId }
 //   settings    free keys                  local-only config (LLM keys, sync creds)
+//   files       key = bare file name       uploads { bytes, type } (v2; the web
+//                                          build's service worker serves them)
 //
 // Transactions: an IndexedDB transaction auto-commits as soon as the code
 // awaits anything that is not an IndexedDB request, and core operations await
@@ -24,6 +26,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
 import { CoreError, type ChangeRow, type Json, type PutOptions, type RecordType, type StoredRecord } from "../types";
 import { emptyState, nextIds, type PortableState, type RecordEntry, type SyncableStore } from "../stores";
+import type { FileStore } from "../resume/render";
 
 type RecordRow = {
   id: number;
@@ -45,7 +48,14 @@ interface OfferuDb extends DBSchema {
   changes: { key: number; value: ChangeRow };
   meta: { key: string; value: Meta };
   settings: { key: string; value: unknown };
+  files: { key: string; value: StoredFile };
 }
+
+/** One upload as kept in IndexedDB. Plain object so a service worker can read it without this module. */
+export type StoredFile = { bytes: Uint8Array; type: string; size: number; created_at: string };
+
+/** Database version; bump with a new branch in upgrade(). v1: records/tombstones/changes/meta/settings. v2: files. */
+export const IDB_VERSION = 2;
 
 export type IdbStoreOptions = {
   /** IndexedDB database name. Default "offeru". */
@@ -115,14 +125,17 @@ export class IdbCoreStore implements SyncableStore {
   // ---- lifecycle -------------------------------------------------------
 
   private db(): Promise<IDBPDatabase<OfferuDb>> {
-    this.dbPromise ??= openDB<OfferuDb>(this.name, 1, {
-      upgrade(db) {
-        const records = db.createObjectStore("records", { keyPath: "id" });
-        records.createIndex("type", "type");
-        db.createObjectStore("tombstones", { keyPath: "id" });
-        db.createObjectStore("changes", { keyPath: "id" });
-        db.createObjectStore("meta");
-        db.createObjectStore("settings");
+    this.dbPromise ??= openDB<OfferuDb>(this.name, IDB_VERSION, {
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const records = db.createObjectStore("records", { keyPath: "id" });
+          records.createIndex("type", "type");
+          db.createObjectStore("tombstones", { keyPath: "id" });
+          db.createObjectStore("changes", { keyPath: "id" });
+          db.createObjectStore("meta");
+          db.createObjectStore("settings");
+        }
+        if (oldVersion < 2) db.createObjectStore("files");
       },
     });
     return this.dbPromise;
@@ -430,6 +443,12 @@ export class IdbCoreStore implements SyncableStore {
     return run;
   }
 
+  /** The opened database, for sibling adapters (IdbFileStore). */
+  async database(): Promise<IDBPDatabase<OfferuDb>> {
+    await this.ready();
+    return this.db();
+  }
+
   // ---- local settings (never synced, never exported) -------------------
 
   async getSetting<T = unknown>(key: string): Promise<T | null> {
@@ -445,6 +464,55 @@ export class IdbCoreStore implements SyncableStore {
   async deleteSetting(key: string): Promise<void> {
     await this.ready();
     await (await this.db()).delete("settings", key);
+  }
+}
+
+// ---- uploads ------------------------------------------------------------------
+
+function mimeOf(name: string): string {
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  return ({
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", svg: "image/svg+xml",
+    pdf: "application/pdf", txt: "text/plain; charset=utf-8", md: "text/markdown; charset=utf-8", json: "application/json",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  } as Record<string, string>)[ext] ?? "application/octet-stream";
+}
+
+/** Bare file name or "" (no paths, no dot names): same rule as the companion's files/ dir. */
+export function safeFileName(name: string): string {
+  const base = String(name).split(/[\\/]/).pop() ?? "";
+  return base && base !== "." && base !== ".." ? base : "";
+}
+
+/**
+ * deps.files for the browser runtime: uploads (ID photo, school logo, old
+ * resumes) in the same IndexedDB database as the records. Local only: not in
+ * data packages, not synced by this module.
+ */
+export class IdbFileStore implements FileStore {
+  constructor(private readonly store: IdbCoreStore) {}
+
+  async read(name: string): Promise<{ bytes: Uint8Array; type?: string } | null> {
+    const key = safeFileName(name);
+    if (!key) return null;
+    const found = await (await this.store.database()).get("files", key);
+    return found ? { bytes: found.bytes, type: found.type } : null;
+  }
+
+  async write(name: string, bytes: Uint8Array): Promise<void> {
+    const key = safeFileName(name);
+    if (!key) throw new Error("bad file name");
+    const copy = new Uint8Array(bytes);
+    await (await this.store.database()).put("files", { bytes: copy, type: mimeOf(key), size: copy.byteLength, created_at: new Date().toISOString() }, key);
+  }
+
+  async remove(name: string): Promise<void> {
+    const key = safeFileName(name);
+    if (key) await (await this.store.database()).delete("files", key);
+  }
+
+  async list(): Promise<string[]> {
+    return (await (await this.store.database()).getAllKeys("files")).map(String);
   }
 }
 

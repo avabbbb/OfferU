@@ -1,0 +1,2733 @@
+{
+ "css": {
+  "classic": "/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n.resume { --name: 16.5pt; --h2: 12pt; --ink: #000; --muted: #000; --rule: #000; background: #fff; color: #000; }\n.resume .photo { width: 21mm; height: 25.4mm; margin-right: 8mm; border-radius: 0; }\n.resume .logo { height: 12.7mm; max-width: 47mm; }\n.resume h1 { color: #000; font-weight: 700; letter-spacing: 0; line-height: 1.2; margin: 0 0 2.2mm; }\n.resume h1 + p.contact { color: #000; line-height: 1.45; }\n.resume h2 { color: #000; font-weight: 700; letter-spacing: 0; margin: var(--section-gap) 0 2mm; padding-bottom: .8mm; border-bottom: .75pt solid #000; }\n.resume h3 { font-weight: 700; }\n.resume h3 .seg, .resume h3 .r { color: #000; }\n.resume h3 .sep::before { content: \"-\"; margin: 0; color: #000; }\n.resume ul, .resume ol { padding-left: 5mm; }\n.resume li::marker { color: #000; }\n.resume strong, .resume b { font-weight: 700; color: #000; }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 10.5pt; --line-height: 1.3; --section-gap: 10pt; --item-gap: 3pt; --accent: #000000; --margin-top: 7mm; --margin-right: 8mm; --margin-bottom: 7mm; --margin-left: 8mm; }",
+  "clear": "/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 清晰：黑体、近黑、细分隔线，对标超级简历。 */\n.resume { --name: 20pt; --h2: calc(var(--body-size) * 1.12); }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 9.5pt; --line-height: 1.45; --section-gap: 9pt; --item-gap: 4.5pt; --accent: #141413; --margin-top: 11mm; --margin-right: 13mm; --margin-bottom: 11mm; --margin-left: 13mm; }",
+  "kami": "/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 留白（Kami）：照 tw93/Kami 的 resume 模板，对比度按超级简历的阅读感加深。\n   暖羊皮纸底 #f5f4ed；强调色墨蓝 --accent 只给要点符号；正文、加粗都用深墨色；\n   灰全部是暖灰；一种衬线；姓名、模块标题、条目标题、加粗用 600；没有阴影、色块、竖条，模块标题下一条深色细线。 */\n.resume { --name: 26.5pt; --h2: 12.5pt; --ink: #141413; --olive: #3d3c38; --muted: #5e5d58; --rule: #e8e6dc;\n  background: #f5f4ed; color: var(--ink); letter-spacing: .3pt; }\n.resume h1 { color: var(--ink); font-weight: 600; letter-spacing: .5pt; line-height: 1; margin: 0 0 2.3mm; }\n.resume h1 + p.contact { color: var(--olive); font-size: 9pt; line-height: 1.5; margin: 0 0 4.2mm; padding-bottom: 2.3mm;\n  border-bottom: .6pt solid var(--rule); }\n.resume h2 { color: var(--ink); font-weight: 600; letter-spacing: 0; margin-bottom: 1.7mm; padding-bottom: 1mm;\n  border-bottom: .7pt solid var(--olive); }\n.resume section:first-of-type h2 { margin-top: 0; }\n.resume h3 { font-weight: 600; font-size: calc(var(--body-size) + 1pt); }\n.resume h3 .seg { color: var(--olive); font-size: var(--body-size); }\n.resume h3 .r { color: var(--olive); font-size: 9pt; }\n.resume h3 .sep::before { color: var(--muted); }\n.resume p, .resume li { color: var(--ink); }\n.resume li::marker { color: var(--accent); }\n.resume strong, .resume b { font-weight: 600; color: var(--ink); }\n.resume .photo { border-radius: 2pt; }\n.resume { --font: \"Source Han Serif SC\", \"Noto Serif SC\", \"Noto Serif CJK SC\", \"Songti SC\", \"STSong\", \"SimSun\", Georgia, serif; --body-size: 9.2pt; --line-height: 1.42; --section-gap: 16pt; --item-gap: 7pt; --accent: #1B365D; --margin-top: 11mm; --margin-right: 13mm; --margin-bottom: 11mm; --margin-left: 13mm; }",
+  "compact": "/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 紧凑：联系方式下一条主题色粗线，分节不再画线，给内容多的人。 */\n.resume { --name: 16pt; --h2: calc(var(--body-size) * 1.08); }\n.resume h1 + p { padding-bottom: 2mm; border-bottom: .3mm solid var(--accent); }\n.resume h2 { border-bottom: none; padding-bottom: 0; }\n.resume h3 { margin-top: calc(var(--item-gap) * .6); }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 9.2pt; --line-height: 1.4; --section-gap: 7pt; --item-gap: 3pt; --accent: #1D1D1F; --margin-top: 10mm; --margin-right: 12mm; --margin-bottom: 10mm; --margin-left: 12mm; }",
+  "single": "/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 清晰：黑体、近黑、细分隔线，对标超级简历。 */\n.resume { --name: 20pt; --h2: calc(var(--body-size) * 1.12); }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 9.5pt; --line-height: 1.45; --section-gap: 9pt; --item-gap: 4.5pt; --accent: #141413; --margin-top: 11mm; --margin-right: 13mm; --margin-bottom: 11mm; --margin-left: 13mm; }",
+  "photo": "/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 清晰：黑体、近黑、细分隔线，对标超级简历。 */\n.resume { --name: 20pt; --h2: calc(var(--body-size) * 1.12); }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 9.5pt; --line-height: 1.45; --section-gap: 9pt; --item-gap: 4.5pt; --accent: #141413; --margin-top: 11mm; --margin-right: 13mm; --margin-bottom: 11mm; --margin-left: 13mm; }",
+  "nope": "/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n.resume { --name: 16.5pt; --h2: 12pt; --ink: #000; --muted: #000; --rule: #000; background: #fff; color: #000; }\n.resume .photo { width: 21mm; height: 25.4mm; margin-right: 8mm; border-radius: 0; }\n.resume .logo { height: 12.7mm; max-width: 47mm; }\n.resume h1 { color: #000; font-weight: 700; letter-spacing: 0; line-height: 1.2; margin: 0 0 2.2mm; }\n.resume h1 + p.contact { color: #000; line-height: 1.45; }\n.resume h2 { color: #000; font-weight: 700; letter-spacing: 0; margin: var(--section-gap) 0 2mm; padding-bottom: .8mm; border-bottom: .75pt solid #000; }\n.resume h3 { font-weight: 700; }\n.resume h3 .seg, .resume h3 .r { color: #000; }\n.resume h3 .sep::before { content: \"-\"; margin: 0; color: #000; }\n.resume ul, .resume ol { padding-left: 5mm; }\n.resume li::marker { color: #000; }\n.resume strong, .resume b { font-weight: 700; color: #000; }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 10.5pt; --line-height: 1.3; --section-gap: 10pt; --item-gap: 3pt; --accent: #000000; --margin-top: 7mm; --margin-right: 8mm; --margin-bottom: 7mm; --margin-left: 8mm; }"
+ },
+ "markdown": [
+  {
+   "in": "# 张三\n电话：138 0000 0000 · 邮箱：a@b.com | https://x.dev\n\n求职意向：产品经理\n\n## 教育经历\n### 某大学 | 计算机 | 2022.09 – 2026.06\n- GPA 3.8/4.0\n- 主修课程：**数据结构**、操作系统\n\n## 实习工作经历\n### 字节跳动 | 后端 | 北京 | 2025.06 – 2025.09\n- 接口 QPS 提升 30%\n  续行写在这里\n1. 有序要点\n\n## 自我评价\n热爱技术\n第二行\n",
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": "张三",
+     "target": "产品经理",
+     "contacts": [
+      {
+       "label": "电话",
+       "value": "138 0000 0000"
+      },
+      {
+       "label": "邮箱",
+       "value": "a@b.com"
+      },
+      {
+       "label": "",
+       "value": "https://x.dev"
+      }
+     ]
+    },
+    "sections": [
+     {
+      "type": "education",
+      "title": "教育经历",
+      "hidden": false,
+      "items": [
+       {
+        "title": "某大学",
+        "subtitle": "计算机",
+        "date": "2022.09 – 2026.06",
+        "location": "",
+        "bullets": [
+         "GPA 3.8/4.0",
+         "主修课程：**数据结构**、操作系统"
+        ],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "type": "internship",
+      "title": "实习工作经历",
+      "hidden": false,
+      "items": [
+       {
+        "title": "字节跳动",
+        "subtitle": "后端",
+        "date": "2025.06 – 2025.09",
+        "location": "北京",
+        "bullets": [
+         "接口 QPS 提升 30% 续行写在这里",
+         "有序要点"
+        ],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "type": "summary",
+      "title": "自我评价",
+      "hidden": false,
+      "items": [
+       {
+        "title": "",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": "热爱技术\n第二行"
+       }
+      ]
+     }
+    ]
+   },
+   "md": "# 张三\n\n电话：138 0000 0000 · 邮箱：a@b.com · https://x.dev\n\n求职意向：产品经理\n\n## 教育经历\n\n### 某大学 | 计算机 | 2022.09 – 2026.06\n\n- GPA 3.8/4.0\n- 主修课程：**数据结构**、操作系统\n\n## 实习工作经历\n\n### 字节跳动 | 后端 | 北京 | 2025.06 – 2025.09\n\n- 接口 QPS 提升 30% 续行写在这里\n- 有序要点\n\n## 自我评价\n\n热爱技术\n第二行\n"
+  },
+  {
+   "in": "#\n138 · a@b.com\n\n## 技能\n### 语言\nPython、Go\n",
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": "",
+     "target": "",
+     "contacts": [
+      {
+       "label": "",
+       "value": "138"
+      },
+      {
+       "label": "",
+       "value": "a@b.com"
+      }
+     ]
+    },
+    "sections": [
+     {
+      "type": "skills",
+      "title": "技能",
+      "hidden": false,
+      "items": [
+       {
+        "title": "语言",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": "Python、Go"
+       }
+      ]
+     }
+    ]
+   },
+   "md": "#\n\n138 · a@b.com\n\n## 技能\n\n### 语言\n\nPython、Go\n"
+  },
+  {
+   "in": "无名字的一段\n\n第二段\n\n### 孤立条目 | 2024\n- 要点\n&nbsp;\n## 获奖\n### 国奖 | 学院 | 城市 | 某组织 | 2023\n",
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": "",
+     "target": "第二段",
+     "contacts": [
+      {
+       "label": "",
+       "value": "无名字的一段"
+      }
+     ]
+    },
+    "sections": [
+     {
+      "type": "custom",
+      "title": "",
+      "hidden": false,
+      "items": [
+       {
+        "title": "孤立条目",
+        "subtitle": "",
+        "date": "2024",
+        "location": "",
+        "bullets": [
+         "要点"
+        ],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "type": "awards",
+      "title": "获奖",
+      "hidden": false,
+      "items": [
+       {
+        "title": "国奖",
+        "subtitle": "学院 · 城市",
+        "date": "2023",
+        "location": "某组织",
+        "bullets": [],
+        "text": ""
+       }
+      ]
+     }
+    ]
+   },
+   "md": "#\n\n无名字的一段\n\n求职意向：第二段\n\n## 未命名\n\n### 孤立条目 | 2024\n\n- 要点\n\n## 获奖\n\n### 国奖 | 学院 · 城市 | 某组织 | 2023\n"
+  },
+  {
+   "in": "",
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": "",
+     "target": "",
+     "contacts": []
+    },
+    "sections": []
+   },
+   "md": "#\n"
+  },
+  {
+   "in": "# 李四\n\n## 项目经历\n### 一个项目\n\n### A | B\n  缩进的正文\n",
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": "李四",
+     "target": "",
+     "contacts": []
+    },
+    "sections": [
+     {
+      "type": "project",
+      "title": "项目经历",
+      "hidden": false,
+      "items": [
+       {
+        "title": "一个项目",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       },
+       {
+        "title": "A",
+        "subtitle": "",
+        "date": "B",
+        "location": "",
+        "bullets": [],
+        "text": "缩进的正文"
+       }
+      ]
+     }
+    ]
+   },
+   "md": "# 李四\n\n## 项目经历\n\n### 一个项目\n\n### A | B\n\n缩进的正文\n"
+  }
+ ],
+ "normalize": {
+  "in": {
+   "basics": {
+    "name": " 王五 ",
+    "target": "数据分析",
+    "contacts": [
+     "电话：139",
+     {
+      "label": "",
+      "value": "w@x.cn"
+     },
+     "https://a.b",
+     {
+      "label": "微信",
+      "value": "  "
+     }
+    ]
+   },
+   "sections": [
+    {
+     "id": "s1",
+     "title": "教育背景",
+     "items": [
+      {
+       "id": "i1",
+       "title": "北大",
+       "subtitle": "统计",
+       "date": "2020 – 2024",
+       "location": "北京",
+       "bullets": [
+        "**GPA** 3.9",
+        "",
+        "*斜体* 与 [链](https://x.dev/?a=1&b=2)"
+       ],
+       "text": "{center} 居中\n  - 列表\n1. 一\n普通 <b>"
+      }
+     ]
+    },
+    {
+     "id": "s2",
+     "type": "custom",
+     "title": "隐藏",
+     "hidden": true,
+     "items": [
+      {
+       "title": "x"
+      }
+     ]
+    },
+    {
+     "id": "s3",
+     "title": "  ",
+     "items": [
+      {
+       "id": "i3",
+       "title": "",
+       "date": "2024"
+      },
+      {
+       "id": "i4",
+       "text": "只有正文"
+      }
+     ]
+    },
+    {
+     "id": "s4",
+     "type": "bogus",
+     "title": "项目",
+     "items": []
+    }
+   ]
+  },
+  "resume": {
+   "version": 1,
+   "basics": {
+    "name": " 王五 ",
+    "target": "数据分析",
+    "contacts": [
+     {
+      "label": "电话",
+      "value": "139"
+     },
+     {
+      "label": "",
+      "value": "w@x.cn"
+     },
+     {
+      "label": "",
+      "value": "https://a.b"
+     },
+     {
+      "label": "微信",
+      "value": "  "
+     }
+    ]
+   },
+   "sections": [
+    {
+     "type": "education",
+     "title": "教育背景",
+     "hidden": false,
+     "items": [
+      {
+       "title": "北大",
+       "subtitle": "统计",
+       "date": "2020 – 2024",
+       "location": "北京",
+       "bullets": [
+        "**GPA** 3.9",
+        "",
+        "*斜体* 与 [链](https://x.dev/?a=1&b=2)"
+       ],
+       "text": "{center} 居中\n  - 列表\n1. 一\n普通 <b>"
+      }
+     ]
+    },
+    {
+     "type": "custom",
+     "title": "隐藏",
+     "hidden": true,
+     "items": [
+      {
+       "title": "x",
+       "subtitle": "",
+       "date": "",
+       "location": "",
+       "bullets": [],
+       "text": ""
+      }
+     ]
+    },
+    {
+     "type": "custom",
+     "title": "  ",
+     "hidden": false,
+     "items": [
+      {
+       "title": "",
+       "subtitle": "",
+       "date": "2024",
+       "location": "",
+       "bullets": [],
+       "text": ""
+      },
+      {
+       "title": "",
+       "subtitle": "",
+       "date": "",
+       "location": "",
+       "bullets": [],
+       "text": "只有正文"
+      }
+     ]
+    },
+    {
+     "type": "project",
+     "title": "项目",
+     "hidden": false,
+     "items": []
+    }
+   ]
+  },
+  "md": "# 王五\n\n电话：139 · w@x.cn · https://a.b\n\n求职意向：数据分析\n\n## 教育背景\n\n### 北大 | 统计 | 北京 | 2020 – 2024\n\n{center} 居中\n- 列表\n1. 一\n普通 <b>\n\n- **GPA** 3.9\n- *斜体* 与 [链](https://x.dev/?a=1&b=2)\n\n## 未命名\n\n###  | 2024\n\n只有正文\n\n## 项目\n"
+ },
+ "normalize_errors": [
+  {
+   "in": null,
+   "error": "doc.resume 要是对象：{basics, sections}"
+  },
+  {
+   "in": [],
+   "error": "doc.resume 要是对象：{basics, sections}"
+  },
+  {
+   "in": {
+    "basics": "x"
+   },
+   "error": "doc.resume.basics 要是对象：{name, target, contacts}"
+  },
+  {
+   "in": {
+    "sections": {}
+   },
+   "error": "doc.resume.sections 要是数组"
+  },
+  {
+   "in": {
+    "sections": [
+     "x"
+    ]
+   },
+   "error": "doc.resume.sections[0] 要是对象"
+  },
+  {
+   "in": {
+    "sections": [
+     {
+      "items": [
+       1
+      ]
+     }
+    ]
+   },
+   "error": "doc.resume.sections[0].items[0] 要是对象"
+  },
+  {
+   "in": {
+    "sections": [
+     {
+      "items": [
+       {
+        "title": {
+         "a": 1
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "error": "doc.resume.sections[0].items[0].title 要是文字"
+  },
+  {
+   "in": {
+    "basics": {
+     "contacts": "a"
+    }
+   },
+   "error": "doc.resume.basics.contacts 要是数组"
+  },
+  {
+   "in": {
+    "sections": [
+     {
+      "items": [
+       {
+        "bullets": [
+         true
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "error": "doc.resume.sections[0].items[0].bullets 要是文字"
+  }
+ ],
+ "style_errors": [
+  {
+   "in": [],
+   "error": "doc.style 要是对象"
+  },
+  {
+   "in": {
+    "x": 1,
+    "a": 2
+   },
+   "error": "doc.style 没有 a, x；可用：template, font, bodySize, lineHeight, sectionGap, itemGap, margin, accent, photo, logo"
+  },
+  {
+   "in": {
+    "template": "nope"
+   },
+   "error": "doc.style.template 只能是 classic, clear, kami, compact"
+  },
+  {
+   "in": {
+    "font": "mono"
+   },
+   "error": "doc.style.font 只能是 sans, serif, kai"
+  },
+  {
+   "in": {
+    "bodySize": 20
+   },
+   "error": "doc.style.bodySize 要在 8–14 之间"
+  },
+  {
+   "in": {
+    "bodySize": true
+   },
+   "error": "doc.style.bodySize 要在 8–14 之间"
+  },
+  {
+   "in": {
+    "lineHeight": 0.5
+   },
+   "error": "doc.style.lineHeight 要在 1.0–2.0 之间"
+  },
+  {
+   "in": {
+    "margin": {
+     "top": 1
+    }
+   },
+   "error": "doc.style.margin.top 要在 3–30 之间"
+  },
+  {
+   "in": {
+    "margin": {
+     "middle": 5
+    }
+   },
+   "error": "doc.style.margin 是 {top, right, bottom, left}，单位 mm"
+  },
+  {
+   "in": {
+    "margin": 5
+   },
+   "error": "doc.style.margin 是 {top, right, bottom, left}，单位 mm"
+  },
+  {
+   "in": {
+    "accent": "red"
+   },
+   "error": "doc.style.accent 要是 #RRGGBB"
+  },
+  {
+   "in": {
+    "photo": "yes"
+   },
+   "error": "doc.style.photo 是 true / false"
+  },
+  {
+   "in": {
+    "logo": "a/b.png"
+   },
+   "error": "doc.style.logo 是上传（POST /api/files）返回的文件名"
+  },
+  {
+   "in": {
+    "logo": ""
+   },
+   "error": "doc.style.logo 是上传（POST /api/files）返回的文件名"
+  },
+  {
+   "in": {
+    "sectionGap": 31
+   },
+   "error": "doc.style.sectionGap 要在 0–30 之间"
+  },
+  {
+   "in": {
+    "itemGap": -1
+   },
+   "error": "doc.style.itemGap 要在 0–20 之间"
+  }
+ ],
+ "style_ok": [
+  {
+   "in": {},
+   "error": null
+  },
+  {
+   "in": {
+    "template": "kami",
+    "bodySize": 9,
+    "margin": {
+     "top": 3
+    },
+    "accent": "#AbCdEf",
+    "photo": true,
+    "logo": "logo-x.png",
+    "font": null
+   },
+   "error": null
+  }
+ ],
+ "resolve_style": [
+  {
+   "style": null,
+   "legacy": null,
+   "out": {
+    "font": "sans",
+    "bodySize": 10.5,
+    "lineHeight": 1.3,
+    "sectionGap": 10,
+    "itemGap": 3,
+    "margin": {
+     "top": 7,
+     "right": 8,
+     "bottom": 7,
+     "left": 8
+    },
+    "accent": "#000000",
+    "photo": false,
+    "logo": null,
+    "template": "classic"
+   }
+  },
+  {
+   "style": {
+    "template": "kami"
+   },
+   "legacy": null,
+   "out": {
+    "font": "serif",
+    "bodySize": 9.2,
+    "lineHeight": 1.42,
+    "sectionGap": 16,
+    "itemGap": 7,
+    "margin": {
+     "top": 11,
+     "right": 13,
+     "bottom": 11,
+     "left": 13
+    },
+    "accent": "#1B365D",
+    "photo": false,
+    "logo": null,
+    "template": "kami"
+   }
+  },
+  {
+   "style": null,
+   "legacy": "photo",
+   "out": {
+    "font": "sans",
+    "bodySize": 9.5,
+    "lineHeight": 1.45,
+    "sectionGap": 9,
+    "itemGap": 4.5,
+    "margin": {
+     "top": 11,
+     "right": 13,
+     "bottom": 11,
+     "left": 13
+    },
+    "accent": "#141413",
+    "photo": true,
+    "logo": null,
+    "template": "clear"
+   }
+  },
+  {
+   "style": {
+    "template": "compact",
+    "bodySize": 11,
+    "margin": {
+     "left": 20
+    }
+   },
+   "legacy": "single",
+   "out": {
+    "font": "sans",
+    "bodySize": 11,
+    "lineHeight": 1.4,
+    "sectionGap": 7,
+    "itemGap": 3,
+    "margin": {
+     "top": 10,
+     "right": 12,
+     "bottom": 10,
+     "left": 20
+    },
+    "accent": "#1D1D1F",
+    "photo": false,
+    "logo": null,
+    "template": "compact"
+   }
+  },
+  {
+   "style": {
+    "template": "nope",
+    "accent": "#123456"
+   },
+   "legacy": null,
+   "out": {
+    "font": "sans",
+    "bodySize": 10.5,
+    "lineHeight": 1.3,
+    "sectionGap": 10,
+    "itemGap": 3,
+    "margin": {
+     "top": 7,
+     "right": 8,
+     "bottom": 7,
+     "left": 8
+    },
+    "accent": "#123456",
+    "photo": false,
+    "logo": null,
+    "template": "classic"
+   }
+  },
+  {
+   "style": {
+    "photo": null,
+    "logo": "x.png"
+   },
+   "legacy": "compact",
+   "out": {
+    "font": "sans",
+    "bodySize": 9.2,
+    "lineHeight": 1.4,
+    "sectionGap": 7,
+    "itemGap": 3,
+    "margin": {
+     "top": 10,
+     "right": 12,
+     "bottom": 10,
+     "left": 12
+    },
+    "accent": "#1D1D1F",
+    "photo": false,
+    "logo": "x.png",
+    "template": "compact"
+   }
+  }
+ ],
+ "inline": {
+  "熟悉 ++Python++ 和 C++、C++11": "熟悉 <u>Python</u> 和 C++、C++11",
+  "++a++b ++c++": "<u>a++b ++c</u>",
+  "x++y++": "x++y++",
+  "++ 空 ++": "++ 空 ++",
+  "**粗** *斜* ++下++ [链](https://a.b/?q=\"1\")": "<strong>粗</strong> <em>斜</em> <u>下</u> <a href=\"https://a.b/?q=%221%22\">链</a>",
+  "a <b> & ++<i>++": "a &lt;b&gt; &amp; <u>&lt;i&gt;</u>",
+  "++中文++。": "<u>中文</u>。",
+  "C++ ++Go++": "C++ <u>Go</u>",
+  "+++三+++": "<u>+三+</u>",
+  "++a++++b++": "<u>a++++b</u>"
+ },
+ "files": {
+  "photo.jpg": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAEAAQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDgqKKK8M/VD//Z",
+  "logo-a.png": "iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAYAAABWKLW/AAAAFUlEQVR4nGNkYPj/nwEKmBiQAAoHAEdVAgQi9qLuAAAAAElFTkSuQmCC"
+ },
+ "render": [
+  {
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": " 王五 ",
+     "target": "数据分析",
+     "contacts": [
+      {
+       "label": "电话",
+       "value": "139"
+      },
+      {
+       "label": "",
+       "value": "w@x.cn"
+      },
+      {
+       "label": "",
+       "value": "https://a.b"
+      },
+      {
+       "label": "微信",
+       "value": "  "
+      }
+     ]
+    },
+    "sections": [
+     {
+      "id": "s1",
+      "type": "education",
+      "title": "教育背景",
+      "hidden": false,
+      "items": [
+       {
+        "id": "i1",
+        "title": "北大",
+        "subtitle": "统计",
+        "date": "2020 – 2024",
+        "location": "北京",
+        "bullets": [
+         "**GPA** 3.9",
+         "",
+         "*斜体* 与 [链](https://x.dev/?a=1&b=2)"
+        ],
+        "text": "{center} 居中\n  - 列表\n1. 一\n普通 <b>"
+       }
+      ]
+     },
+     {
+      "id": "s2",
+      "type": "custom",
+      "title": "隐藏",
+      "hidden": true,
+      "items": [
+       {
+        "id": "508212cf",
+        "title": "x",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "id": "s3",
+      "type": "custom",
+      "title": "  ",
+      "hidden": false,
+      "items": [
+       {
+        "id": "i3",
+        "title": "",
+        "subtitle": "",
+        "date": "2024",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       },
+       {
+        "id": "i4",
+        "title": "",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": "只有正文"
+       }
+      ]
+     },
+     {
+      "id": "s4",
+      "type": "project",
+      "title": "项目",
+      "hidden": false,
+      "items": []
+     }
+    ]
+   },
+   "style": {},
+   "photo": null,
+   "title": "简历",
+   "html": "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>简历</title><style>@page { size: A4; margin: 0; } html, body { margin: 0; }/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n.resume { --name: 16.5pt; --h2: 12pt; --ink: #000; --muted: #000; --rule: #000; background: #fff; color: #000; }\n.resume .photo { width: 21mm; height: 25.4mm; margin-right: 8mm; border-radius: 0; }\n.resume .logo { height: 12.7mm; max-width: 47mm; }\n.resume h1 { color: #000; font-weight: 700; letter-spacing: 0; line-height: 1.2; margin: 0 0 2.2mm; }\n.resume h1 + p.contact { color: #000; line-height: 1.45; }\n.resume h2 { color: #000; font-weight: 700; letter-spacing: 0; margin: var(--section-gap) 0 2mm; padding-bottom: .8mm; border-bottom: .75pt solid #000; }\n.resume h3 { font-weight: 700; }\n.resume h3 .seg, .resume h3 .r { color: #000; }\n.resume h3 .sep::before { content: \"-\"; margin: 0; color: #000; }\n.resume ul, .resume ol { padding-left: 5mm; }\n.resume li::marker { color: #000; }\n.resume strong, .resume b { font-weight: 700; color: #000; }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 10.5pt; --line-height: 1.3; --section-gap: 10pt; --item-gap: 3pt; --accent: #000000; --margin-top: 7mm; --margin-right: 8mm; --margin-bottom: 7mm; --margin-left: 8mm; }</style></head><body><main class=\"resume t-classic\"><h1 data-path=\"basics.name\">王五</h1><p class=\"contact\" data-path=\"basics.contacts\">电话：139 | w@x.cn<br>https://a.b<br>求职意向：数据分析</p><section data-path=\"sections.0\"><h2 data-path=\"sections.0.title\">教育背景</h2><div class=\"item\" data-path=\"sections.0.items.0\"><h3 data-path=\"sections.0.items.0.head\">北大<span class=\"sep\">|</span><span class=\"seg\">统计</span><span class=\"sep\">|</span><span class=\"seg\">北京</span><span class=\"sep-r\">|</span><span class=\"r\">2020 – 2024</span></h3><p data-path=\"sections.0.items.0.text\" style=\"text-align:center\">居中</p><ul data-path=\"sections.0.items.0.text\"><li style=\"margin-left:2em\">列表</li></ul><ol data-path=\"sections.0.items.0.text\"><li>一</li></ol><p data-path=\"sections.0.items.0.text\">普通 &lt;b&gt;</p><ul><li data-path=\"sections.0.items.0.bullets.0\"><strong>GPA</strong> 3.9</li><li data-path=\"sections.0.items.0.bullets.2\"><em>斜体</em> 与 <a href=\"https://x.dev/?a=1&amp;b=2\">链</a></li></ul></div></section><section data-path=\"sections.2\"><h2 data-path=\"sections.2.title\">未命名</h2><div class=\"item\" data-path=\"sections.2.items.0\"><h3 data-path=\"sections.2.items.0.head\"><span class=\"sep-r\">|</span><span class=\"r\">2024</span></h3></div><div class=\"item\" data-path=\"sections.2.items.1\"><p data-path=\"sections.2.items.1.text\">只有正文</p></div></section><section data-path=\"sections.3\"><h2 data-path=\"sections.3.title\">项目</h2></section></main></body></html>"
+  },
+  {
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": " 王五 ",
+     "target": "数据分析",
+     "contacts": [
+      {
+       "label": "电话",
+       "value": "139"
+      },
+      {
+       "label": "",
+       "value": "w@x.cn"
+      },
+      {
+       "label": "",
+       "value": "https://a.b"
+      },
+      {
+       "label": "微信",
+       "value": "  "
+      }
+     ]
+    },
+    "sections": [
+     {
+      "id": "s1",
+      "type": "education",
+      "title": "教育背景",
+      "hidden": false,
+      "items": [
+       {
+        "id": "i1",
+        "title": "北大",
+        "subtitle": "统计",
+        "date": "2020 – 2024",
+        "location": "北京",
+        "bullets": [
+         "**GPA** 3.9",
+         "",
+         "*斜体* 与 [链](https://x.dev/?a=1&b=2)"
+        ],
+        "text": "{center} 居中\n  - 列表\n1. 一\n普通 <b>"
+       }
+      ]
+     },
+     {
+      "id": "s2",
+      "type": "custom",
+      "title": "隐藏",
+      "hidden": true,
+      "items": [
+       {
+        "id": "508212cf",
+        "title": "x",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "id": "s3",
+      "type": "custom",
+      "title": "  ",
+      "hidden": false,
+      "items": [
+       {
+        "id": "i3",
+        "title": "",
+        "subtitle": "",
+        "date": "2024",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       },
+       {
+        "id": "i4",
+        "title": "",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": "只有正文"
+       }
+      ]
+     },
+     {
+      "id": "s4",
+      "type": "project",
+      "title": "项目",
+      "hidden": false,
+      "items": []
+     }
+    ]
+   },
+   "style": {
+    "template": "kami",
+    "photo": true
+   },
+   "photo": "photo.jpg",
+   "title": "张三-简历",
+   "html": "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>张三-简历</title><style>@page { size: A4; margin: 0; } html, body { margin: 0; }/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 留白（Kami）：照 tw93/Kami 的 resume 模板，对比度按超级简历的阅读感加深。\n   暖羊皮纸底 #f5f4ed；强调色墨蓝 --accent 只给要点符号；正文、加粗都用深墨色；\n   灰全部是暖灰；一种衬线；姓名、模块标题、条目标题、加粗用 600；没有阴影、色块、竖条，模块标题下一条深色细线。 */\n.resume { --name: 26.5pt; --h2: 12.5pt; --ink: #141413; --olive: #3d3c38; --muted: #5e5d58; --rule: #e8e6dc;\n  background: #f5f4ed; color: var(--ink); letter-spacing: .3pt; }\n.resume h1 { color: var(--ink); font-weight: 600; letter-spacing: .5pt; line-height: 1; margin: 0 0 2.3mm; }\n.resume h1 + p.contact { color: var(--olive); font-size: 9pt; line-height: 1.5; margin: 0 0 4.2mm; padding-bottom: 2.3mm;\n  border-bottom: .6pt solid var(--rule); }\n.resume h2 { color: var(--ink); font-weight: 600; letter-spacing: 0; margin-bottom: 1.7mm; padding-bottom: 1mm;\n  border-bottom: .7pt solid var(--olive); }\n.resume section:first-of-type h2 { margin-top: 0; }\n.resume h3 { font-weight: 600; font-size: calc(var(--body-size) + 1pt); }\n.resume h3 .seg { color: var(--olive); font-size: var(--body-size); }\n.resume h3 .r { color: var(--olive); font-size: 9pt; }\n.resume h3 .sep::before { color: var(--muted); }\n.resume p, .resume li { color: var(--ink); }\n.resume li::marker { color: var(--accent); }\n.resume strong, .resume b { font-weight: 600; color: var(--ink); }\n.resume .photo { border-radius: 2pt; }\n.resume { --font: \"Source Han Serif SC\", \"Noto Serif SC\", \"Noto Serif CJK SC\", \"Songti SC\", \"STSong\", \"SimSun\", Georgia, serif; --body-size: 9.2pt; --line-height: 1.42; --section-gap: 16pt; --item-gap: 7pt; --accent: #1B365D; --margin-top: 11mm; --margin-right: 13mm; --margin-bottom: 11mm; --margin-left: 13mm; }</style></head><body><main class=\"resume t-kami photo-on\"><img class=\"photo\" src=\"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAEAAQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDgqKKK8M/VD//Z\" alt=\"\"><h1 data-path=\"basics.name\">王五</h1><p class=\"contact\" data-path=\"basics.contacts\">电话：139 | w@x.cn<br>https://a.b<br>求职意向：数据分析</p><section data-path=\"sections.0\"><h2 data-path=\"sections.0.title\">教育背景</h2><div class=\"item\" data-path=\"sections.0.items.0\"><h3 data-path=\"sections.0.items.0.head\">北大<span class=\"sep\">|</span><span class=\"seg\">统计</span><span class=\"sep\">|</span><span class=\"seg\">北京</span><span class=\"sep-r\">|</span><span class=\"r\">2020 – 2024</span></h3><p data-path=\"sections.0.items.0.text\" style=\"text-align:center\">居中</p><ul data-path=\"sections.0.items.0.text\"><li style=\"margin-left:2em\">列表</li></ul><ol data-path=\"sections.0.items.0.text\"><li>一</li></ol><p data-path=\"sections.0.items.0.text\">普通 &lt;b&gt;</p><ul><li data-path=\"sections.0.items.0.bullets.0\"><strong>GPA</strong> 3.9</li><li data-path=\"sections.0.items.0.bullets.2\"><em>斜体</em> 与 <a href=\"https://x.dev/?a=1&amp;b=2\">链</a></li></ul></div></section><section data-path=\"sections.2\"><h2 data-path=\"sections.2.title\">未命名</h2><div class=\"item\" data-path=\"sections.2.items.0\"><h3 data-path=\"sections.2.items.0.head\"><span class=\"sep-r\">|</span><span class=\"r\">2024</span></h3></div><div class=\"item\" data-path=\"sections.2.items.1\"><p data-path=\"sections.2.items.1.text\">只有正文</p></div></section><section data-path=\"sections.3\"><h2 data-path=\"sections.3.title\">项目</h2></section></main></body></html>"
+  },
+  {
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": " 王五 ",
+     "target": "数据分析",
+     "contacts": [
+      {
+       "label": "电话",
+       "value": "139"
+      },
+      {
+       "label": "",
+       "value": "w@x.cn"
+      },
+      {
+       "label": "",
+       "value": "https://a.b"
+      },
+      {
+       "label": "微信",
+       "value": "  "
+      }
+     ]
+    },
+    "sections": [
+     {
+      "id": "s1",
+      "type": "education",
+      "title": "教育背景",
+      "hidden": false,
+      "items": [
+       {
+        "id": "i1",
+        "title": "北大",
+        "subtitle": "统计",
+        "date": "2020 – 2024",
+        "location": "北京",
+        "bullets": [
+         "**GPA** 3.9",
+         "",
+         "*斜体* 与 [链](https://x.dev/?a=1&b=2)"
+        ],
+        "text": "{center} 居中\n  - 列表\n1. 一\n普通 <b>"
+       }
+      ]
+     },
+     {
+      "id": "s2",
+      "type": "custom",
+      "title": "隐藏",
+      "hidden": true,
+      "items": [
+       {
+        "id": "508212cf",
+        "title": "x",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "id": "s3",
+      "type": "custom",
+      "title": "  ",
+      "hidden": false,
+      "items": [
+       {
+        "id": "i3",
+        "title": "",
+        "subtitle": "",
+        "date": "2024",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       },
+       {
+        "id": "i4",
+        "title": "",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": "只有正文"
+       }
+      ]
+     },
+     {
+      "id": "s4",
+      "type": "project",
+      "title": "项目",
+      "hidden": false,
+      "items": []
+     }
+    ]
+   },
+   "style": {
+    "template": "compact",
+    "photo": false,
+    "logo": "logo-a.png"
+   },
+   "photo": "photo.jpg",
+   "title": "a<b>'\"",
+   "html": "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>a&lt;b&gt;&#x27;&quot;</title><style>@page { size: A4; margin: 0; } html, body { margin: 0; }/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 紧凑：联系方式下一条主题色粗线，分节不再画线，给内容多的人。 */\n.resume { --name: 16pt; --h2: calc(var(--body-size) * 1.08); }\n.resume h1 + p { padding-bottom: 2mm; border-bottom: .3mm solid var(--accent); }\n.resume h2 { border-bottom: none; padding-bottom: 0; }\n.resume h3 { margin-top: calc(var(--item-gap) * .6); }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 9.2pt; --line-height: 1.4; --section-gap: 7pt; --item-gap: 3pt; --accent: #1D1D1F; --margin-top: 10mm; --margin-right: 12mm; --margin-bottom: 10mm; --margin-left: 12mm; }</style></head><body><main class=\"resume t-compact logo-on\"><img class=\"logo\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAYAAABWKLW/AAAAFUlEQVR4nGNkYPj/nwEKmBiQAAoHAEdVAgQi9qLuAAAAAElFTkSuQmCC\" alt=\"\"><h1 data-path=\"basics.name\">王五</h1><p class=\"contact\" data-path=\"basics.contacts\">电话：139 | w@x.cn<br>https://a.b<br>求职意向：数据分析</p><section data-path=\"sections.0\"><h2 data-path=\"sections.0.title\">教育背景</h2><div class=\"item\" data-path=\"sections.0.items.0\"><h3 data-path=\"sections.0.items.0.head\">北大<span class=\"sep\">|</span><span class=\"seg\">统计</span><span class=\"sep\">|</span><span class=\"seg\">北京</span><span class=\"sep-r\">|</span><span class=\"r\">2020 – 2024</span></h3><p data-path=\"sections.0.items.0.text\" style=\"text-align:center\">居中</p><ul data-path=\"sections.0.items.0.text\"><li style=\"margin-left:2em\">列表</li></ul><ol data-path=\"sections.0.items.0.text\"><li>一</li></ol><p data-path=\"sections.0.items.0.text\">普通 &lt;b&gt;</p><ul><li data-path=\"sections.0.items.0.bullets.0\"><strong>GPA</strong> 3.9</li><li data-path=\"sections.0.items.0.bullets.2\"><em>斜体</em> 与 <a href=\"https://x.dev/?a=1&amp;b=2\">链</a></li></ul></div></section><section data-path=\"sections.2\"><h2 data-path=\"sections.2.title\">未命名</h2><div class=\"item\" data-path=\"sections.2.items.0\"><h3 data-path=\"sections.2.items.0.head\"><span class=\"sep-r\">|</span><span class=\"r\">2024</span></h3></div><div class=\"item\" data-path=\"sections.2.items.1\"><p data-path=\"sections.2.items.1.text\">只有正文</p></div></section><section data-path=\"sections.3\"><h2 data-path=\"sections.3.title\">项目</h2></section></main></body></html>"
+  },
+  {
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": " 王五 ",
+     "target": "数据分析",
+     "contacts": [
+      {
+       "label": "电话",
+       "value": "139"
+      },
+      {
+       "label": "",
+       "value": "w@x.cn"
+      },
+      {
+       "label": "",
+       "value": "https://a.b"
+      },
+      {
+       "label": "微信",
+       "value": "  "
+      }
+     ]
+    },
+    "sections": [
+     {
+      "id": "s1",
+      "type": "education",
+      "title": "教育背景",
+      "hidden": false,
+      "items": [
+       {
+        "id": "i1",
+        "title": "北大",
+        "subtitle": "统计",
+        "date": "2020 – 2024",
+        "location": "北京",
+        "bullets": [
+         "**GPA** 3.9",
+         "",
+         "*斜体* 与 [链](https://x.dev/?a=1&b=2)"
+        ],
+        "text": "{center} 居中\n  - 列表\n1. 一\n普通 <b>"
+       }
+      ]
+     },
+     {
+      "id": "s2",
+      "type": "custom",
+      "title": "隐藏",
+      "hidden": true,
+      "items": [
+       {
+        "id": "508212cf",
+        "title": "x",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "id": "s3",
+      "type": "custom",
+      "title": "  ",
+      "hidden": false,
+      "items": [
+       {
+        "id": "i3",
+        "title": "",
+        "subtitle": "",
+        "date": "2024",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       },
+       {
+        "id": "i4",
+        "title": "",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [],
+        "text": "只有正文"
+       }
+      ]
+     },
+     {
+      "id": "s4",
+      "type": "project",
+      "title": "项目",
+      "hidden": false,
+      "items": []
+     }
+    ]
+   },
+   "style": {
+    "template": "clear",
+    "photo": true,
+    "logo": "missing.png",
+    "bodySize": 11,
+    "margin": {
+     "top": 20
+    }
+   },
+   "photo": "nope.jpg",
+   "title": "t",
+   "html": "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>t</title><style>@page { size: A4; margin: 0; } html, body { margin: 0; }/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 清晰：黑体、近黑、细分隔线，对标超级简历。 */\n.resume { --name: 20pt; --h2: calc(var(--body-size) * 1.12); }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 11pt; --line-height: 1.45; --section-gap: 9pt; --item-gap: 4.5pt; --accent: #141413; --margin-top: 20mm; --margin-right: 13mm; --margin-bottom: 11mm; --margin-left: 13mm; }</style></head><body><main class=\"resume t-clear\"><h1 data-path=\"basics.name\">王五</h1><p class=\"contact\" data-path=\"basics.contacts\">电话：139 | w@x.cn<br>https://a.b<br>求职意向：数据分析</p><section data-path=\"sections.0\"><h2 data-path=\"sections.0.title\">教育背景</h2><div class=\"item\" data-path=\"sections.0.items.0\"><h3 data-path=\"sections.0.items.0.head\">北大<span class=\"sep\">|</span><span class=\"seg\">统计</span><span class=\"sep\">|</span><span class=\"seg\">北京</span><span class=\"sep-r\">|</span><span class=\"r\">2020 – 2024</span></h3><p data-path=\"sections.0.items.0.text\" style=\"text-align:center\">居中</p><ul data-path=\"sections.0.items.0.text\"><li style=\"margin-left:2em\">列表</li></ul><ol data-path=\"sections.0.items.0.text\"><li>一</li></ol><p data-path=\"sections.0.items.0.text\">普通 &lt;b&gt;</p><ul><li data-path=\"sections.0.items.0.bullets.0\"><strong>GPA</strong> 3.9</li><li data-path=\"sections.0.items.0.bullets.2\"><em>斜体</em> 与 <a href=\"https://x.dev/?a=1&amp;b=2\">链</a></li></ul></div></section><section data-path=\"sections.2\"><h2 data-path=\"sections.2.title\">未命名</h2><div class=\"item\" data-path=\"sections.2.items.0\"><h3 data-path=\"sections.2.items.0.head\"><span class=\"sep-r\">|</span><span class=\"r\">2024</span></h3></div><div class=\"item\" data-path=\"sections.2.items.1\"><p data-path=\"sections.2.items.1.text\">只有正文</p></div></section><section data-path=\"sections.3\"><h2 data-path=\"sections.3.title\">项目</h2></section></main></body></html>"
+  }
+ ],
+ "doc_html": [
+  {
+   "doc": {
+    "kind": "resume",
+    "title": "主简历",
+    "body": "# 张三\n电话：138 0000 0000 · 邮箱：a@b.com | https://x.dev\n\n求职意向：产品经理\n\n## 教育经历\n### 某大学 | 计算机 | 2022.09 – 2026.06\n- GPA 3.8/4.0\n- 主修课程：**数据结构**、操作系统\n\n## 实习工作经历\n### 字节跳动 | 后端 | 北京 | 2025.06 – 2025.09\n- 接口 QPS 提升 30%\n  续行写在这里\n1. 有序要点\n\n## 自我评价\n热爱技术\n第二行\n",
+    "style": {
+     "template": "clear",
+     "photo": true
+    }
+   },
+   "html": "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>张三_ 李-主简历</title><style>@page { size: A4; margin: 0; } html, body { margin: 0; }/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 清晰：黑体、近黑、细分隔线，对标超级简历。 */\n.resume { --name: 20pt; --h2: calc(var(--body-size) * 1.12); }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 9.5pt; --line-height: 1.45; --section-gap: 9pt; --item-gap: 4.5pt; --accent: #141413; --margin-top: 11mm; --margin-right: 13mm; --margin-bottom: 11mm; --margin-left: 13mm; }</style></head><body><main class=\"resume t-clear photo-on\"><img class=\"photo\" src=\"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAEAAQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDgqKKK8M/VD//Z\" alt=\"\"><h1 data-path=\"basics.name\">张三</h1><p class=\"contact\" data-path=\"basics.contacts\">电话：138 0000 0000 | 邮箱：a@b.com<br>https://x.dev<br>求职意向：产品经理</p><section data-path=\"sections.0\"><h2 data-path=\"sections.0.title\">教育经历</h2><div class=\"item\" data-path=\"sections.0.items.0\"><h3 data-path=\"sections.0.items.0.head\">某大学<span class=\"sep\">|</span><span class=\"seg\">计算机</span><span class=\"sep-r\">|</span><span class=\"r\">2022.09 – 2026.06</span></h3><ul><li data-path=\"sections.0.items.0.bullets.0\">GPA 3.8/4.0</li><li data-path=\"sections.0.items.0.bullets.1\">主修课程：<strong>数据结构</strong>、操作系统</li></ul></div></section><section data-path=\"sections.1\"><h2 data-path=\"sections.1.title\">实习工作经历</h2><div class=\"item\" data-path=\"sections.1.items.0\"><h3 data-path=\"sections.1.items.0.head\">字节跳动<span class=\"sep\">|</span><span class=\"seg\">后端</span><span class=\"sep\">|</span><span class=\"seg\">北京</span><span class=\"sep-r\">|</span><span class=\"r\">2025.06 – 2025.09</span></h3><ul><li data-path=\"sections.1.items.0.bullets.0\">接口 QPS 提升 30% 续行写在这里</li><li data-path=\"sections.1.items.0.bullets.1\">有序要点</li></ul></div></section><section data-path=\"sections.2\"><h2 data-path=\"sections.2.title\">自我评价</h2><div class=\"item\" data-path=\"sections.2.items.0\"><p data-path=\"sections.2.items.0.text\">热爱技术</p><p data-path=\"sections.2.items.0.text\">第二行</p></div></section></main></body></html>",
+   "file_name": "张三_ 李-主简历.pdf"
+  },
+  {
+   "doc": {
+    "kind": "resume",
+    "title": "  后端:实习?  ",
+    "template": "photo",
+    "body": "#\n138 · a@b.com\n\n## 技能\n### 语言\nPython、Go\n"
+   },
+   "html": "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>张三_ 李- 后端_实习</title><style>@page { size: A4; margin: 0; } html, body { margin: 0; }/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n/* 清晰：黑体、近黑、细分隔线，对标超级简历。 */\n.resume { --name: 20pt; --h2: calc(var(--body-size) * 1.12); }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 9.5pt; --line-height: 1.45; --section-gap: 9pt; --item-gap: 4.5pt; --accent: #141413; --margin-top: 11mm; --margin-right: 13mm; --margin-bottom: 11mm; --margin-left: 13mm; }</style></head><body><main class=\"resume t-clear photo-on\"><img class=\"photo\" src=\"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAEAAQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDgqKKK8M/VD//Z\" alt=\"\"><p class=\"contact\" data-path=\"basics.contacts\">138 | a@b.com</p><section data-path=\"sections.0\"><h2 data-path=\"sections.0.title\">技能</h2><div class=\"item\" data-path=\"sections.0.items.0\"><h3 data-path=\"sections.0.items.0.head\">语言</h3><p data-path=\"sections.0.items.0.text\">Python、Go</p></div></section></main></body></html>",
+   "file_name": "张三_ 李- 后端_实习.pdf"
+  },
+  {
+   "doc": {
+    "kind": "resume",
+    "body": "",
+    "resume": {
+     "basics": {
+      "name": " 王五 ",
+      "target": "数据分析",
+      "contacts": [
+       "电话：139",
+       {
+        "label": "",
+        "value": "w@x.cn"
+       },
+       "https://a.b",
+       {
+        "label": "微信",
+        "value": "  "
+       }
+      ]
+     },
+     "sections": [
+      {
+       "id": "s1",
+       "title": "教育背景",
+       "items": [
+        {
+         "id": "i1",
+         "title": "北大",
+         "subtitle": "统计",
+         "date": "2020 – 2024",
+         "location": "北京",
+         "bullets": [
+          "**GPA** 3.9",
+          "",
+          "*斜体* 与 [链](https://x.dev/?a=1&b=2)"
+         ],
+         "text": "{center} 居中\n  - 列表\n1. 一\n普通 <b>"
+        }
+       ]
+      },
+      {
+       "id": "s2",
+       "type": "custom",
+       "title": "隐藏",
+       "hidden": true,
+       "items": [
+        {
+         "title": "x"
+        }
+       ]
+      },
+      {
+       "id": "s3",
+       "title": "  ",
+       "items": [
+        {
+         "id": "i3",
+         "title": "",
+         "date": "2024"
+        },
+        {
+         "id": "i4",
+         "text": "只有正文"
+        }
+       ]
+      },
+      {
+       "id": "s4",
+       "type": "bogus",
+       "title": "项目",
+       "items": []
+      }
+     ]
+    },
+    "style": {
+     "logo": "logo-a.png"
+    }
+   },
+   "html": "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>张三_ 李-简历</title><style>@page { size: A4; margin: 0; } html, body { margin: 0; }/* Shared by the PDF and the live preview (core/resume.py). Structure only: font, sizes, gaps, margins and accent are\n   CSS variables from doc.style (resume.style_vars); template files set --name / --h2 and decoration. */\n.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm;\n  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);\n  background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);\n  -webkit-font-smoothing: antialiased; }\n.resume * { box-sizing: border-box; }\n/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），\n   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */\n.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }\n.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }\n.resume h1, .resume p.contact { display: flow-root; }\n.resume section { clear: both; }\n.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }\n.resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }\n.resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;\n  border-bottom: .3mm solid var(--rule, #d2d2d7); }\n.resume h3 { display: flex; align-items: baseline; font-size: var(--body-size); font-weight: 600; line-height: var(--line-height); margin: var(--item-gap) 0 .6mm; }\n.resume h3 .seg, .resume h3 .r { font-weight: 400; }\n.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }\n.resume h3 .sep::before { content: \"·\"; font-size: var(--body-size); font-weight: 400; margin: 0 1.6mm; color: var(--muted, #86868b); }\n.resume h3 .r { margin-left: auto; padding-left: 4mm; color: var(--muted, #6e6e73); white-space: nowrap; font-variant-numeric: tabular-nums; }\n.resume p { margin: .6mm 0; }\n.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }\n.resume li { margin: .3mm 0; }\n.resume li p { margin: 0; }\n.resume a { color: inherit; text-decoration: none; }\n.resume strong, .resume b { font-weight: 600; }\n.resume table { border-collapse: collapse; width: 100%; }\n.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }\n.resume { --name: 16.5pt; --h2: 12pt; --ink: #000; --muted: #000; --rule: #000; background: #fff; color: #000; }\n.resume .photo { width: 21mm; height: 25.4mm; margin-right: 8mm; border-radius: 0; }\n.resume .logo { height: 12.7mm; max-width: 47mm; }\n.resume h1 { color: #000; font-weight: 700; letter-spacing: 0; line-height: 1.2; margin: 0 0 2.2mm; }\n.resume h1 + p.contact { color: #000; line-height: 1.45; }\n.resume h2 { color: #000; font-weight: 700; letter-spacing: 0; margin: var(--section-gap) 0 2mm; padding-bottom: .8mm; border-bottom: .75pt solid #000; }\n.resume h3 { font-weight: 700; }\n.resume h3 .seg, .resume h3 .r { color: #000; }\n.resume h3 .sep::before { content: \"-\"; margin: 0; color: #000; }\n.resume ul, .resume ol { padding-left: 5mm; }\n.resume li::marker { color: #000; }\n.resume strong, .resume b { font-weight: 700; color: #000; }\n.resume { --font: \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Noto Sans CJK SC\", system-ui, sans-serif; --body-size: 10.5pt; --line-height: 1.3; --section-gap: 10pt; --item-gap: 3pt; --accent: #000000; --margin-top: 7mm; --margin-right: 8mm; --margin-bottom: 7mm; --margin-left: 8mm; }</style></head><body><main class=\"resume t-classic logo-on\"><img class=\"logo\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAYAAABWKLW/AAAAFUlEQVR4nGNkYPj/nwEKmBiQAAoHAEdVAgQi9qLuAAAAAElFTkSuQmCC\" alt=\"\"><h1 data-path=\"basics.name\">王五</h1><p class=\"contact\" data-path=\"basics.contacts\">电话：139 | w@x.cn<br>https://a.b<br>求职意向：数据分析</p><section data-path=\"sections.0\"><h2 data-path=\"sections.0.title\">教育背景</h2><div class=\"item\" data-path=\"sections.0.items.0\"><h3 data-path=\"sections.0.items.0.head\">北大<span class=\"sep\">|</span><span class=\"seg\">统计</span><span class=\"sep\">|</span><span class=\"seg\">北京</span><span class=\"sep-r\">|</span><span class=\"r\">2020 – 2024</span></h3><p data-path=\"sections.0.items.0.text\" style=\"text-align:center\">居中</p><ul data-path=\"sections.0.items.0.text\"><li style=\"margin-left:2em\">列表</li></ul><ol data-path=\"sections.0.items.0.text\"><li>一</li></ol><p data-path=\"sections.0.items.0.text\">普通 &lt;b&gt;</p><ul><li data-path=\"sections.0.items.0.bullets.0\"><strong>GPA</strong> 3.9</li><li data-path=\"sections.0.items.0.bullets.2\"><em>斜体</em> 与 <a href=\"https://x.dev/?a=1&amp;b=2\">链</a></li></ul></div></section><section data-path=\"sections.2\"><h2 data-path=\"sections.2.title\">未命名</h2><div class=\"item\" data-path=\"sections.2.items.0\"><h3 data-path=\"sections.2.items.0.head\"><span class=\"sep-r\">|</span><span class=\"r\">2024</span></h3></div><div class=\"item\" data-path=\"sections.2.items.1\"><p data-path=\"sections.2.items.1.text\">只有正文</p></div></section><section data-path=\"sections.3\"><h2 data-path=\"sections.3.title\">项目</h2></section></main></body></html>",
+   "file_name": "张三_ 李-简历.pdf"
+  }
+ ],
+ "safe_stem": {
+  "a/b:c*d?e\"f<g>h|i": "a_b_c_d_e_f_g_h_i",
+  "  x   y  ": "x y",
+  "._a_.": "a",
+  "": "",
+  "简历 2026": "简历 2026"
+ },
+ "verify": [
+  {
+   "body": "# 张三\n1. 运营实习 2023.06 – 2023.09\n- 参与公众号运营，粉丝从 2000 涨到 8,000\n- 协助策划校园活动，来了 300 人",
+   "sources": "[实习 / 工作] 某公司 · 运营实习 2023.06 – 2023.09\n参与公众号运营，粉丝从 2,000 涨到 8000\n（用户 2026-11-04 亲口说：大概让处理时间缩短了三成左右）\n- 协助策划校园活动，来了 300 人",
+   "out": {
+    "block": [],
+    "warn": [],
+    "unchecked": ""
+   }
+  },
+  {
+   "body": "- 参与公众号运营，粉丝从 2000 涨到 2 万",
+   "sources": "[实习 / 工作] 某公司 · 运营实习 2023.06 – 2023.09\n参与公众号运营，粉丝从 2,000 涨到 8000\n（用户 2026-11-04 亲口说：大概让处理时间缩短了三成左右）\n- 协助策划校园活动，来了 300 人",
+   "out": {
+    "block": [
+     {
+      "line": "- 参与公众号运营，粉丝从 2000 涨到 2 万",
+      "kind": "number",
+      "detail": "档案和原简历里找不到：2 万"
+     }
+    ],
+    "warn": [],
+    "unchecked": ""
+   }
+  },
+  {
+   "body": "- 主导公众号运营，处理时间缩短三成\n- 策划全网爆款校园活动，来了 300 人",
+   "sources": "[实习 / 工作] 某公司 · 运营实习 2023.06 – 2023.09\n参与公众号运营，粉丝从 2,000 涨到 8000\n（用户 2026-11-04 亲口说：大概让处理时间缩短了三成左右）\n- 协助策划校园活动，来了 300 人",
+   "out": {
+    "block": [],
+    "warn": [
+     {
+      "line": "- 主导公众号运营，处理时间缩短三成",
+      "kind": "verb",
+      "detail": "来源里没有这个说法：主导（来源写的是参与/协助一类）"
+     },
+     {
+      "line": "- 主导公众号运营，处理时间缩短三成",
+      "kind": "hedge",
+      "detail": "来源里是约数，这里没带约数词：三成"
+     },
+     {
+      "line": "- 策划全网爆款校园活动，来了 300 人",
+      "kind": "claim",
+      "detail": "来源里没有这个说法：全网、爆款"
+     }
+    ],
+    "unchecked": ""
+   }
+  },
+  {
+   "body": "- 参与公众号运营，处理时间缩短约三成",
+   "sources": "[实习 / 工作] 某公司 · 运营实习 2023.06 – 2023.09\n参与公众号运营，粉丝从 2,000 涨到 8000\n（用户 2026-11-04 亲口说：大概让处理时间缩短了三成左右）\n- 协助策划校园活动，来了 300 人",
+   "out": {
+    "block": [],
+    "warn": [],
+    "unchecked": ""
+   }
+  },
+  {
+   "body": "### 某公司 | 运营 | 2023.6 – 2023.9\n- 增长 1.50 倍，营收 2.5万，用户 25000，留存 百分之三十\n- ２０２３ 年 全国首个",
+   "sources": "[实习 / 工作] 某公司 · 运营实习 2023.06 – 2023.09\n参与公众号运营，粉丝从 2,000 涨到 8000\n（用户 2026-11-04 亲口说：大概让处理时间缩短了三成左右）\n- 协助策划校园活动，来了 300 人",
+   "out": {
+    "block": [
+     {
+      "line": "- 增长 1.50 倍，营收 2.5万，用户 25000，留存 百分之三十",
+      "kind": "number",
+      "detail": "档案和原简历里找不到：1.50、2.5万、25000、百分之三十"
+     }
+    ],
+    "warn": [
+     {
+      "line": "- ２０２３ 年 全国首个",
+      "kind": "claim",
+      "detail": "来源里没有这个说法：全国首个、首个"
+     }
+    ],
+    "unchecked": ""
+   }
+  },
+  {
+   "body": "- 成本降低 12.345%\r\n- 2025.06 上线",
+   "sources": "[实习 / 工作] 某公司 · 运营实习 2023.06 – 2023.09\n参与公众号运营，粉丝从 2,000 涨到 8000\n（用户 2026-11-04 亲口说：大概让处理时间缩短了三成左右）\n- 协助策划校园活动，来了 300 人",
+   "out": {
+    "block": [
+     {
+      "line": "- 成本降低 12.345%",
+      "kind": "number",
+      "detail": "档案和原简历里找不到：12.345"
+     },
+     {
+      "line": "- 2025.06 上线",
+      "kind": "number",
+      "detail": "档案和原简历里找不到：2025.06"
+     }
+    ],
+    "warn": [],
+    "unchecked": ""
+   }
+  },
+  {
+   "body": "- 粉丝涨到 8000",
+   "sources": "  ",
+   "out": {
+    "block": [],
+    "warn": [],
+    "unchecked": "档案和原简历都是空的，没法核对，这份没检查"
+   }
+  }
+ ],
+ "retained": {
+  "body": "## 实习\n### 某公司 | 运营 | 2023\n- 负责公众号运营，粉丝 20000 → 8 万\n### OfferU\n- Stars 1200",
+  "memories": [
+   {
+    "id": 1,
+    "kind": "experience",
+    "title": "某公司 · 运营实习",
+    "body": "主导公众号运营\n粉丝 2万 → 8万",
+    "quote": "大概 3 个月"
+   },
+   {
+    "id": 2,
+    "kind": "project",
+    "title": "推荐系统",
+    "body": "召回率 +12%",
+    "confirmed": false
+   },
+   {
+    "id": 3,
+    "kind": "preference",
+    "title": "别写负责",
+    "body": "x"
+   },
+   {
+    "id": 4,
+    "kind": "award",
+    "title": "国家奖学金",
+    "body": "2023"
+   },
+   {
+    "id": 5,
+    "kind": "experience",
+    "title": "",
+    "body": "无标题"
+   },
+   {
+    "id": 6,
+    "kind": "project",
+    "title": "OfferU（开源）",
+    "body": "Stars 1,200"
+   }
+  ],
+  "retained": [
+   {
+    "memory_id": 1,
+    "title": "某公司 · 运营实习",
+    "missing": [
+     "3",
+     "主导"
+    ]
+   }
+  ],
+  "omitted": [
+   "国家奖学金"
+  ]
+ },
+ "impact_flags": [
+  {
+   "add": "粉丝约从 2000 增至 8000",
+   "said": "大概从2000涨到8000吧",
+   "flags": [],
+   "numbers": [
+    "2000",
+    "8000"
+   ]
+  },
+  {
+   "add": "粉丝从 2,000 显著增至 9000",
+   "said": "从2000涨到8000",
+   "flags": [
+    "原话里没有这个数字：9000",
+    "原话没有这个程度：显著"
+   ],
+   "numbers": [
+    "2000",
+    "9000"
+   ]
+  },
+  {
+   "add": "效率提升约三成左右",
+   "said": "大概快了三成",
+   "flags": [
+    "约数词叠用了：约、左右"
+   ],
+   "numbers": [
+    "三成"
+   ]
+  },
+  {
+   "add": "被推广到别的组",
+   "said": "没有数据，但后来被推广到别的组了",
+   "flags": [],
+   "numbers": []
+  },
+  {
+   "add": "提升百分之三十，两倍",
+   "said": "提升了30%",
+   "flags": [
+    "原话里没有这个数字：百分之三十、两倍"
+   ],
+   "numbers": [
+    "百分之三十",
+    "两倍"
+   ]
+  }
+ ],
+ "impact_capture": {
+  "memories": [
+   {
+    "source": "user",
+    "confirmed": true,
+    "kind": "experience",
+    "title": "某公司 · 运营实习",
+    "body": "- 负责公众号运营",
+    "quote": "旧原话",
+    "id": 2,
+    "type": "memory",
+    "job_id": null,
+    "created_at": "2026-11-14T17:15:34",
+    "updated_at": "2026-11-14T17:15:34"
+   },
+   {
+    "source": "user",
+    "confirmed": true,
+    "kind": "project",
+    "title": "活动",
+    "body": "",
+    "id": 3,
+    "type": "memory",
+    "job_id": null,
+    "created_at": "2026-11-14T17:15:34",
+    "updated_at": "2026-11-14T17:15:34"
+   }
+  ],
+  "answers": [
+   {
+    "old": "- 负责公众号运营",
+    "question": "粉丝变了多少？",
+    "answer": "大概从2000涨到8000吧"
+   },
+   {
+    "old": "- 负责活动策划",
+    "question": "推广了吗？",
+    "answer": "  "
+   },
+   {
+    "old": "- 负责数据周报",
+    "question": "表扬？",
+    "answer": "被部门表扬过"
+   },
+   {
+    "old": "- 负责活动策划",
+    "question": "效果？",
+    "answer": "来了 300 人"
+   },
+   {
+    "old": "x",
+    "question": "y",
+    "answer": "第五条不看"
+   }
+  ],
+  "reply": "好的：{\"drafts\": [{\"index\": 0, \"memory_id\": 2, \"add\": \"- 粉丝约从 2000 增至 8000\"}, {\"index\": \"2\", \"memory_id\": null, \"title\": \"\", \"add\": \"被部门表扬\"}, {\"index\": 0, \"memory_id\": 2, \"add\": \"重复的 index 被忽略\"}, {\"index\": 9, \"add\": \"不存在的回答\"}, {\"index\": 1, \"add\": \"空回答不在列表里\"}, \"not an object\"]} 完",
+  "messages": [
+   {
+    "role": "system",
+    "content": "你是求职档案整理助手。用户改简历时回答了几个「做出了什么结果」的问题。把每个回答整理成一句能写进档案的话，只输出严格 JSON：\n{\"drafts\": [{\"index\": 0, \"memory_id\": 12, \"title\": \"\", \"add\": \"整理后的一句话\"}]}\n规则：\n1. 每个回答出一条，index 用回答的序号。\n2. memory_id：这句简历原句对应「已有记忆」里的哪一条，填它的数字 id；对不上就填 null（会新建一条记忆），这时 title 写一个简短标题。\n3. add 只写用户回答里的结果，一句话，书面一点；数字、比例、时间、奖项名称只能用用户原话里有的，原话没有的一个也不能加。\n4. 程度跟原话走：原话说「快多了」就写「更快」，不要自己加「明显」「显著」「大幅」。\n5. 用户说了「大概」「左右」「记不清」这类话，add 里保留一个约数词就够，不要写成「约三成左右」。\n6. 用户说没有数据，就只写定性的结果，不出现数字。\n7. 回答和问题对不上也照实整理，不要硬套问题里的说法。\n"
+   },
+   {
+    "role": "user",
+    "content": "## 岗位\n百度 · 产品\n\n## 已有记忆\n#3 活动：\n#2 某公司 · 运营实习：- 负责公众号运营\n\n## 用户的回答\n### 回答 0\n简历原句：- 负责公众号运营\n问题：粉丝变了多少？\n用户原话：大概从2000涨到8000吧\n\n### 回答 2\n简历原句：- 负责数据周报\n问题：表扬？\n用户原话：被部门表扬过"
+   }
+  ],
+  "out": {
+   "drafts": [
+    {
+     "memory_id": 2,
+     "title": "某公司 · 运营实习",
+     "data": {
+      "body": "- 负责公众号运营\n- 粉丝约从 2000 增至 8000",
+      "quote": "旧原话；大概从2000涨到8000吧",
+      "said_at": "2026-11-04"
+     },
+     "answers": [
+      {
+       "index": 0,
+       "old": "- 负责公众号运营",
+       "question": "粉丝变了多少？",
+       "quote": "大概从2000涨到8000吧",
+       "add": "粉丝约从 2000 增至 8000",
+       "flags": []
+      }
+     ]
+    },
+    {
+     "memory_id": null,
+     "title": "负责数据周报",
+     "data": {
+      "kind": "note",
+      "title": "负责数据周报",
+      "body": "- 被部门表扬",
+      "quote": "被部门表扬过",
+      "said_at": "2026-11-04"
+     },
+     "answers": [
+      {
+       "index": 2,
+       "old": "- 负责数据周报",
+       "question": "表扬？",
+       "quote": "被部门表扬过",
+       "add": "被部门表扬",
+       "flags": []
+      }
+     ]
+    }
+   ],
+   "dropped": []
+  }
+ },
+ "impact_errors": {
+  "empty": "没有要整理的回答，档案没动",
+  "bad_reply": "整理回答的模型没返回可用的草稿，档案没动"
+ },
+ "parse_review": [
+  {
+   "raw": "前言 {\"edits\": [{\"old\": \"a\", \"new\": null, \"reason\": 1, \"category\": \"keyword\"}, {\"old\": \" \"}, {\"old\": 3}, \"x\", {\"old\": \"b\", \"category\": \"?\"}], \"notes\": {\"关键词\": \"缺 Go\", \"语气\": \"\"}, \"asks\": [{\"old\": \"o\", \"question\": \"q\", \"why\": 2}, {\"old\": \"\", \"question\": \"q\"}, {\"old\": \"o2\"}]} 后记",
+   "out": {
+    "edits": [
+     {
+      "old": "a",
+      "new": "",
+      "reason": "1",
+      "category": "keyword"
+     },
+     {
+      "old": "b",
+      "new": "",
+      "reason": "",
+      "category": "tone"
+     }
+    ],
+    "notes": {
+     "关键词": "缺 Go",
+     "岗位角度": "无",
+     "动作和结果": "无",
+     "语气": "无"
+    },
+    "asks": [
+     {
+      "old": "o",
+      "why": "2",
+      "question": "q"
+     }
+    ]
+   },
+   "error": null
+  },
+  {
+   "raw": "{\"edits\": []}",
+   "out": {
+    "edits": [],
+    "notes": {
+     "关键词": "无",
+     "岗位角度": "无",
+     "动作和结果": "无",
+     "语气": "无"
+    },
+    "asks": []
+   },
+   "error": null
+  },
+  {
+   "raw": "[1, 2]",
+   "out": null,
+   "error": "审稿没有返回 JSON"
+  },
+  {
+   "raw": "no json at all",
+   "out": null,
+   "error": "审稿没有返回 JSON"
+  },
+  {
+   "raw": "{\"edits\": [}",
+   "out": null,
+   "error": "json"
+  }
+ ],
+ "apply_edits": {
+  "body": "# 张三\n\n## 实习\n- 甲\n- 乙\n- 乙\n\n\n\n- 丙\n",
+  "edits": [
+   {
+    "old": "- 甲",
+    "new": "- 甲甲",
+    "reason": "",
+    "category": "tone"
+   },
+   {
+    "old": "- 乙",
+    "new": "",
+    "reason": "",
+    "category": "length"
+   },
+   {
+    "old": "不存在",
+    "new": "x",
+    "reason": "",
+    "category": "grounding"
+   },
+   {
+    "old": "- 丙\n",
+    "new": "",
+    "reason": "",
+    "category": "length"
+   }
+  ],
+  "out": {
+   "body": "# 张三\n\n## 实习\n- 甲甲\n- 乙\n- 乙\n",
+   "applied": [
+    {
+     "old": "- 甲",
+     "new": "- 甲甲",
+     "reason": "",
+     "category": "tone"
+    },
+    {
+     "old": "- 丙\n",
+     "new": "",
+     "reason": "",
+     "category": "length"
+    }
+   ],
+   "skipped": [
+    {
+     "old": "- 乙",
+     "new": "",
+     "reason": "",
+     "category": "length",
+     "why": "原文出现 2 次，不唯一"
+    },
+    {
+     "old": "不存在",
+     "new": "x",
+     "reason": "",
+     "category": "grounding",
+     "why": "原文里找不到"
+    }
+   ]
+  }
+ },
+ "pick_asks": {
+  "asks": [
+   {
+    "old": "- 甲甲",
+    "why": "",
+    "question": "1"
+   },
+   {
+    "old": "- 甲甲",
+    "why": "",
+    "question": "dup"
+   },
+   {
+    "old": "不存在",
+    "why": "",
+    "question": "2"
+   },
+   {
+    "old": "张三",
+    "why": "",
+    "question": "3"
+   },
+   {
+    "old": "实习",
+    "why": "",
+    "question": "4"
+   },
+   {
+    "old": "#",
+    "why": "",
+    "question": "5"
+   }
+  ],
+  "body": "# 张三\n\n## 实习\n- 甲甲\n- 乙\n- 乙\n",
+  "out": [
+   {
+    "old": "- 甲甲",
+    "why": "",
+    "question": "1"
+   },
+   {
+    "old": "张三",
+    "why": "",
+    "question": "3"
+   },
+   {
+    "old": "实习",
+    "why": "",
+    "question": "4"
+   }
+  ]
+ },
+ "clean": [
+  {
+   "in": "```markdown\n# 张三\n\n## 教育\n```",
+   "out": "# 张三\n\n## 教育\n",
+   "error": null
+  },
+  {
+   "in": "  # 张三\n## 教育  ",
+   "out": "# 张三\n## 教育\n",
+   "error": null
+  },
+  {
+   "in": "#\n\n## 技能",
+   "out": "#\n\n## 技能\n",
+   "error": null
+  },
+  {
+   "in": "",
+   "out": null,
+   "error": "模型没有返回内容，检查设置里的模型配置后再试。简历没动"
+  },
+  {
+   "in": "```\n\n```",
+   "out": null,
+   "error": "模型没有返回内容，检查设置里的模型配置后再试。简历没动"
+  },
+  {
+   "in": "好的，以下是",
+   "out": null,
+   "error": "模型返回的不是简历格式（要以 # 名字 开头、有 ## 分节）。简历没动"
+  },
+  {
+   "in": "# 张三\n没有分节",
+   "out": null,
+   "error": "模型返回的不是简历格式（要以 # 名字 开头、有 ## 分节）。简历没动"
+  }
+ ],
+ "tailor_run": {
+  "setup": [
+   [
+    "profile",
+    {
+     "name": "张三",
+     "school": "某大学",
+     "major": "计算机",
+     "phone": "138",
+     "about": "爱折腾"
+    }
+   ],
+   [
+    "memory",
+    {
+     "kind": "experience",
+     "title": "字节后端实习",
+     "body": "接口 QPS 提升 30%\n参与缓存改造",
+     "start": "2025.06",
+     "end": "2025.09",
+     "mode": "实习",
+     "quote": "大概快了一半",
+     "said_at": "2026-11-01"
+    }
+   ],
+   [
+    "memory",
+    {
+     "kind": "preference",
+     "title": "别写精通",
+     "body": "技能只写熟悉"
+    }
+   ],
+   [
+    "memory",
+    {
+     "kind": "skill",
+     "title": "Go",
+     "body": "熟悉",
+     "confirmed": false
+    }
+   ],
+   [
+    "memory",
+    {
+     "kind": "award",
+     "title": "国家奖学金",
+     "body": "2024"
+    }
+   ],
+   [
+    "job",
+    {
+     "company": "美团",
+     "title": "后端",
+     "jd": "负责 Go 后端开发负责 Go 后端开发负责 Go 后端开发",
+     "posting": {
+      "hire_type": "校招",
+      "team": "基础架构",
+      "responsibilities": [
+       "写 Go",
+       " "
+      ],
+      "hard_reqs": [
+       "本科"
+      ],
+      "keywords": [
+       "Go",
+       "Redis"
+      ],
+      "collaborators": [
+       "SRE"
+      ],
+      "evidence": [
+       {
+        "req": "Go",
+        "need": "项目"
+       },
+       {
+        "req": "x"
+       }
+      ],
+      "essence": "后端"
+     }
+    }
+   ],
+   [
+    "doc",
+    {
+     "kind": "resume",
+     "title": "主简历",
+     "body": "# 张三\n138 · a@b.com\n\n## 教育经历\n### 某大学 | 计算机 | 2022.09 – 2026.06\n",
+     "style": {
+      "template": "kami"
+     }
+    }
+   ]
+  ],
+  "evaluation_job": true,
+  "old": "# 张三\n138 · a@b.com\n\n## 教育经历\n### 某大学 | 计算机 | 2022.09 – 2026.06\n",
+  "new_chunks": [
+   "```markdown\n",
+   "# 张三\n138 · a@b.",
+   "com\n\n## 实习经历\n### 字节 | 后端 | 2025.06 – 2025.09\n- 接口 QPS 提升 30%\n- 负责缓存改造，延迟降低 50%\n- 参与 全网 首个 项目\n",
+   "```"
+  ],
+  "review_replies": [
+   "not json",
+   "{\"edits\": [{\"old\": \"- 参与 全网 首个 项目\\n\", \"new\": \"\", \"reason\": \"没出处\", \"category\": \"grounding\"}, {\"old\": \"延迟降低 50%\", \"new\": \"延迟降低\", \"reason\": \"数字没出处\", \"category\": \"grounding\"}, {\"old\": \"不在稿里\", \"new\": \"x\", \"reason\": \"\", \"category\": \"keyword\"}], \"notes\": {\"关键词\": \"缺 Redis\", \"岗位角度\": \"无\"}, \"asks\": [{\"old\": \"- 负责缓存改造，延迟降低\", \"why\": \"JD 要性能\", \"question\": \"延迟降了多少？\"}, {\"old\": \"- 接口 QPS 提升 30%\", \"why\": \"\", \"question\": \"QPS 多少？\"}]}"
+  ],
+  "draft_messages": [
+   {
+    "role": "system",
+    "content": "你是简历编辑。按岗位 JD 改写用户的简历。只用「档案和经历」里有的事实，不编造经历、数字、公司、技能。\nJD 原文里可能夹着公司介绍、福利、投递方式，这些不是岗位要求，忽略。\n和 JD 相关的经历放前面、写具体，无关的压缩或删掉；要点动词开头，写清做了什么、结果和数字；控制在一页 A4。\n简历要经得起面试追问：技术类经历每段写出关键做法（方案选型和原因、难点怎么解决、性能或质量的量化结果），用档案里出现过的技术名词，不写空泛的「负责」「参与」；档案里没有的做法和数字不要补，JD 要求但档案里没有的技能不要硬塞。\n不拔高：档案里写「参与」「协助」「支持」的不改成「负责」「主导」「独立完成」，「了解」「接触过」不升成「熟练」「精通」，课程或个人项目不写成公司项目；公司名、职位名、部门、起止时间照档案写，不为贴 JD 改职位名。\nJD 的词自然写进经历，同一个词全文出现一两次就够，一句里不塞两个以上的 JD 术语。\n如果给了「岗位评估」，按里面的逐条匹配和简历怎么改来取舍；评估里写成差距或「待补充」的内容不要写进简历。\n如果给了「用户的口径和偏好」，那是用户定的写法规则，必须遵守；它不是事实，不要当成经历写进简历。\n只输出完整的 Markdown 简历本身，不要解释，不要代码块。写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点"
+   },
+   {
+    "role": "user",
+    "content": "## 岗位：美团 · 后端\n### 拆好的要求和关键词\n招聘类型：校招；部门：基础架构\n职责：\n1. 写 Go\n硬性要求：\n1. 本科\n关键词：Go、Redis\n协作对象（推断，非原文）：SRE\n证明硬性要求要准备的经历（推断）：\n- Go → 项目\n岗位本质（推断，非原文）：后端\n\n### JD 原文\n负责 Go 后端开发负责 Go 后端开发负责 Go 后端开发\n\n## 岗位评估（参考，事实仍以档案为准）\n### 逐条匹配\n- Go → 有\n\n### 简历怎么改\n- 实习放前\n\n## 用户的口径和偏好（必须遵守）\n- 别写精通：技能只写熟悉\n\n## 档案和经历（唯一的事实来源）\nname: 张三\n\nschool: 某大学\n\nmajor: 计算机\n\nphone: 138\n\nabout: 爱折腾\n\n[实习 / 工作] 字节后端实习 实习 2025.06 – 2025.09\n接口 QPS 提升 30%\n参与缓存改造\n（用户 2026-11-01 亲口说：大概快了一半）\n\n[奖项 / 证书] 国家奖学金\n2024\n\n## 现在的简历\n# 张三\n\n138 · a@b.com\n\n## 教育经历\n\n### 某大学 | 计算机 | 2022.09 – 2026.06\n"
+   }
+  ],
+  "review_messages": [
+   [
+    {
+     "role": "system",
+     "content": "你是简历审稿人，和写这份简历的人不是同一个人。你只审稿、给修改，不重写全文。\n事实来源只有两份：「档案和经历」和「原简历」。对照它们和 JD 审「待审简历」，只输出严格 JSON：\n{\"edits\": [{\"old\": \"待审简历里一字不差、只出现一次的原文\", \"new\": \"替换成的文字，删除写空串\", \"reason\": \"一句话说明\", \"category\": \"grounding / keyword / depth / length / tone 之一\"}], \"notes\": {\"关键词\": \"…\", \"岗位角度\": \"…\", \"动作和结果\": \"…\", \"语气\": \"…\"}, \"asks\": [{\"old\": \"待审简历里只写了动作、没写结果的那一句，一字不差\", \"why\": \"和 JD 哪条要求有关，一句话\", \"question\": \"问用户的一个具体问题\"}]}\n怎么审：\n1. grounding：每个公司、职位、日期、数字、技术名词都要在事实来源里找得到（换了写法但意思相同算有出处）。找不到的必须给 edit：改回有出处的写法，或者删掉。拔高也算没出处：事实来源写「参与」「协助」「支持」，简历写成「负责」「主导」「独立完成」；写「了解」「接触过」，简历写成「熟练」「精通」；课程或个人项目写成公司项目；公司名、职位名、部门、起止时间和事实来源不一样。这些都给 edit 改回事实来源的说法。\n2. keyword：JD 的要求在事实来源里有依据、简历却没写的，给 edit 补上；没有依据的不要补，在 notes 的「关键词」里写明缺口。JD 里的公司介绍、福利、投递方式不是要求。同一个 JD 词全文出现超过 2 次，或一句里塞了 2 个以上 JD 术语，给 edit 删到读着自然。\n3. depth：技术类经历看不出方案、难点、取舍、量化结果的，用事实来源里有的内容改写；事实来源里也没有，就在 notes 的「动作和结果」里提，不要编。\n4. length：给了页数时，超过 1 页就按和 JD 的相关度从低到高删整条要点，删到预计一页（删整条时 old 写整行，含开头的「- 」，new 写空串）；不到 1 页不要为了凑篇幅加内容。\n5. 不改第一行「# 名字」和联系方式那一行，不改 ## / ### 的格式结构。\n6. old 从待审简历原样复制，带够上下文保证只出现一次；一条 edit 只改一处。没有问题就返回空的 edits，notes 里没意见的项写「无」。\n7. asks：挑出和 JD 最相关、只写了动作没写结果、事实来源里也找不到结果的句子，最多 3 句；没有就返回空数组。question 要具体好答，比如「你接手前后，粉丝或阅读量大概变了多少？」「这件事帮团队省了时间或钱吗？」「有没有被表扬、被推广到别的组、拿奖？」，不要问「请量化你的成果」。不要替用户编结果。\n8. 「用户的口径和偏好」是用户定的写法规则，必须遵守：待审简历违反了就给 edit 改过来（category 写 tone）；它不是事实来源，不能当出处。\n9. tone：连续 3 条以上要点用同一个句式（如「通过 X 实现 Y，提升 Z」）、各条长度几乎一样、或写了「深刻体会到」「收获很多」这类感悟总结句的，给 edit 改写或删掉（category 写 tone）；只换说法，不加事实。"
+    },
+    {
+     "role": "user",
+     "content": "## 岗位：美团 · 后端\n### 拆好的要求和关键词\n招聘类型：校招；部门：基础架构\n职责：\n1. 写 Go\n硬性要求：\n1. 本科\n关键词：Go、Redis\n协作对象（推断，非原文）：SRE\n证明硬性要求要准备的经历（推断）：\n- Go → 项目\n岗位本质（推断，非原文）：后端\n\n### JD 原文\n负责 Go 后端开发负责 Go 后端开发负责 Go 后端开发\n\n## 用户的口径和偏好（必须遵守）\n- 别写精通：技能只写熟悉\n\n## 档案和经历（事实来源）\nname: 张三\n\nschool: 某大学\n\nmajor: 计算机\n\nphone: 138\n\nabout: 爱折腾\n\n[实习 / 工作] 字节后端实习 实习 2025.06 – 2025.09\n接口 QPS 提升 30%\n参与缓存改造\n（用户 2026-11-01 亲口说：大概快了一半）\n\n[奖项 / 证书] 国家奖学金\n2024\n\n## 原简历（事实来源）\n# 张三\n\n138 · a@b.com\n\n## 教育经历\n\n### 某大学 | 计算机 | 2022.09 – 2026.06\n\n\n## 页数\n按导出 PDF 的版式量，预计 1.00 页\n\n## 待审简历\n# 张三\n138 · a@b.com\n\n## 实习经历\n### 字节 | 后端 | 2025.06 – 2025.09\n- 接口 QPS 提升 30%\n- 负责缓存改造，延迟降低 50%\n- 参与 全网 首个 项目\n"
+    }
+   ],
+   [
+    {
+     "role": "system",
+     "content": "你是简历审稿人，和写这份简历的人不是同一个人。你只审稿、给修改，不重写全文。\n事实来源只有两份：「档案和经历」和「原简历」。对照它们和 JD 审「待审简历」，只输出严格 JSON：\n{\"edits\": [{\"old\": \"待审简历里一字不差、只出现一次的原文\", \"new\": \"替换成的文字，删除写空串\", \"reason\": \"一句话说明\", \"category\": \"grounding / keyword / depth / length / tone 之一\"}], \"notes\": {\"关键词\": \"…\", \"岗位角度\": \"…\", \"动作和结果\": \"…\", \"语气\": \"…\"}, \"asks\": [{\"old\": \"待审简历里只写了动作、没写结果的那一句，一字不差\", \"why\": \"和 JD 哪条要求有关，一句话\", \"question\": \"问用户的一个具体问题\"}]}\n怎么审：\n1. grounding：每个公司、职位、日期、数字、技术名词都要在事实来源里找得到（换了写法但意思相同算有出处）。找不到的必须给 edit：改回有出处的写法，或者删掉。拔高也算没出处：事实来源写「参与」「协助」「支持」，简历写成「负责」「主导」「独立完成」；写「了解」「接触过」，简历写成「熟练」「精通」；课程或个人项目写成公司项目；公司名、职位名、部门、起止时间和事实来源不一样。这些都给 edit 改回事实来源的说法。\n2. keyword：JD 的要求在事实来源里有依据、简历却没写的，给 edit 补上；没有依据的不要补，在 notes 的「关键词」里写明缺口。JD 里的公司介绍、福利、投递方式不是要求。同一个 JD 词全文出现超过 2 次，或一句里塞了 2 个以上 JD 术语，给 edit 删到读着自然。\n3. depth：技术类经历看不出方案、难点、取舍、量化结果的，用事实来源里有的内容改写；事实来源里也没有，就在 notes 的「动作和结果」里提，不要编。\n4. length：给了页数时，超过 1 页就按和 JD 的相关度从低到高删整条要点，删到预计一页（删整条时 old 写整行，含开头的「- 」，new 写空串）；不到 1 页不要为了凑篇幅加内容。\n5. 不改第一行「# 名字」和联系方式那一行，不改 ## / ### 的格式结构。\n6. old 从待审简历原样复制，带够上下文保证只出现一次；一条 edit 只改一处。没有问题就返回空的 edits，notes 里没意见的项写「无」。\n7. asks：挑出和 JD 最相关、只写了动作没写结果、事实来源里也找不到结果的句子，最多 3 句；没有就返回空数组。question 要具体好答，比如「你接手前后，粉丝或阅读量大概变了多少？」「这件事帮团队省了时间或钱吗？」「有没有被表扬、被推广到别的组、拿奖？」，不要问「请量化你的成果」。不要替用户编结果。\n8. 「用户的口径和偏好」是用户定的写法规则，必须遵守：待审简历违反了就给 edit 改过来（category 写 tone）；它不是事实来源，不能当出处。\n9. tone：连续 3 条以上要点用同一个句式（如「通过 X 实现 Y，提升 Z」）、各条长度几乎一样、或写了「深刻体会到」「收获很多」这类感悟总结句的，给 edit 改写或删掉（category 写 tone）；只换说法，不加事实。"
+    },
+    {
+     "role": "user",
+     "content": "## 岗位：美团 · 后端\n### 拆好的要求和关键词\n招聘类型：校招；部门：基础架构\n职责：\n1. 写 Go\n硬性要求：\n1. 本科\n关键词：Go、Redis\n协作对象（推断，非原文）：SRE\n证明硬性要求要准备的经历（推断）：\n- Go → 项目\n岗位本质（推断，非原文）：后端\n\n### JD 原文\n负责 Go 后端开发负责 Go 后端开发负责 Go 后端开发\n\n## 用户的口径和偏好（必须遵守）\n- 别写精通：技能只写熟悉\n\n## 档案和经历（事实来源）\nname: 张三\n\nschool: 某大学\n\nmajor: 计算机\n\nphone: 138\n\nabout: 爱折腾\n\n[实习 / 工作] 字节后端实习 实习 2025.06 – 2025.09\n接口 QPS 提升 30%\n参与缓存改造\n（用户 2026-11-01 亲口说：大概快了一半）\n\n[奖项 / 证书] 国家奖学金\n2024\n\n## 原简历（事实来源）\n# 张三\n\n138 · a@b.com\n\n## 教育经历\n\n### 某大学 | 计算机 | 2022.09 – 2026.06\n\n\n## 页数\n按导出 PDF 的版式量，预计 1.00 页\n\n## 待审简历\n# 张三\n138 · a@b.com\n\n## 实习经历\n### 字节 | 后端 | 2025.06 – 2025.09\n- 接口 QPS 提升 30%\n- 负责缓存改造，延迟降低 50%\n- 参与 全网 首个 项目\n"
+    },
+    {
+     "role": "assistant",
+     "content": "not json"
+    },
+    {
+     "role": "user",
+     "content": "上一条回复不是一个完整的 JSON 对象。按要求只返回一个 JSON 对象（{\"edits\": [...], \"notes\": {...}}），不要别的文字。"
+    }
+   ]
+  ],
+  "events": [
+   {
+    "type": "start",
+    "job": "美团 · 后端"
+   },
+   {
+    "type": "delta",
+    "text": "```markdown\n"
+   },
+   {
+    "type": "delta",
+    "text": "# 张三\n138 · a@b."
+   },
+   {
+    "type": "delta",
+    "text": "com\n\n## 实习经历\n### 字节 | 后端 | 2025.06 – 2025.09\n- 接口 QPS 提升 30%\n- 负责缓存改造，延迟降低 50%\n- 参与 全网 首个 项目\n"
+   },
+   {
+    "type": "delta",
+    "text": "```"
+   },
+   {
+    "type": "review",
+    "round": 1,
+    "pages": 1.0
+   },
+   {
+    "type": "done",
+    "doc_id": 9,
+    "body": "# 张三\n\n138 · a@b.com\n\n## 实习经历\n\n### 字节 | 后端 | 2025.06 – 2025.09\n\n- 接口 QPS 提升 30%\n- 负责缓存改造，延迟降低\n",
+    "resume": {
+     "version": 1,
+     "basics": {
+      "name": "张三",
+      "target": "",
+      "contacts": [
+       {
+        "label": "",
+        "value": "138"
+       },
+       {
+        "label": "",
+        "value": "a@b.com"
+       }
+      ]
+     },
+     "sections": [
+      {
+       "id": "73ef4825",
+       "type": "internship",
+       "title": "实习经历",
+       "hidden": false,
+       "items": [
+        {
+         "id": "d60607ef",
+         "title": "字节",
+         "subtitle": "后端",
+         "date": "2025.06 – 2025.09",
+         "location": "",
+         "bullets": [
+          "接口 QPS 提升 30%",
+          "负责缓存改造，延迟降低"
+         ],
+         "text": ""
+        }
+       ]
+      }
+     ]
+    },
+    "change_id": 9,
+    "pages": 1.0,
+    "rounds": [
+     {
+      "round": 1,
+      "pages": 1.0,
+      "applied": [
+       {
+        "old": "- 参与 全网 首个 项目\n",
+        "new": "",
+        "reason": "没出处",
+        "category": "grounding"
+       },
+       {
+        "old": "延迟降低 50%",
+        "new": "延迟降低",
+        "reason": "数字没出处",
+        "category": "grounding"
+       }
+      ],
+      "skipped": [
+       {
+        "old": "不在稿里",
+        "new": "x",
+        "reason": "",
+        "category": "keyword",
+        "why": "原文里找不到"
+       }
+      ]
+     }
+    ],
+    "notes": {
+     "关键词": "缺 Redis",
+     "岗位角度": "无",
+     "动作和结果": "无",
+     "语气": "无"
+    },
+    "asks": [
+     {
+      "old": "- 负责缓存改造，延迟降低",
+      "why": "JD 要性能",
+      "question": "延迟降了多少？"
+     },
+     {
+      "old": "- 接口 QPS 提升 30%",
+      "why": "",
+      "question": "QPS 多少？"
+     }
+    ],
+    "checks": {
+     "block": [],
+     "warn": [
+      {
+       "line": "- 负责缓存改造，延迟降低",
+       "kind": "verb",
+       "detail": "来源里没有这个说法：负责（来源写的是参与/协助一类）"
+      }
+     ],
+     "unchecked": "",
+     "dropped": [],
+     "omitted": [
+      "国家奖学金",
+      "字节后端实习"
+     ]
+    },
+    "grounding": [
+     {
+      "old": "- 参与 全网 首个 项目\n",
+      "new": "",
+      "reason": "没出处",
+      "category": "grounding"
+     },
+     {
+      "old": "延迟降低 50%",
+      "new": "延迟降低",
+      "reason": "数字没出处",
+      "category": "grounding"
+     }
+    ]
+   }
+  ],
+  "target": {
+   "kind": "resume",
+   "title": "主简历 · 美团 · 后端",
+   "job_id": 6,
+   "body": "# 张三\n\n138 · a@b.com\n\n## 实习经历\n\n### 字节 | 后端 | 2025.06 – 2025.09\n\n- 接口 QPS 提升 30%\n- 负责缓存改造，延迟降低\n",
+   "style": {
+    "template": "kami"
+   },
+   "pending_asks": [
+    {
+     "old": "- 负责缓存改造，延迟降低",
+     "why": "JD 要性能",
+     "question": "延迟降了多少？"
+    },
+    {
+     "old": "- 接口 QPS 提升 30%",
+     "why": "",
+     "question": "QPS 多少？"
+    }
+   ]
+  },
+  "change_actor": "Agent",
+  "review_only_events": [
+   {
+    "type": "start",
+    "job": "美团 · 后端"
+   },
+   {
+    "type": "review",
+    "round": 1,
+    "pages": 1.0
+   },
+   {
+    "type": "done",
+    "doc_id": 9,
+    "body": "# 张三\n\n138 · a@b.com\n\n## 实习经历\n\n### 字节 | 后端 | 2025.06 – 2025.09\n\n- 接口 QPS 提升 30%\n- 负责缓存改造，延迟降低\n",
+    "resume": {
+     "version": 1,
+     "basics": {
+      "name": "张三",
+      "target": "",
+      "contacts": [
+       {
+        "label": "",
+        "value": "138"
+       },
+       {
+        "label": "",
+        "value": "a@b.com"
+       }
+      ]
+     },
+     "sections": [
+      {
+       "id": "4c484573",
+       "type": "internship",
+       "title": "实习经历",
+       "hidden": false,
+       "items": [
+        {
+         "id": "a3670ebe",
+         "title": "字节",
+         "subtitle": "后端",
+         "date": "2025.06 – 2025.09",
+         "location": "",
+         "bullets": [
+          "接口 QPS 提升 30%",
+          "负责缓存改造，延迟降低"
+         ],
+         "text": ""
+        }
+       ]
+      }
+     ]
+    },
+    "change_id": 10,
+    "pages": 1.0,
+    "rounds": [
+     {
+      "round": 1,
+      "pages": 1.0,
+      "applied": [],
+      "skipped": [
+       {
+        "old": "- 参与 全网 首个 项目\n",
+        "new": "",
+        "reason": "没出处",
+        "category": "grounding",
+        "why": "原文里找不到"
+       },
+       {
+        "old": "延迟降低 50%",
+        "new": "延迟降低",
+        "reason": "数字没出处",
+        "category": "grounding",
+        "why": "原文里找不到"
+       },
+       {
+        "old": "不在稿里",
+        "new": "x",
+        "reason": "",
+        "category": "keyword",
+        "why": "原文里找不到"
+       }
+      ]
+     }
+    ],
+    "notes": {
+     "关键词": "缺 Redis",
+     "岗位角度": "无",
+     "动作和结果": "无",
+     "语气": "无"
+    },
+    "asks": [
+     {
+      "old": "- 负责缓存改造，延迟降低",
+      "why": "JD 要性能",
+      "question": "延迟降了多少？"
+     },
+     {
+      "old": "- 接口 QPS 提升 30%",
+      "why": "",
+      "question": "QPS 多少？"
+     }
+    ],
+    "checks": {
+     "block": [],
+     "warn": [
+      {
+       "line": "- 负责缓存改造，延迟降低",
+       "kind": "verb",
+       "detail": "来源里没有这个说法：负责（来源写的是参与/协助一类）"
+      }
+     ],
+     "unchecked": "",
+     "dropped": [],
+     "omitted": [
+      "国家奖学金",
+      "字节后端实习"
+     ]
+    },
+    "grounding": []
+   }
+  ],
+  "review_only_messages": [
+   [
+    {
+     "role": "system",
+     "content": "你是简历审稿人，和写这份简历的人不是同一个人。你只审稿、给修改，不重写全文。\n事实来源只有两份：「档案和经历」和「原简历」。对照它们和 JD 审「待审简历」，只输出严格 JSON：\n{\"edits\": [{\"old\": \"待审简历里一字不差、只出现一次的原文\", \"new\": \"替换成的文字，删除写空串\", \"reason\": \"一句话说明\", \"category\": \"grounding / keyword / depth / length / tone 之一\"}], \"notes\": {\"关键词\": \"…\", \"岗位角度\": \"…\", \"动作和结果\": \"…\", \"语气\": \"…\"}, \"asks\": [{\"old\": \"待审简历里只写了动作、没写结果的那一句，一字不差\", \"why\": \"和 JD 哪条要求有关，一句话\", \"question\": \"问用户的一个具体问题\"}]}\n怎么审：\n1. grounding：每个公司、职位、日期、数字、技术名词都要在事实来源里找得到（换了写法但意思相同算有出处）。找不到的必须给 edit：改回有出处的写法，或者删掉。拔高也算没出处：事实来源写「参与」「协助」「支持」，简历写成「负责」「主导」「独立完成」；写「了解」「接触过」，简历写成「熟练」「精通」；课程或个人项目写成公司项目；公司名、职位名、部门、起止时间和事实来源不一样。这些都给 edit 改回事实来源的说法。\n2. keyword：JD 的要求在事实来源里有依据、简历却没写的，给 edit 补上；没有依据的不要补，在 notes 的「关键词」里写明缺口。JD 里的公司介绍、福利、投递方式不是要求。同一个 JD 词全文出现超过 2 次，或一句里塞了 2 个以上 JD 术语，给 edit 删到读着自然。\n3. depth：技术类经历看不出方案、难点、取舍、量化结果的，用事实来源里有的内容改写；事实来源里也没有，就在 notes 的「动作和结果」里提，不要编。\n4. length：给了页数时，超过 1 页就按和 JD 的相关度从低到高删整条要点，删到预计一页（删整条时 old 写整行，含开头的「- 」，new 写空串）；不到 1 页不要为了凑篇幅加内容。\n5. 不改第一行「# 名字」和联系方式那一行，不改 ## / ### 的格式结构。\n6. old 从待审简历原样复制，带够上下文保证只出现一次；一条 edit 只改一处。没有问题就返回空的 edits，notes 里没意见的项写「无」。\n7. asks：挑出和 JD 最相关、只写了动作没写结果、事实来源里也找不到结果的句子，最多 3 句；没有就返回空数组。question 要具体好答，比如「你接手前后，粉丝或阅读量大概变了多少？」「这件事帮团队省了时间或钱吗？」「有没有被表扬、被推广到别的组、拿奖？」，不要问「请量化你的成果」。不要替用户编结果。\n8. 「用户的口径和偏好」是用户定的写法规则，必须遵守：待审简历违反了就给 edit 改过来（category 写 tone）；它不是事实来源，不能当出处。\n9. tone：连续 3 条以上要点用同一个句式（如「通过 X 实现 Y，提升 Z」）、各条长度几乎一样、或写了「深刻体会到」「收获很多」这类感悟总结句的，给 edit 改写或删掉（category 写 tone）；只换说法，不加事实。"
+    },
+    {
+     "role": "user",
+     "content": "## 岗位：美团 · 后端\n### 拆好的要求和关键词\n招聘类型：校招；部门：基础架构\n职责：\n1. 写 Go\n硬性要求：\n1. 本科\n关键词：Go、Redis\n协作对象（推断，非原文）：SRE\n证明硬性要求要准备的经历（推断）：\n- Go → 项目\n岗位本质（推断，非原文）：后端\n\n### JD 原文\n负责 Go 后端开发负责 Go 后端开发负责 Go 后端开发\n\n## 用户的口径和偏好（必须遵守）\n- 别写精通：技能只写熟悉\n\n## 档案和经历（事实来源）\nname: 张三\n\nschool: 某大学\n\nmajor: 计算机\n\nphone: 138\n\nabout: 爱折腾\n\n[实习 / 工作] 字节后端实习 实习 2025.06 – 2025.09\n接口 QPS 提升 30%\n参与缓存改造\n（用户 2026-11-01 亲口说：大概快了一半）\n\n[奖项 / 证书] 国家奖学金\n2024\n\n## 原简历（事实来源）\n# 张三\n\n138 · a@b.com\n\n## 教育经历\n\n### 某大学 | 计算机 | 2022.09 – 2026.06\n\n\n## 页数\n按导出 PDF 的版式量，预计 1.00 页\n\n## 待审简历\n# 张三\n\n138 · a@b.com\n\n## 实习经历\n\n### 字节 | 后端 | 2025.06 – 2025.09\n\n- 接口 QPS 提升 30%\n- 负责缓存改造，延迟降低\n"
+    }
+   ],
+   [
+    {
+     "role": "system",
+     "content": "你是简历审稿人，和写这份简历的人不是同一个人。你只审稿、给修改，不重写全文。\n事实来源只有两份：「档案和经历」和「原简历」。对照它们和 JD 审「待审简历」，只输出严格 JSON：\n{\"edits\": [{\"old\": \"待审简历里一字不差、只出现一次的原文\", \"new\": \"替换成的文字，删除写空串\", \"reason\": \"一句话说明\", \"category\": \"grounding / keyword / depth / length / tone 之一\"}], \"notes\": {\"关键词\": \"…\", \"岗位角度\": \"…\", \"动作和结果\": \"…\", \"语气\": \"…\"}, \"asks\": [{\"old\": \"待审简历里只写了动作、没写结果的那一句，一字不差\", \"why\": \"和 JD 哪条要求有关，一句话\", \"question\": \"问用户的一个具体问题\"}]}\n怎么审：\n1. grounding：每个公司、职位、日期、数字、技术名词都要在事实来源里找得到（换了写法但意思相同算有出处）。找不到的必须给 edit：改回有出处的写法，或者删掉。拔高也算没出处：事实来源写「参与」「协助」「支持」，简历写成「负责」「主导」「独立完成」；写「了解」「接触过」，简历写成「熟练」「精通」；课程或个人项目写成公司项目；公司名、职位名、部门、起止时间和事实来源不一样。这些都给 edit 改回事实来源的说法。\n2. keyword：JD 的要求在事实来源里有依据、简历却没写的，给 edit 补上；没有依据的不要补，在 notes 的「关键词」里写明缺口。JD 里的公司介绍、福利、投递方式不是要求。同一个 JD 词全文出现超过 2 次，或一句里塞了 2 个以上 JD 术语，给 edit 删到读着自然。\n3. depth：技术类经历看不出方案、难点、取舍、量化结果的，用事实来源里有的内容改写；事实来源里也没有，就在 notes 的「动作和结果」里提，不要编。\n4. length：给了页数时，超过 1 页就按和 JD 的相关度从低到高删整条要点，删到预计一页（删整条时 old 写整行，含开头的「- 」，new 写空串）；不到 1 页不要为了凑篇幅加内容。\n5. 不改第一行「# 名字」和联系方式那一行，不改 ## / ### 的格式结构。\n6. old 从待审简历原样复制，带够上下文保证只出现一次；一条 edit 只改一处。没有问题就返回空的 edits，notes 里没意见的项写「无」。\n7. asks：挑出和 JD 最相关、只写了动作没写结果、事实来源里也找不到结果的句子，最多 3 句；没有就返回空数组。question 要具体好答，比如「你接手前后，粉丝或阅读量大概变了多少？」「这件事帮团队省了时间或钱吗？」「有没有被表扬、被推广到别的组、拿奖？」，不要问「请量化你的成果」。不要替用户编结果。\n8. 「用户的口径和偏好」是用户定的写法规则，必须遵守：待审简历违反了就给 edit 改过来（category 写 tone）；它不是事实来源，不能当出处。\n9. tone：连续 3 条以上要点用同一个句式（如「通过 X 实现 Y，提升 Z」）、各条长度几乎一样、或写了「深刻体会到」「收获很多」这类感悟总结句的，给 edit 改写或删掉（category 写 tone）；只换说法，不加事实。"
+    },
+    {
+     "role": "user",
+     "content": "## 岗位：美团 · 后端\n### 拆好的要求和关键词\n招聘类型：校招；部门：基础架构\n职责：\n1. 写 Go\n硬性要求：\n1. 本科\n关键词：Go、Redis\n协作对象（推断，非原文）：SRE\n证明硬性要求要准备的经历（推断）：\n- Go → 项目\n岗位本质（推断，非原文）：后端\n\n### JD 原文\n负责 Go 后端开发负责 Go 后端开发负责 Go 后端开发\n\n## 用户的口径和偏好（必须遵守）\n- 别写精通：技能只写熟悉\n\n## 档案和经历（事实来源）\nname: 张三\n\nschool: 某大学\n\nmajor: 计算机\n\nphone: 138\n\nabout: 爱折腾\n\n[实习 / 工作] 字节后端实习 实习 2025.06 – 2025.09\n接口 QPS 提升 30%\n参与缓存改造\n（用户 2026-11-01 亲口说：大概快了一半）\n\n[奖项 / 证书] 国家奖学金\n2024\n\n## 原简历（事实来源）\n# 张三\n\n138 · a@b.com\n\n## 教育经历\n\n### 某大学 | 计算机 | 2022.09 – 2026.06\n\n\n## 页数\n按导出 PDF 的版式量，预计 1.00 页\n\n## 待审简历\n# 张三\n\n138 · a@b.com\n\n## 实习经历\n\n### 字节 | 后端 | 2025.06 – 2025.09\n\n- 接口 QPS 提升 30%\n- 负责缓存改造，延迟降低\n"
+    },
+    {
+     "role": "assistant",
+     "content": "not json"
+    },
+    {
+     "role": "user",
+     "content": "上一条回复不是一个完整的 JSON 对象。按要求只返回一个 JSON 对象（{\"edits\": [...], \"notes\": {...}}），不要别的文字。"
+    }
+   ]
+  ]
+ },
+ "tailor_errors": {
+  "no_jd_message": "「美团 · 后端」还没有 JD，先在岗位页贴上"
+ },
+ "school_logos": {
+  "北大": [
+   {
+    "school_name": "北京大学",
+    "file": "0122.png",
+    "url": "/api/resume/assets/school-logos/0122.png"
+   },
+   {
+    "school_name": "北京交通大学",
+    "file": "0114.png",
+    "url": "/api/resume/assets/school-logos/0114.png"
+   },
+   {
+    "school_name": "北京体育大学",
+    "file": "0115.png",
+    "url": "/api/resume/assets/school-logos/0115.png"
+   },
+   {
+    "school_name": "北京化工大学",
+    "file": "0118.png",
+    "url": "/api/resume/assets/school-logos/0118.png"
+   },
+   {
+    "school_name": "北京工业大学",
+    "file": "0123.png",
+    "url": "/api/resume/assets/school-logos/0123.png"
+   },
+   {
+    "school_name": "北京工商大学",
+    "file": "0124.png",
+    "url": "/api/resume/assets/school-logos/0124.png"
+   },
+   {
+    "school_name": "北京师范大学",
+    "file": "0126.png",
+    "url": "/api/resume/assets/school-logos/0126.png"
+   },
+   {
+    "school_name": "北京建筑大学",
+    "file": "0127.png",
+    "url": "/api/resume/assets/school-logos/0127.png"
+   },
+   {
+    "school_name": "北京林业大学",
+    "file": "0128.png",
+    "url": "/api/resume/assets/school-logos/0128.png"
+   },
+   {
+    "school_name": "北京理工大学",
+    "file": "0130.png",
+    "url": "/api/resume/assets/school-logos/0130.png"
+   },
+   {
+    "school_name": "北京科技大学",
+    "file": "0133.png",
+    "url": "/api/resume/assets/school-logos/0133.png"
+   },
+   {
+    "school_name": "北京联合大学",
+    "file": "0135.png",
+    "url": "/api/resume/assets/school-logos/0135.png"
+   },
+   {
+    "school_name": "北京语言大学",
+    "file": "0138.png",
+    "url": "/api/resume/assets/school-logos/0138.png"
+   },
+   {
+    "school_name": "北京邮电大学",
+    "file": "0139.png",
+    "url": "/api/resume/assets/school-logos/0139.png"
+   },
+   {
+    "school_name": "北京中医药大学",
+    "file": "0113.png",
+    "url": "/api/resume/assets/school-logos/0113.png"
+   },
+   {
+    "school_name": "北京外国语大学",
+    "file": "0121.png",
+    "url": "/api/resume/assets/school-logos/0121.png"
+   },
+   {
+    "school_name": "北京信息科技大学",
+    "file": "0116.png",
+    "url": "/api/resume/assets/school-logos/0116.png"
+   },
+   {
+    "school_name": "北京航空航天大学",
+    "file": "0136.png",
+    "url": "/api/resume/assets/school-logos/0136.png"
+   },
+   {
+    "school_name": "北京师范大学-香港浸会大学联合国际学院",
+    "file": "0125.png",
+    "url": "/api/resume/assets/school-logos/0125.png"
+   }
+  ],
+  "华师": [
+   {
+    "school_name": "西华师范大学",
+    "file": "0656.png",
+    "url": "/api/resume/assets/school-logos/0656.png"
+   },
+   {
+    "school_name": "华东师范大学",
+    "file": "0146.png",
+    "url": "/api/resume/assets/school-logos/0146.png"
+   },
+   {
+    "school_name": "华中师范大学",
+    "file": "0150.png",
+    "url": "/api/resume/assets/school-logos/0150.png"
+   },
+   {
+    "school_name": "华南师范大学",
+    "file": "0158.png",
+    "url": "/api/resume/assets/school-logos/0158.png"
+   }
+  ],
+  "华南": [
+   {
+    "school_name": "华南农业大学",
+    "file": "0157.png",
+    "url": "/api/resume/assets/school-logos/0157.png"
+   },
+   {
+    "school_name": "华南师范大学",
+    "file": "0158.png",
+    "url": "/api/resume/assets/school-logos/0158.png"
+   },
+   {
+    "school_name": "华南理工大学",
+    "file": "0159.png",
+    "url": "/api/resume/assets/school-logos/0159.png"
+   }
+  ],
+  "师范": [
+   {
+    "school_name": "上海师范大学",
+    "file": "0012.png",
+    "url": "/api/resume/assets/school-logos/0012.png"
+   },
+   {
+    "school_name": "上饶师范学院",
+    "file": "0026.png",
+    "url": "/api/resume/assets/school-logos/0026.png"
+   },
+   {
+    "school_name": "东北师范大学",
+    "file": "0029.png",
+    "url": "/api/resume/assets/school-logos/0029.png"
+   },
+   {
+    "school_name": "乐山师范学院",
+    "file": "0072.png",
+    "url": "/api/resume/assets/school-logos/0072.png"
+   },
+   {
+    "school_name": "云南师范大学",
+    "file": "0077.png",
+    "url": "/api/resume/assets/school-logos/0077.png"
+   },
+   {
+    "school_name": "伊犁师范大学",
+    "file": "0085.png",
+    "url": "/api/resume/assets/school-logos/0085.png"
+   },
+   {
+    "school_name": "信阳师范学院",
+    "file": "0091.png",
+    "url": "/api/resume/assets/school-logos/0091.png"
+   },
+   {
+    "school_name": "内江师范学院",
+    "file": "0101.png",
+    "url": "/api/resume/assets/school-logos/0101.png"
+   },
+   {
+    "school_name": "北京师范大学",
+    "file": "0126.png",
+    "url": "/api/resume/assets/school-logos/0126.png"
+   },
+   {
+    "school_name": "华东师范大学",
+    "file": "0146.png",
+    "url": "/api/resume/assets/school-logos/0146.png"
+   },
+   {
+    "school_name": "华中师范大学",
+    "file": "0150.png",
+    "url": "/api/resume/assets/school-logos/0150.png"
+   },
+   {
+    "school_name": "华南师范大学",
+    "file": "0158.png",
+    "url": "/api/resume/assets/school-logos/0158.png"
+   },
+   {
+    "school_name": "南京师范大学",
+    "file": "0169.png",
+    "url": "/api/resume/assets/school-logos/0169.png"
+   },
+   {
+    "school_name": "南宁师范大学",
+    "file": "0179.png",
+    "url": "/api/resume/assets/school-logos/0179.png"
+   },
+   {
+    "school_name": "南昌师范学院",
+    "file": "0186.png",
+    "url": "/api/resume/assets/school-logos/0186.png"
+   },
+   {
+    "school_name": "南阳师范学院",
+    "file": "0189.png",
+    "url": "/api/resume/assets/school-logos/0189.png"
+   },
+   {
+    "school_name": "合肥师范学院",
+    "file": "0198.png",
+    "url": "/api/resume/assets/school-logos/0198.png"
+   },
+   {
+    "school_name": "吉林师范大学",
+    "file": "0207.png",
+    "url": "/api/resume/assets/school-logos/0207.png"
+   },
+   {
+    "school_name": "周口师范学院",
+    "file": "0213.png",
+    "url": "/api/resume/assets/school-logos/0213.png"
+   },
+   {
+    "school_name": "咸阳师范学院",
+    "file": "0216.png",
+    "url": "/api/resume/assets/school-logos/0216.png"
+   }
+  ],
+  "北京大学软件与微电子学院": [
+   {
+    "school_name": "北京大学",
+    "file": "0122.png",
+    "url": "/api/resume/assets/school-logos/0122.png"
+   }
+  ],
+  "  ": [],
+  "中国石油大学（北京）": [
+   {
+    "school_name": "中国石油大学（北京）",
+    "file": "0059.png",
+    "url": "/api/resume/assets/school-logos/0059.png"
+   },
+   {
+    "school_name": "中国石油大学（华东）",
+    "file": "0060.png",
+    "url": "/api/resume/assets/school-logos/0060.png"
+   }
+  ],
+  "zzz": [],
+  "大学": [
+   {
+    "school_name": "三峡大学",
+    "file": "0001.png",
+    "url": "/api/resume/assets/school-logos/0001.png"
+   },
+   {
+    "school_name": "上海大学",
+    "file": "0009.png",
+    "url": "/api/resume/assets/school-logos/0009.png"
+   },
+   {
+    "school_name": "东北大学",
+    "file": "0028.png",
+    "url": "/api/resume/assets/school-logos/0028.png"
+   },
+   {
+    "school_name": "东华大学",
+    "file": "0034.png",
+    "url": "/api/resume/assets/school-logos/0034.png"
+   },
+   {
+    "school_name": "东南大学",
+    "file": "0036.png",
+    "url": "/api/resume/assets/school-logos/0036.png"
+   },
+   {
+    "school_name": "中北大学",
+    "file": "0038.png",
+    "url": "/api/resume/assets/school-logos/0038.png"
+   },
+   {
+    "school_name": "中南大学",
+    "file": "0040.png",
+    "url": "/api/resume/assets/school-logos/0040.png"
+   },
+   {
+    "school_name": "中山大学",
+    "file": "0069.png",
+    "url": "/api/resume/assets/school-logos/0069.png"
+   },
+   {
+    "school_name": "临沂大学",
+    "file": "0070.png",
+    "url": "/api/resume/assets/school-logos/0070.png"
+   },
+   {
+    "school_name": "云南大学",
+    "file": "0076.png",
+    "url": "/api/resume/assets/school-logos/0076.png"
+   },
+   {
+    "school_name": "五邑大学",
+    "file": "0081.png",
+    "url": "/api/resume/assets/school-logos/0081.png"
+   },
+   {
+    "school_name": "兰州大学",
+    "file": "0095.png",
+    "url": "/api/resume/assets/school-logos/0095.png"
+   },
+   {
+    "school_name": "北京大学",
+    "file": "0122.png",
+    "url": "/api/resume/assets/school-logos/0122.png"
+   },
+   {
+    "school_name": "北华大学",
+    "file": "0140.png",
+    "url": "/api/resume/assets/school-logos/0140.png"
+   },
+   {
+    "school_name": "华侨大学",
+    "file": "0152.png",
+    "url": "/api/resume/assets/school-logos/0152.png"
+   },
+   {
+    "school_name": "南京大学",
+    "file": "0165.png",
+    "url": "/api/resume/assets/school-logos/0165.png"
+   },
+   {
+    "school_name": "南华大学",
+    "file": "0178.png",
+    "url": "/api/resume/assets/school-logos/0178.png"
+   },
+   {
+    "school_name": "南开大学",
+    "file": "0180.png",
+    "url": "/api/resume/assets/school-logos/0180.png"
+   },
+   {
+    "school_name": "南昌大学",
+    "file": "0184.png",
+    "url": "/api/resume/assets/school-logos/0184.png"
+   },
+   {
+    "school_name": "南通大学",
+    "file": "0188.png",
+    "url": "/api/resume/assets/school-logos/0188.png"
+   }
+  ]
+ },
+ "logos": {
+  "white": {
+   "png": "iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAA70lEQVR4nO2WwQ3DIAxFk6orcOgavWSIZNxkiFy6Rg8MQQ+REILY/5skolLrG8Lm8W2E3YcQuhZ2a0JtCb7Xhb3XNV0+hsF6Qm+qccYrjb8BC47I1zRJPs955vEUeKMqyBIP2fhxmajRExYFKN6ljt6Xnotz6RLqxopT6uj9LrXcghnSwFm6JKTioyQcKOZLa41lfy5GrslTBMNnSZp0zu81iT84WkWnM53DKs5+xOOeABw7XYXpsRo4yxIjJfM51CTSiy/OSfhsC6YKDwLWftxxswBWvMXzxSYnkO+euUq8ZOdPmfoNLp+rT7Rmf/UH5ceHF3D+qJkAAAAASUVORK5CYII=",
+   "width": 40,
+   "height": 30,
+   "rgba": "////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyEDmyMhA5sjIQObIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMhA5sjIQObIyP/myMj/5sjI/+bIyP/myMj/5sjIQObIyEDmyMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyEDmyMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyEDmyMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU//////////////////////////////////////+0FBT/tBQU/7QUFP+0FBT/tBQU/+bIyP/myMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEC0FBT/tBQU/7QUFP+0FBT///////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP+0FBT/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMj/tBQU/7QUFP+0FBT//////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/+bIyP/myMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhAtBQU/7QUFP+0FBT/tBQU//////////////////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP+0FBT/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQLQUFP+0FBT/tBQU/////////////////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP////////////////////////////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP/myMj/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMj/tBQU/7QUFP+0FBT/////////////////////////////////////////////////////////////////////////////////tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjI/7QUFP+0FBT/tBQU/////////////////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/+bIyP/myMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP////////////////////////////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP/myMj/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMj/tBQU/7QUFP+0FBT/////////////////////////////////////////////////////////////////////////////////tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQLQUFP+0FBT/tBQU/////////////////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEC0FBT/tBQU/7QUFP+0FBT//////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/7QUFP/myMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjI/7QUFP+0FBT/tBQU//////////////////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP/myMj/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEC0FBT/tBQU/7QUFP+0FBT///////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP+0FBT/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjI/7QUFP+0FBT/tBQU/7QUFP+0FBT//////////////////////////////////////7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjIQObIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjIQObIyEDmyMj/5sjI/+bIyP/myMj/5sjI/+bIyEDmyMhA5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyEDmyMhA5sjIQObIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A"
+  },
+  "near_white": {
+   "png": "iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAA+ElEQVR4nO2WMQrDMAxFk9IjdMiSMxRKz5Apx82UM5RCz5AlQ/dC6dAhYIwc6X8lKS602owlP3/JWCqfr0eRw3ZZqDnB+2Vh98stXh7OR+8JpavGgpcafwMWHJDXttV8Tl3H4ynwRDWQKR6y8eNyUYMnLApQPEttxiH17Ks6XkLdWHFMbcZhlppuwQxZYJEuDWn4GAkHivnSemPZn4uR6/JUwfBZkqad83tN4g8OtqDTuc5hFYsfcb0nAIdOt8DsWAssssRIET6rmkR88b6qNbzYgqnCg4C3HxfcLIAVT/F8sckJ5LtnrhSv2fZTpn2Dj8/VG1q2v/oN9jqGd3XyTs0AAAAASUVORK5CYII=",
+   "width": 40,
+   "height": 30,
+   "rgba": "+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM+bIyDPmyMgz5sjIM+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3AObIyDPmyMgz5sjIM+bIyP/myMj/5sjI/+bIyP/myMj/5sjIM+bIyDPmyMgz+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM+bIyDPmyMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyDPmyMgz+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjIM/r89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89/+0FBT/tBQU/7QUFP+0FBT/tBQU/+bIyP/myMgz+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3AObIyDO0FBT/tBQU/7QUFP+0FBT/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89/+0FBT/tBQU/7QUFP+0FBT/5sjIM/r89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3AObIyDPmyMj/tBQU/7QUFP+0FBT/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3/7QUFP+0FBT/tBQU/+bIyP/myMgz+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wDmyMgztBQU/7QUFP+0FBT/tBQU//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89/+0FBT/tBQU/7QUFP+0FBT/5sjIM/r89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM7QUFP+0FBT/tBQU//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3/7QUFP+0FBT/tBQU/+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM+bIyP+0FBT/tBQU/7QUFP/6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89/+0FBT/tBQU/7QUFP/myMj/5sjIM/r89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3AObIyDPmyMj/tBQU/7QUFP+0FBT/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/tBQU/7QUFP+0FBT/5sjI/+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wDmyMgz5sjI/7QUFP+0FBT/tBQU//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3/7QUFP+0FBT/tBQU/+bIyP/myMgz+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM+bIyP+0FBT/tBQU/7QUFP/6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89/+0FBT/tBQU/7QUFP/myMj/5sjIM/r89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3AObIyDPmyMj/tBQU/7QUFP+0FBT/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/tBQU/7QUFP+0FBT/5sjI/+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM7QUFP+0FBT/tBQU//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3/7QUFP+0FBT/tBQU/+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3AObIyDO0FBT/tBQU/7QUFP+0FBT/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3/7QUFP+0FBT/tBQU/7QUFP/myMgz+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wDmyMgz5sjI/7QUFP+0FBT/tBQU//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89/+0FBT/tBQU/7QUFP/myMj/5sjIM/r89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3AObIyDO0FBT/tBQU/7QUFP+0FBT/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3//r89/+0FBT/tBQU/7QUFP+0FBT/5sjIM/r89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wDmyMgz5sjI/7QUFP+0FBT/tBQU/7QUFP+0FBT/+vz3//r89//6/Pf/+vz3//r89//6/Pf/+vz3/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3AObIyDPmyMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wDmyMgz5sjIM+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjIM+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wDmyMgz5sjIM+bIyDPmyMj/5sjI/+bIyP/myMj/5sjI/+bIyDPmyMgz5sjIM/r89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA5sjIM+bIyDPmyMgz5sjIM+bIyDP6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA+vz3APr89wD6/PcA"
+  },
+  "black": {
+   "png": "iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAA4UlEQVR4nO2WzQ3DIAyFaWfglDF6yhCMyxA5ZYyeGKIHJIRM7Pcg9EdV3g3F5uOZCNu5Sx/SbSztuW31clnX94IFrxV/AhZckHsIWswjRh5PgTPVQLZ4yL7PpZZIeCnA8SE1pNRGRu/rJfSNHdfUkNIhtf0EK2SBRbk0pBFjFBw45q+2NxeXOoux2xWpguFvSUrbh3U8XRf4++CBTte1D+tYvIjnIwG4dLoB2bkWWFSJsSJiTjWJ+uDRew0vPsFS4UGgtx87bhbAjnM+f9nkBPLbM1eL1zR/yrRPMOu1+Wu9ALotaSq0grptAAAAAElFTkSuQmCC",
+   "width": 40,
+   "height": 30,
+   "rgba": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/+bIyP/myMj/5sjI/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAObIyP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/+bIyP/myMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP/myMj/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjI/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP+0FBT/tBQU/7QUFP+0FBT/tBQU/+bIyP/myMj/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAObIyP+0FBT/tBQU/7QUFP+0FBT/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP+0FBT/tBQU/7QUFP+0FBT/5sjI/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAObIyP/myMj/tBQU/7QUFP+0FBT/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/7QUFP+0FBT/tBQU/+bIyP/myMj/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADmyMj/tBQU/7QUFP+0FBT/tBQU/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP+0FBT/tBQU/7QUFP+0FBT/5sjI/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/7QUFP+0FBT/tBQU/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/7QUFP+0FBT/tBQU/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/+bIyP+0FBT/tBQU/7QUFP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP+0FBT/tBQU/7QUFP/myMj/5sjI/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAObIyP/myMj/tBQU/7QUFP+0FBT/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/tBQU/7QUFP+0FBT/5sjI/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADmyMj/5sjI/7QUFP+0FBT/tBQU/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/7QUFP+0FBT/tBQU/+bIyP/myMj/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/+bIyP+0FBT/tBQU/7QUFP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP+0FBT/tBQU/7QUFP/myMj/5sjI/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAObIyP/myMj/tBQU/7QUFP+0FBT/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/tBQU/7QUFP+0FBT/5sjI/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/7QUFP+0FBT/tBQU/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/7QUFP+0FBT/tBQU/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAObIyP+0FBT/tBQU/7QUFP+0FBT/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/7QUFP+0FBT/tBQU/7QUFP/myMj/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADmyMj/5sjI/7QUFP+0FBT/tBQU/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP+0FBT/tBQU/7QUFP/myMj/5sjI/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAObIyP+0FBT/tBQU/7QUFP+0FBT/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP+0FBT/tBQU/7QUFP+0FBT/5sjI/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADmyMj/5sjI/7QUFP+0FBT/tBQU/7QUFP+0FBT/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAObIyP/myMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADmyMj/5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjI/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADmyMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5sjI/+bIyP/myMj/5sjI/+bIyP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  "colored": {
+   "png": "iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAA/klEQVR4nO2WsRHCMAxFHS5zMEQqJqDyBBmBgmEomMQVE6TKTBS60yVyJH3HARegKgnfekjySerO4xRa2KkJtSW433dsuq9eL48PgwUv/47/AxTMrucYNc2QEskQfIfcanJnIAUeYfuXq4jKSq0obE7Em9TbNeXK52ulceP2a7ykbiKXPzF+jpHYmlmpFukyqJrGSLhTY7y0pWfRzoWEW6RUwe61BE3z83tD4g9m2zHpivygEYuOWK90wHbbqzlrgUWWkFCEpmpIDClx8yO/+HQyzF8ESudxwHYB/3LRebzY4AYCrT4B3rno4bCdK8drdvyWKfx+e6+uIQlr1qvfwGNlxSa4m4UAAAAASUVORK5CYII=",
+   "width": 40,
+   "height": 30,
+   "rgba": "HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/+bIyP/myMj/5sjI/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/+bIyP/myMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP/myMj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP+0FBT/tBQU/7QUFP+0FBT/tBQU/+bIyP/myMj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/+bIyP+0FBT/tBQU/7QUFP+0FBT/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP+0FBT/tBQU/7QUFP+0FBT/5sjI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/+bIyP/myMj/tBQU/7QUFP+0FBT/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/7QUFP+0FBT/tBQU/+bIyP/myMj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP/myMj/tBQU/7QUFP+0FBT/tBQU/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP+0FBT/tBQU/7QUFP+0FBT/5sjI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/7QUFP+0FBT/tBQU/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/7QUFP+0FBT/tBQU/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/+bIyP+0FBT/tBQU/7QUFP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP+0FBT/tBQU/7QUFP/myMj/5sjI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/+bIyP/myMj/tBQU/7QUFP+0FBT/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/tBQU/7QUFP+0FBT/5sjI/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP/myMj/5sjI/7QUFP+0FBT/tBQU/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/7QUFP+0FBT/tBQU/+bIyP/myMj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/+bIyP+0FBT/tBQU/7QUFP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP+0FBT/tBQU/7QUFP/myMj/5sjI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/+bIyP/myMj/tBQU/7QUFP+0FBT/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/tBQU/7QUFP+0FBT/5sjI/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/7QUFP+0FBT/tBQU/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/7QUFP+0FBT/tBQU/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/+bIyP+0FBT/tBQU/7QUFP+0FBT/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/7QUFP+0FBT/tBQU/7QUFP/myMj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP/myMj/5sjI/7QUFP+0FBT/tBQU/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP+0FBT/tBQU/7QUFP/myMj/5sjI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/+bIyP+0FBT/tBQU/7QUFP+0FBT/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP+0FBT/tBQU/7QUFP+0FBT/5sjI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP/myMj/5sjI/7QUFP+0FBT/tBQU/7QUFP+0FBT/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/+bIyP/myMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP/myMj/5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjI/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/5sjI/+bIyP/myMj/5sjI/+bIyP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/HlrI/x5ayP8eWsj/"
+  },
+  "transparent": {
+   "png": "iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAYAAABe3VzdAAABAUlEQVR4nO2XsRHCMAxFY44VXLAGTYZIxk2GSMMaFB7CVOZ8jhzpSwYMx69SyMrLl3KSXYxx6FmnTwNw6h7w3CrRfdt2vXIZR2fN6yw9SEHVpIVVAeZgt3lm46/L8nxGQWHABCcBK5VAEUjoJ7HA5eeQ1hA7eAQ3hVB1ZPV+9wLEScjBEm4KwR3B1WKQCogAqZJwYJJ4SanFDmr7zppPNUlQ9yznWEDkj9OIy9/9LP4DWvX9gC1WJkt+lYPU+HrVOTFgvjK1kDSfCJAqA+oGFd98WSi/evU+cqBUDFINaGG17oPDgC+tkIMpqbYfNRv1791JcnV7q6PU5b34Hep+Fj8A7OifF0YigFIAAAAASUVORK5CYII=",
+   "width": 40,
+   "height": 30,
+   "rgba": "////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/+bIyP/myMj/5sjI/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/+bIyP/myMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP/myMj/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjI/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/////wD///8A////AP///wD///8A////AP///wC0FBT/tBQU/7QUFP+0FBT/tBQU/+bIyP/myMj/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyP+0FBT/tBQU/7QUFP+0FBT/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wC0FBT/tBQU/7QUFP+0FBT/5sjI/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyP/myMj/tBQU/7QUFP+0FBT/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////ALQUFP+0FBT/tBQU/+bIyP/myMj/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMj/tBQU/7QUFP+0FBT/tBQU/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wC0FBT/tBQU/7QUFP+0FBT/5sjI/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/7QUFP+0FBT/tBQU/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////ALQUFP+0FBT/tBQU/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/+bIyP+0FBT/tBQU/7QUFP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wC0FBT/tBQU/7QUFP/myMj/5sjI/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyP/myMj/tBQU/7QUFP+0FBT/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8AtBQU/7QUFP+0FBT/5sjI/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMj/5sjI/7QUFP+0FBT/tBQU/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////ALQUFP+0FBT/tBQU/+bIyP/myMj/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/+bIyP+0FBT/tBQU/7QUFP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wC0FBT/tBQU/7QUFP/myMj/5sjI/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyP/myMj/tBQU/7QUFP+0FBT/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8AtBQU/7QUFP+0FBT/5sjI/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/7QUFP+0FBT/tBQU/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////ALQUFP+0FBT/tBQU/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyP+0FBT/tBQU/7QUFP+0FBT/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////ALQUFP+0FBT/tBQU/7QUFP/myMj/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMj/5sjI/7QUFP+0FBT/tBQU/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wC0FBT/tBQU/7QUFP/myMj/5sjI/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyP+0FBT/tBQU/7QUFP+0FBT/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wC0FBT/tBQU/7QUFP+0FBT/5sjI/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMj/5sjI/7QUFP+0FBT/tBQU/7QUFP+0FBT/////AP///wD///8A////AP///wD///8A////ALQUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyP/myMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMj/5sjI/+bIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjI/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/+bIyP/myMj/5sjI/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjI/+bIyP/myMj/5sjI/+bIyP////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A"
+  },
+  "palette": {
+   "png": "iVBORw0KGgoAAAANSUhEUgAAACgAAAAeAgMAAAAjs7ROAAAACVBMVEX////myMi0FBQi82HVAAAAkElEQVR4nI3QsQ4BARAE0HcbRFRX+AC1r7iCXoHv8SkKhdDoKe4r1HqKKyUuKLYQicIkk2xmJzuT5R905xAoZsUMHQwXrodUpwwrgqJMBp3qvDQBvS2DDUF5516kQV4KXHhmRAUq8Yn/Z6xBLTDKZdBCS9D06b8IXrGybtJQj3dOqTbJwJFbnQ1ve4/vP/zGG1LtIIiiDQ0PAAAAAElFTkSuQmCC",
+   "width": 40,
+   "height": 30,
+   "rgba": "////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyEDmyMhA5sjIQObIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMhA5sjIQObIyP/myMj/5sjI/+bIyP/myMj/5sjIQObIyEDmyMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyEDmyMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyEDmyMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU//////////////////////////////////////+0FBT/tBQU/7QUFP+0FBT/tBQU/+bIyP/myMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEC0FBT/tBQU/7QUFP+0FBT///////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP+0FBT/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMj/tBQU/7QUFP+0FBT//////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/+bIyP/myMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhAtBQU/7QUFP+0FBT/tBQU//////////////////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP+0FBT/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQLQUFP+0FBT/tBQU/////////////////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP////////////////////////////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP/myMj/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMj/tBQU/7QUFP+0FBT/////////////////////////////////////////////////////////////////////////////////tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjI/7QUFP+0FBT/tBQU/////////////////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/+bIyP/myMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP////////////////////////////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP/myMj/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMj/tBQU/7QUFP+0FBT/////////////////////////////////////////////////////////////////////////////////tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQLQUFP+0FBT/tBQU/////////////////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEC0FBT/tBQU/7QUFP+0FBT//////////////////////////////////////////////////////////////////////7QUFP+0FBT/tBQU/7QUFP/myMhA////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjI/7QUFP+0FBT/tBQU//////////////////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP/myMj/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEC0FBT/tBQU/7QUFP+0FBT///////////////////////////////////////////////////////////+0FBT/tBQU/7QUFP+0FBT/5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjI/7QUFP+0FBT/tBQU/7QUFP+0FBT//////////////////////////////////////7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AObIyEDmyMj/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/5sjI/+bIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjIQObIyP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP+0FBT/tBQU/7QUFP/myMj/5sjIQObIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDmyMhA5sjIQObIyEDmyMj/5sjI/+bIyP/myMj/5sjI/+bIyEDmyMhA5sjIQP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A5sjIQObIyEDmyMhA5sjIQObIyED///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A"
+  }
+ },
+ "logo_big_size": [
+  800,
+  240
+ ],
+ "logo_bad": "不是能识别的图片"
+}

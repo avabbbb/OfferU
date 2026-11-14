@@ -6,7 +6,7 @@ import { ChevronDown, Copy, Download, FileImage, FileText, Share2 } from "lucide
 import { useState } from "react";
 
 import { Button, Menu } from "@/components/ui";
-import { apiUrl } from "@/lib/core";
+import { exportResume } from "@/lib/resumeExport";
 
 type Props = {
   docId: number;
@@ -18,15 +18,6 @@ type Props = {
   plainText: () => string;
 };
 
-function download(href: string) {
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = "";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
 export function ResumeActions({ docId, dirty, saveNow, plainText }: Props) {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,11 +25,17 @@ export function ResumeActions({ docId, dirty, saveNow, plainText }: Props) {
   const exportAs = async (kind: "pdf" | "png") => {
     setBusy(true);
     try {
-      await saveNow();
-      download(apiUrl("/api/resume/" + docId + "/" + kind));
-      say(kind === "pdf" ? "正在下载 PDF…" : "正在下载 PNG…");
-    } catch {
-      say("没存上，稍后再试");
+      try {
+        await saveNow();
+      } catch {
+        say("没存上，稍后再试");
+        return;
+      }
+      // 网页版没有本机打印机：PDF 改走浏览器打印（另存为 PDF）。
+      const outcome = await exportResume(docId, kind);
+      say(outcome === "printed" ? "已打开打印，选「另存为 PDF」" : kind === "pdf" ? "正在下载 PDF…" : "正在下载 PNG…");
+    } catch (error) {
+      say(error instanceof Error ? error.message : "导出失败");
     } finally {
       setBusy(false);
     }
