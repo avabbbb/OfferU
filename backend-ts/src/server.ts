@@ -8,9 +8,12 @@ import { dbPath } from "./paths";
 import { createApp } from "./app";
 import { openStore } from "./store";
 import type { SqliteCoreStore } from "./store";
+import { createNodeSyncService } from "./sync-node";
 
 export function createAppServer(store: SqliteCoreStore): Server {
-  const app = createApp({ store, pairingToken, runtime: "node", storage: "sqlite" });
+  const sync = createNodeSyncService(store, dbPath());
+  void sync.start();
+  const app = createApp({ store, pairingToken, runtime: "node", storage: "sqlite", sync });
   return createAdaptorServer({ fetch: app.fetch }) as Server;
 }
 

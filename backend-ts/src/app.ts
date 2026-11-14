@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type CoreErrorCode, type CoreStore } from "@offeru/core";
+import { isCoreError, type CoreErrorCode, type CoreStore, type SyncService } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
 import { callTool, SUPPORTED_TOOLS } from "./tools";
@@ -16,6 +16,8 @@ export interface AppDeps {
   pairingToken?: () => string;
   runtime: "node" | "worker";
   storage: "sqlite" | "none";
+  /** S3 data sync where the data lives (companion / in-browser app); absent on the stateless Worker. */
+  sync?: SyncService | null;
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };

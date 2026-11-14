@@ -41,7 +41,10 @@ CREATE INDEX IF NOT EXISTS records_job ON records(job_id);
 CREATE TABLE IF NOT EXISTS changes (
   id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL, summary TEXT NOT NULL,
   type TEXT NOT NULL, record_id INTEGER NOT NULL, before TEXT, after TEXT, undone_at TEXT);
+CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
+// sync_state: device-local S3 sync bookkeeping (packages/core/src/sync). Python
+// never reads it; an older DB just gains the empty table on first open.
 
 function decode(value: string | null): Json | null {
   return value === null ? null : JSON.parse(value) as Json;
@@ -90,6 +93,20 @@ export class SqliteCoreStore implements CoreStore {
       ? this.db.prepare("SELECT * FROM records WHERE type=? ORDER BY updated_at DESC, id DESC").all(type)
       : this.db.prepare("SELECT * FROM records WHERE type=? AND job_id=? ORDER BY updated_at DESC, id DESC").all(type, jobId);
     return (rows as Row[]).map(recordFromRow);
+  }
+
+  async allRecords(): Promise<StoredRecord[]> {
+    return (this.db.prepare("SELECT * FROM records ORDER BY id").all() as Row[]).map(recordFromRow);
+  }
+
+  async getLocalMeta(key: string): Promise<string | null> {
+    const row = this.db.prepare("SELECT value FROM sync_state WHERE key=?").get(key) as { value: string } | undefined;
+    return row ? row.value : null;
+  }
+
+  async setLocalMeta(key: string, value: string | null): Promise<void> {
+    if (value === null) this.db.prepare("DELETE FROM sync_state WHERE key=?").run(key);
+    else this.db.prepare("INSERT INTO sync_state(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, value);
   }
 
   async get(type: RecordType, id: number): Promise<StoredRecord | null> {

@@ -51,6 +51,7 @@ export type CoreContext = {
 export type PutOptions = {
   id?: number;
   jobId?: number | null;
+  /** Becomes updated_at verbatim (sync replays remote timestamps through it). */
   now: string;
   createdAt?: string;
   /** Undo restores the exact snapshot: drop fields that are absent from data. */
@@ -79,6 +80,18 @@ export interface CoreStore {
   addChange(row: Omit<ChangeRow, "id" | "undone_at">): Promise<number>;
   updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): Promise<void>;
   transaction<T>(fn: () => Promise<T>): Promise<T>;
+  /**
+   * Optional, used by S3 sync (packages/core/src/sync). Every record of every
+   * type; when absent, sync calls all(type) per type.
+   */
+  allRecords?(): Promise<StoredRecord[]>;
+  /**
+   * Optional device-local key/value (never synced, never exported): sync keeps
+   * its base snapshot and local-id <-> uid map here. Sync refuses to run
+   * without both. SQLite: table sync_state; IndexedDB: a "meta" object store.
+   */
+  getLocalMeta?(key: string): Promise<string | null>;
+  setLocalMeta?(key: string, value: string | null): Promise<void>;
 }
 
 /**
