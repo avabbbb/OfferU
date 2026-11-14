@@ -1,6 +1,7 @@
 // AI mock interviews (port of services/ai_interviews.py without Role
 // Intelligence). A session is one doc kind=note with topic=mock_interview:
-// questions, messages, evaluations and derived behaviour events live in it,
+// questions (doc.interview_questions; doc.questions is reserved for review
+// questions), messages, evaluations and derived behaviour events live in it,
 // so every write is a normal undoable core change.
 
 import { deleteRecord, saveRecord } from "../operations";
@@ -195,7 +196,7 @@ async function generateQuestions(llm: LlmClient, input: { type: string; difficul
 function sessionOf(doc: StoredRecord): StoredRecord & { questions: Question[]; messages: Message[]; behavior_events: BehaviorEvent[] } {
   return {
     ...doc,
-    questions: Array.isArray(doc.questions) ? doc.questions as Question[] : [],
+    questions: Array.isArray(doc.interview_questions) ? doc.interview_questions as Question[] : [],
     messages: Array.isArray(doc.messages) ? doc.messages as Message[] : [],
     behavior_events: Array.isArray(doc.behavior_events) ? doc.behavior_events as BehaviorEvent[] : [],
   };
@@ -292,7 +293,7 @@ export async function createInterview(store: CoreStore, args: Args, llm: LlmClie
       scoring_skill: { skill_id: skill.skill_id, version: skill.version },
       model_runtime: runtime,
       data_consent: consent,
-      questions,
+      interview_questions: questions,
       current_question_index: 0,
       status: "active",
       messages: [{ id: 1, role: "interviewer", content: questions[0].question, question_index: 0, evaluation_json: null, created_at: ctx.now }],
@@ -573,7 +574,7 @@ export async function restartInterview(store: CoreStore, interviewId: unknown, a
         scoring_skill: original.scoring_skill,
         model_runtime: original.model_runtime ?? {},
         data_consent: original.data_consent ?? {},
-        questions: original.questions,
+        interview_questions: original.questions,
         current_question_index: 0,
         status: "active",
         messages: [{ id: 1, role: "interviewer", content: original.questions[0].question, question_index: 0, evaluation_json: null, created_at: ctx.now }],

@@ -5,12 +5,26 @@ import { pathToFileURL } from "node:url";
 
 import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
-import { createApp } from "./app";
+import { createApp, type AppDeps } from "./app";
+import { registerCompanionRoutes } from "./routes/companion";
+import { llmFactory } from "@offeru/core";
+import { nodeSettings } from "./settings-node";
 import { openStore } from "./store";
 import type { SqliteCoreStore } from "./store";
 
-export function createAppServer(store: SqliteCoreStore): Server {
-  const app = createApp({ store, pairingToken, runtime: "node", storage: "sqlite" });
+export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDeps> = {}): Server {
+  // Model config + API keys live in the data dir (0600); the model is rebuilt from it per request.
+  const settings = "settings" in overrides ? overrides.settings ?? null : nodeSettings();
+  const app = createApp({
+    store,
+    pairingToken,
+    runtime: "node",
+    storage: "sqlite",
+    settings,
+    llm: settings ? llmFactory(settings) : undefined,
+    ...overrides,
+  });
+  registerCompanionRoutes(app);
   return createAdaptorServer({ fetch: app.fetch }) as Server;
 }
 

@@ -390,7 +390,7 @@ export function isDisallowedIp(address: string): boolean {
  * Python _validate_external_base_url. `resolve` returns the host's addresses
  * (DNS is runtime-specific, so it is injected). null = allowed, else the reason.
  */
-export async function validateExternalBaseUrl(baseUrl: string, resolve: (host: string) => Promise<string[]>, production = false): Promise<string | null> {
+export async function validateExternalBaseUrl(baseUrl: string, resolve: ((host: string) => Promise<string[]>) | null | undefined, production = false): Promise<string | null> {
   let url: URL;
   try {
     url = new URL(baseUrl);
@@ -404,7 +404,7 @@ export async function validateExternalBaseUrl(baseUrl: string, resolve: (host: s
   const literal = /^[\d.]+$/.test(host) || host.includes(":");
   if (literal) {
     if (isDisallowedIp(host)) return `目标地址 ${host} 为私有/内网地址，禁止访问`;
-  } else {
+  } else if (resolve) {
     let addresses: string[];
     try {
       addresses = await resolve(host);

@@ -1,6 +1,7 @@
 // 面经 & 题库 (port of routes/interview.py + legacy_operations + agents/interview_prep).
 // An experience is a doc kind=note with topic=interview_experience; its
-// extracted questions live inside it. A question id is derived:
+// extracted questions live in doc.bank_questions (doc.questions is reserved
+// for review questions by the core save check). A question id is derived:
 // experience_id * 1000 + position (1-based), so /generate-answer can find it.
 
 import { saveRecord } from "../operations";
@@ -72,7 +73,7 @@ const ANSWER_PROMPT = (question: string, category: string, difficulty: number, b
 ${bullets}
 `;
 
-const questionsOf = (doc: StoredRecord): BankQuestion[] => (Array.isArray(doc.questions) ? doc.questions as BankQuestion[] : []);
+const questionsOf = (doc: StoredRecord): BankQuestion[] => (Array.isArray(doc.bank_questions) ? doc.bank_questions as BankQuestion[] : []);
 export const questionId = (experienceId: number, index: number): number => experienceId * QUESTION_ID_STRIDE + index + 1;
 
 async function experienceDoc(store: CoreStore, id: number): Promise<StoredRecord> {
@@ -102,7 +103,7 @@ export async function collectExperience(store: CoreStore, args: Args, actor?: st
       source_platform: platform,
       job_id: jobId,
       collected_at: ctx.now,
-      questions: [],
+      bank_questions: [],
     },
   }, ctx);
   return { id: record.id, company: record.company, role: record.role, source_platform: record.source_platform, collected_at: record.collected_at ?? record.created_at };
@@ -183,7 +184,7 @@ export async function extractExperienceQuestions(store: CoreStore, args: Args, l
   }));
   const rounds = Array.isArray(result.rounds) ? result.rounds : [];
   const before = questionsOf(doc);
-  const data: Record<string, unknown> = { questions: [...before, ...added] };
+  const data: Record<string, unknown> = { bank_questions: [...before, ...added] };
   if (rounds.length) data.interview_rounds = JSON.stringify(rounds);
   await saveRecord(store, { type: "doc", id, data }, ctx);
   return {
@@ -222,7 +223,7 @@ export async function generateBankAnswer(store: CoreStore, args: Args, llm: LlmC
   }], { tier: "premium", temperature: 0.5, maxTokens: 1024 });
   if (!answer) throw new CoreError("LLM 生成失败，请稍后重试");
   const updated = questions.map((item, position) => (position === index ? { ...item, suggested_answer: answer } : item));
-  await saveRecord(store, { type: "doc", id: experienceId, data: { questions: updated } }, userContext(actor));
+  await saveRecord(store, { type: "doc", id: experienceId, data: { bank_questions: updated } }, userContext(actor));
   return { question_id: qid, question_text: question.question_text, suggested_answer: answer };
 }
 
