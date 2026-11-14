@@ -3,7 +3,7 @@
 
 import type { CoreStore, Json, StoredRecord } from "../types";
 import { sequenceRatio } from "./difflib";
-import { pyStr } from "./job-eval";
+import { pyStr } from "../research/py";
 
 const STALE_DAYS = 14;
 const DUP_RATIO = 0.85;

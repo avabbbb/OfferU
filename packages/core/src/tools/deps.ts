@@ -15,6 +15,8 @@ export type ToolDeps = {
   llm?: LlmClient | null;
   fetch?: HttpFetch;
   search?: SearchClient | null;
+  /** Caller disconnected / cancelled: long tools (evaluate) stop between jobs. */
+  signal?: AbortSignal;
   /** Local file text (companion only): split_resume({path}) uses it. */
   readFile?: (path: string) => Promise<{ path: string; text: string; truncated: boolean }>;
   /** Resume PDF export (resume domain): draft_email attaches it when present. */

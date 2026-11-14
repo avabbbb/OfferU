@@ -1,30 +1,15 @@
 // 只给「公司 岗位」时从公司自己的招聘系统拿 JD（port of backend/app/core/job_sources.py）。
 // 大厂走招聘官网公开接口，其余只认官方域名；镜像站、聚合站不采用。网络走注入的 fetch。
 
+import { OFFICIAL_DOMAINS } from "../research/official-sources";
+import { hostnameOf } from "../research/py";
 import { CoreError } from "../types";
 import type { HttpFetch } from "./net";
 
-export const OFFICIAL_DOMAINS: Record<string, string[]> = {
-  腾讯: ["careers.tencent.com", "join.qq.com"],
-  百度: ["talent.baidu.com"],
-  字节跳动: ["jobs.bytedance.com", "job.toutiao.com"],
-  阿里巴巴: ["talent.alibaba.com", "careers.alibaba.com", "talent-holding.alibaba.com"],
-  蚂蚁: ["talent.antgroup.com"],
-  美团: ["zhaopin.meituan.com"],
-  京东: ["zhaopin.jd.com", "campus.jd.com"],
-  快手: ["zhaopin.kuaishou.cn", "campus.kuaishou.cn"],
-  网易: ["hr.163.com"],
-  小米: ["hr.xiaomi.com"],
-  华为: ["career.huawei.com"],
-  拼多多: ["careers.pddglobalhr.com"],
-  哔哩哔哩: ["jobs.bilibili.com"],
-};
 const ALIASES: Record<string, string> = {
   字节: "字节跳动", bytedance: "字节跳动", tencent: "腾讯", baidu: "百度", 阿里: "阿里巴巴",
   蚂蚁集团: "蚂蚁", b站: "哔哩哔哩", bilibili: "哔哩哔哩", meituan: "美团", kuaishou: "快手",
 };
-export const HOSTED_ATS = ["mokahr.com", "jobs.feishu.cn", "zhiye.com", "hotjob.cn", "greenhouse.io", "lever.co",
-  "myworkdayjobs.com", "ashbyhq.com", "smartrecruiters.com"];
 export const API_COMPANIES = ["腾讯", "百度", "字节跳动"];
 
 const JCODE = /[（(]?\s?(J\d{4,})\s?[)）]?/i;
@@ -52,24 +37,8 @@ export function splitName(name: string): [string, string] {
   return ["", text];
 }
 
-const hostIn = (host: string, domains: string[]) => domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
-
-export function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.toLowerCase();
-  } catch {
-    return "";
-  }
-}
-
-/** own：公司自有招聘域名；ats：托管招聘系统；空：不采用。 */
-export function officialKind(url: string, company: string): "own" | "ats" | "" {
-  const host = hostOf(url);
-  if (!host) return "";
-  if (company && hostIn(host, OFFICIAL_DOMAINS[company] ?? [])) return "own";
-  if (hostIn(host, HOSTED_ATS)) return "ats";
-  return "";
-}
+/** urlparse(url).hostname, lower-cased ("" when none). */
+export const hostOf = hostnameOf;
 
 /** 岗位名、城市、J 编号：「AI产品营销经理（J102408）北京」→ [AI产品营销经理, 北京, J102408]。 */
 export function parseWant(rest: string): [string, string, string] {

@@ -4,7 +4,7 @@
 import { extractJson, type LlmClient } from "../llm";
 import { MEMORY_MODE } from "../operations";
 import { CoreError, type Json } from "../types";
-import { pyStr } from "./job-eval";
+import { pyStr } from "../research/py";
 
 const KINDS = ["experience", "project", "education", "skill", "award"];
 

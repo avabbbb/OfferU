@@ -1,13 +1,12 @@
-// add_job / enrich_jobs / evaluate_jobs (+ evaluateStream for /api/jobs/evaluate),
+// add_job / enrich_jobs (evaluate_jobs lives in ../research/evaluate.ts),
 // ported from backend/app/core/tools.py. Writes go through saveRecord, one undoable change each.
 
 import { label, stable } from "../labels";
-import type { LlmClient } from "../llm";
 import { findJobByUrl, knownTags, mergeAutoTags, saveRecord } from "../operations";
 import { CoreError, isCoreError, type Json, type StoredRecord } from "../types";
-import { candidate, evaluateJob } from "./job-eval";
 import { autoTags, extractIntake, guessIntake, hireFromUrl } from "./job-intake";
-import { API_COMPANIES, findViaApi, hostOf, officialKind, splitName, type OfficialPosting } from "./job-sources";
+import { officialKind } from "../research/official-sources";
+import { API_COMPANIES, findViaApi, hostOf, splitName, type OfficialPosting } from "./job-sources";
 import { fetchPage, hostIn, NO_SEARCH, PASTE_ONLY_DOMAINS, RESTRICTED_DOMAINS, type FetchPageResult, type SearchResult } from "./net";
 import { guard as runGuard, guardCounts, guardWarning, type GuardCounts } from "./posting-guard";
 import type { ToolDeps } from "./deps";
@@ -205,96 +204,4 @@ export async function enrichJobs(deps: ToolDeps, ids?: number[] | null, redo = f
     items.push({ id: job.id, label: label(job), keywords: ((data.posting ?? {}) as Json).keywords ?? [] });
   }
   return { count: items.length, change_ids: changeIds, items, failed };
-}
-
-async function targets(deps: ToolDeps, ids: number[] | null | undefined, redo: boolean): Promise<StoredRecord[]> {
-  if (ids?.length) {
-    const jobs: StoredRecord[] = [];
-    for (const id of ids) {
-      const job = await deps.store.get("job", id);
-      if (!job) throw new CoreError(`岗位 #${id} 不存在`, "not_found");
-      if (!String(job.jd ?? "").trim()) throw new CoreError(`「${label(job)}」还没有 JD，先贴 JD 再评估`);
-      jobs.push(job);
-    }
-    return jobs;
-  }
-  return (await deps.store.all("job")).filter((job) => !["rejected", "closed"].includes(String(job.status))
-    && String(job.jd ?? "").trim() && (redo || job.score === undefined || job.score === null));
-}
-
-export type EvaluateItem = { id: number; label: string; score: number; reasons: string[]; greeting: string; doc_id: number };
-export type EvaluateEvent =
-  | { type: "start"; total: number }
-  | { type: "job_start"; id: number; label: string; index: number; total: number }
-  | ({ type: "job"; index: number; total: number } & EvaluateItem)
-  | { type: "done"; count: number; change_ids: number[]; items: EvaluateItem[]; failed: string[]; remaining: number };
-
-const NO_MODEL_EVAL = "没配模型，没法自动评估。你自己评就用 save 给 job 写 score（0–100）和 reasons（三句）";
-
-/** 逐个岗位评估并推进度：start → job_start / job … → done。limit 不传就全评。 */
-export async function* evaluateStream(deps: ToolDeps, ids?: number[] | null, redo = false, limit?: number | null): AsyncGenerator<EvaluateEvent> {
-  const { store, ctx } = deps;
-  const llm: LlmClient | null | undefined = deps.llm;
-  if (!llm) throw new CoreError(NO_MODEL_EVAL, "unsupported");
-  const eligible = await targets(deps, ids, redo);
-  const remaining = limit ? Math.max(0, eligible.length - limit) : 0;
-  let jobs = limit ? eligible.slice(0, limit) : eligible;
-  if (!jobs.length) {
-    yield { type: "done", count: 0, change_ids: [], items: [], failed: [], remaining };
-    return;
-  }
-  const text = candidate(await store.first("profile"), await store.all("memory"));
-  const total = jobs.length;
-  const changeIds: number[] = [];
-  const items: EvaluateItem[] = [];
-  const failed: string[] = [];
-  yield { type: "start", total };
-  // 插件存的和旧岗位没有 posting：评估前顺手补上（尽力而为）。
-  const bare = jobs.filter((job) => !truthy(job.posting)).map((job) => job.id);
-  if (bare.length) {
-    try {
-      const enriched = await enrichJobs(deps, bare);
-      changeIds.push(...(enriched.change_ids as number[]).filter(Boolean));
-      jobs = await Promise.all(jobs.map(async (job) => (await store.get("job", job.id)) ?? job));
-    } catch {
-      // 补 posting 失败只跳过，评估照跑
-    }
-  }
-  for (const [offset, job] of jobs.entries()) {
-    const index = offset + 1;
-    yield { type: "job_start", id: job.id, label: label(job), index, total };
-    const result = await evaluateJob(llm, text, job);
-    if (!result) {
-      failed.push(label(job));
-      continue;
-    }
-    const old = (await store.all("doc", job.id)).find((doc) => doc.kind === "evaluation");
-    const doc = await saveRecord(store, {
-      type: "doc",
-      id: old?.id,
-      data: { kind: "evaluation", job_id: job.id, title: `岗位评估 · ${label(job)}`, body: result.markdown },
-    }, ctx);
-    const scored = await saveRecord(store, {
-      type: "job",
-      id: job.id,
-      data: { score: result.score, reasons: result.reasons, ...(result.greeting ? { greeting: result.greeting } : {}) },
-    }, ctx);
-    changeIds.push(doc.change_id!, scored.change_id!);
-    items.push({ id: job.id, label: label(job), score: result.score, reasons: result.reasons, greeting: result.greeting || "", doc_id: doc.record.id });
-    yield { type: "job", index, total, ...items[items.length - 1] };
-  }
-  if (!items.length) throw new CoreError("模型没返回可用的评估，岗位没动：" + failed.join("、"));
-  items.sort((a, b) => b.score - a.score);
-  yield { type: "done", count: items.length, change_ids: changeIds, items, failed, remaining };
-}
-
-/** 一次最多评 limit 个（默认 3）；返回的 remaining 还有就再调一次。 */
-export async function evaluateJobs(deps: ToolDeps, ids?: number[] | null, redo = false, limit = 3): Promise<Json> {
-  for await (const event of evaluateStream(deps, ids, redo, limit)) {
-    if (event.type === "done") {
-      const { count, change_ids: changeIds, items, failed, remaining } = event;
-      return { count, change_ids: changeIds, items, failed, remaining };
-    }
-  }
-  throw new CoreError("评估没完成");
 }

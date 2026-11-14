@@ -4,7 +4,8 @@ import { label } from "../labels";
 import { saveRecord } from "../operations";
 import { CoreError, type Json, type StoredRecord } from "../types";
 import type { ToolDeps } from "./deps";
-import { candidate, jobText, pyStr } from "./job-eval";
+import { candidateText as candidate, jobText } from "../research/job-eval";
+import { pyStr } from "../research/py";
 import { reconcileScan, type Finding } from "./reconcile";
 import { extractResumeItems } from "./resume-split";
 

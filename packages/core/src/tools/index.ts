@@ -16,7 +16,8 @@ import {
 import { CoreError } from "../types";
 import { applyAnswer, draftEmail, reconcileMemory, splitResume } from "./apply";
 import type { ToolDeps } from "./deps";
-import { addJob, enrichJobs, evaluateJobs } from "./jobs";
+import { evaluateJobs } from "../research/evaluate";
+import { addJob, enrichJobs } from "./jobs";
 import { fetchPage, webSearch } from "./net";
 import { validateArgs, type ToolSpec } from "./schema";
 import { TOOL_SPECS } from "./specs";
@@ -30,10 +31,8 @@ export type { GuardCounts, GuardFindings } from "./posting-guard";
 export { createSearchClient, fetchPage, webSearch, NO_SEARCH, PASTE_ONLY_DOMAINS, RESTRICTED_DOMAINS } from "./net";
 export type { FetchPageResult, HttpFetch, SearchClient, SearchKeys, SearchResult } from "./net";
 export { autoTags, extractIntake, guessIntake, hireFromUrl, normalizeIntake, postingOf } from "./job-intake";
-export { candidate, evaluateJob, jobText, normalizeEvaluation, postingBlock, sourceFact } from "./job-eval";
-export { findViaApi, officialKind, parseWant, splitName } from "./job-sources";
-export { addJob, enrichJobs, evaluateJobs, evaluateStream } from "./jobs";
-export type { EvaluateEvent, EvaluateItem } from "./jobs";
+export { findViaApi, parseWant, splitName } from "./job-sources";
+export { addJob, enrichJobs } from "./jobs";
 export { APPLY_PROMPT, applyAnswer, attachmentName, draftEmail, mailSubject, reconcileMemory, splitResume } from "./apply";
 export { reconcileScan } from "./reconcile";
 export type { Finding } from "./reconcile";
@@ -45,6 +44,12 @@ export type ToolHandler = (args: Args, deps: ToolDeps) => Promise<unknown>;
 
 const num = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
 const ids = (value: unknown): number[] | null => (Array.isArray(value) ? value as number[] : null);
+
+/** evaluate's best-effort pre-step: split job.posting for jobs that have none (Python enrich_jobs). */
+export async function enrichChanges(deps: ToolDeps, jobIds: number[]): Promise<number[]> {
+  const result = await enrichJobs(deps, jobIds);
+  return (result.change_ids as number[]).filter(Boolean);
+}
 
 /** Tools whose whole implementation is runtime-agnostic and lives in core. */
 export const CORE_HANDLERS: Record<string, ToolHandler> = {
@@ -61,7 +66,11 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
   split_resume: (a, d) => splitResume(d, a.text as string | null | undefined, a.path as string | null | undefined),
   add_job: (a, d) => addJob(d, String(a.text)),
   enrich_jobs: (a, d) => enrichJobs(d, ids(a.ids), a.redo === true),
-  evaluate_jobs: (a, d) => evaluateJobs(d, ids(a.ids), a.redo === true, num(a.limit) ?? 3),
+  evaluate_jobs: (a, d) => evaluateJobs(d.store, d.llm, a, {
+    signal: d.signal,
+    enrich: (bare) => enrichChanges(d, bare),
+    context: () => d.ctx,
+  }),
   apply_answer: (a, d) => applyAnswer(d, a.job_id as number, String(a.question)),
   draft_email: (a, d) => draftEmail(d, a.job_id as number, a.resume_id as number | null | undefined),
   reconcile_memory: (_, d) => reconcileMemory(d),

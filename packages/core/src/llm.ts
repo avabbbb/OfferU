@@ -32,6 +32,10 @@ export type LlmChatOptions = {
   signal?: AbortSignal;
 };
 
+/** Aliases kept for branches that started from the minimal client (ts/research). */
+export type ChatMessage = LlmMessage;
+export type ChatOptions = LlmChatOptions;
+
 export interface LlmClient {
   /** One chat completion. `null` = no usable answer (see module doc). */
   chat(messages: LlmMessage[], options?: LlmChatOptions): Promise<string | null>;
@@ -270,6 +274,8 @@ export function createOpenAiLlm(config: OpenAiLlmConfig): LlmClient {
       } catch (cause) {
         const auth = authError(cause, model);
         if (auth) throw auth;
+        // The caller cancelled (client disconnected): propagate, like Python's CancelledError.
+        if (options.signal?.aborted) throw cause;
         return null;
       } finally {
         timer.done();
@@ -316,6 +322,7 @@ export function createOpenAiLlm(config: OpenAiLlmConfig): LlmClient {
       } catch (cause) {
         const auth = authError(cause, model);
         if (auth) throw auth;
+        if (options.signal?.aborted) throw cause;
         // Timeout / upstream failure: end the stream like Python does.
       } finally {
         timer.done();

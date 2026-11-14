@@ -5,4 +5,5 @@ export * from "./types";
 export * from "./labels";
 export * from "./operations";
 export * from "./llm";
+export * from "./research";
 export * from "./tools";
