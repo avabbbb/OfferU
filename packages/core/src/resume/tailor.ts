@@ -8,7 +8,8 @@
 // and an optional page measurer (Playwright on the companion, an offscreen iframe in the browser).
 
 import { label, MEMORY_KIND } from "../labels";
-import type { LlmClient, LlmMessage } from "../llm";
+import { streamOrChat, type LlmClient, type LlmMessage } from "../llm";
+import { postingBlock } from "../research/job-eval";
 import { saveRecord } from "../operations";
 import type { CoreContext, CoreStore, Json, StoredRecord } from "../types";
 import { resumeFromMarkdown, type Resume } from "./model";
@@ -51,7 +52,7 @@ export interface TailorDeps {
   store: CoreStore;
   /** Reviews (JSON) and, without `stream`, the draft as one piece. */
   llm?: LlmClient | null;
-  /** Streaming draft; defaults to one llm.chat call yielded as a single delta. */
+  /** Streaming draft; defaults to llm.chatStream (or one llm.chat call as a single delta). */
   stream?: DraftStream | null;
   /** Pages of an A4 render of the given HTML; null/undefined or a throw = can't measure (the review is told so). */
   measure?: ((html: string) => Promise<number | null>) | null;
@@ -110,31 +111,6 @@ export async function evaluationNotes(store: CoreStore, jobId: number): Promise<
     if (block.startsWith("## ") && EVAL_SECTIONS.includes(headLine)) found.push("### " + block.slice(3).trim());
   }
   return found.join("\n\n");
-}
-
-const POSTING_META: Array<[string, string]> = [["hire_type", "招聘类型"], ["team", "部门"], ["years", "年限"], ["education", "学历"],
-  ["salary", "薪资"], ["job_code", "编号"], ["posted_at", "发布日"]];
-const POSTING_LISTS: Array<[string, string]> = [["responsibilities", "职责"], ["hard_reqs", "硬性要求"], ["soft_reqs", "加分项"]];
-
-/** job.posting 拆好的要求和关键词（Python job_eval.posting_block）；没拆过返回空串。 */
-export function postingBlock(job: Json): string {
-  const p = truthy(job.posting) ? job.posting : {};
-  if (typeof p !== "object" || p === null || Array.isArray(p)) return "";
-  const posting = p as Json;
-  const parts: string[] = [];
-  const meta = POSTING_META.filter(([key]) => truthy(posting[key])).map(([key, name]) => `${name}：${pyStr(posting[key])}`).join("；");
-  if (meta) parts.push(meta);
-  const listOf = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-  for (const [key, name] of POSTING_LISTS) {
-    const items = listOf(posting[key]).map(pyStr).filter((x) => x.trim());
-    if (items.length) parts.push(`${name}：\n` + items.map((x, i) => `${i + 1}. ${x}`).join("\n"));
-  }
-  if (truthy(posting.keywords)) parts.push("关键词：" + listOf(posting.keywords).map(pyStr).join("、"));
-  if (parts.length && truthy(posting.collaborators)) parts.push("协作对象（推断，非原文）：" + listOf(posting.collaborators).map(pyStr).join("、"));
-  const evidence = listOf(posting.evidence).filter((e): e is Json => typeof e === "object" && e !== null && truthy((e as Json).req) && truthy((e as Json).need));
-  if (parts.length && evidence.length) parts.push("证明硬性要求要准备的经历（推断）：\n" + evidence.map((e) => `- ${pyStr(e.req)} → ${pyStr(e.need)}`).join("\n"));
-  if (parts.length && truthy(posting.essence)) parts.push(`岗位本质（推断，非原文）：${pyStr(posting.essence)}`);
-  return parts.join("\n");
 }
 
 const cut = (text: string, n: number): string => Array.from(text).slice(0, n).join("");
@@ -368,10 +344,7 @@ export async function* runTailor(deps: TailorDeps, docId: number, jobId?: number
       yield { type: "error", message: NO_MODEL };
       return;
     }
-    stream = async function* (messages, signal) {
-      const text = await llm.chat(messages, { temperature: 0.3, maxTokens: 4096, signal });
-      if (text) yield text;
-    };
+    stream = (messages, signal) => streamOrChat(llm, messages, { temperature: 0.3, maxTokens: 4096, signal });
   }
   const complete = (messages: LlmMessage[]): Promise<string | null> => {
     if (!llm) return Promise.resolve(null);
