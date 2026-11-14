@@ -31,11 +31,11 @@ export function PlatformConsentCard() {
   };
   useEffect(() => { void run(request<ConsentStatus>(PATH)); }, []);
 
-  if (!st) return <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 text-sm text-[var(--foreground-muted)]">{error || "读取中…"}</section>;
+  if (!st) return <section className="ou-sheet p-5 text-sm text-[var(--ou-text-secondary)]">{error || "读取中…"}</section>;
 
   const stale = !st.agreed && st.agreed_version && st.agreed_version !== st.version;
   return (
-    <section className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5" data-testid="platform-consent">
+    <section className="space-y-4 ou-sheet p-5" data-testid="platform-consent">
       <div>
         <p className="text-xs font-medium text-[var(--foreground-muted)]">条款版本 {st.version}</p>
         <h2 className="mt-1 text-lg font-semibold">{st.title}</h2>
@@ -51,7 +51,7 @@ export function PlatformConsentCard() {
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         {Object.entries(st.duties).map(([who, items]) => (
-          <div key={who} className="rounded-lg border border-[var(--border)] p-4">
+          <div key={who} className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-4">
             <h3 className="text-sm font-semibold">{who}</h3>
             <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-[var(--foreground-soft)]">
               {items.map((d) => <li key={d}>{d}</li>)}
@@ -61,7 +61,7 @@ export function PlatformConsentCard() {
       </div>
       {st.agreed ? (
         <button type="button" disabled={busy} onClick={() => void run(request<ConsentStatus>(PATH, { method: "DELETE" }))}
-          className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm disabled:opacity-50">撤回同意并关闭</button>
+          className="ou-button ou-button-secondary">撤回同意并关闭</button>
       ) : (
         <div className="space-y-3">
           <label className="flex items-start gap-2 text-sm">

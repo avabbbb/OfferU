@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, Hand, Sparkles, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, Hand, Settings, Sparkles, Zap } from "lucide-react";
+import { Menu, type MenuItem } from "@/components/ui";
 import { configApi } from "@/lib/api";
 import { MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 
@@ -38,11 +39,11 @@ function isLlmConfig(value: unknown): value is LlmConfigItem {
 const STORAGE_KEY = "offeru.agent.composer";
 const DEFAULT_OPTIONS: ComposerOptions = { llmConfigId: "", reasoningEffort: "", approvalMode: "auto" };
 
-const EFFORTS: Array<{ id: ReasoningEffort; label: string; hint: string }> = [
-  { id: "", label: "默认", hint: "不指定，按模型自己的设置" },
-  { id: "low", label: "低", hint: "快，适合简单问题" },
-  { id: "medium", label: "中", hint: "大多数任务" },
-  { id: "high", label: "高", hint: "慢，想得更深" },
+const EFFORTS: Array<{ id: ReasoningEffort; label: string; short: string }> = [
+  { id: "", label: "默认", short: "" },
+  { id: "low", label: "低", short: "更快" },
+  { id: "medium", label: "中", short: "多数任务" },
+  { id: "high", label: "高", short: "想得更深" },
 ];
 
 const MODES: Array<{ id: ApprovalMode; label: string; hint: string }> = [
@@ -112,156 +113,67 @@ export function AgentComposerControls({
   options: ComposerOptions;
   onChange: (patch: Partial<ComposerOptions>) => void;
 }) {
-  const [menu, setMenu] = useState<"" | "model" | "mode">("");
-  const [effortFor, setEffortFor] = useState("");
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const models = useModelOptions(menu === "model");
-
-  useEffect(() => {
-    if (!menu) return;
-    const closeOutside = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setMenu("");
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      setMenu("");
-    };
-    document.addEventListener("mousedown", closeOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", closeOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [menu]);
+  // 模型 / 模式两个胶囊都是 components/ui 的 Menu（浅色玻璃、键盘、Esc、焦点归还交给 Radix），在输入框上方弹出。
+  const [modelOpen, setModelOpen] = useState(false);
+  const router = useRouter();
+  const models = useModelOptions(modelOpen);
 
   const current = models.find((model) => model.id === options.llmConfigId) || models.find((model) => model.active) || models[0];
   const effort = EFFORTS.find((item) => item.id === options.reasoningEffort);
   const mode = MODES.find((item) => item.id === options.approvalMode) || MODES[1];
-  const toggle = (next: "model" | "mode") => {
-    setEffortFor(current?.id || "");
-    setMenu((value) => (value === next ? "" : next));
-  };
   const ModeIcon = mode.id === "ask" ? Hand : Zap;
+  const toSettings = () => router.push(MODEL_SETTINGS_ROUTE);
+
+  const modelItems: MenuItem[] = models.length
+    ? [
+        { heading: "模型" },
+        ...models.map((model): MenuItem => ({
+          label: model.model || model.label,
+          description: model.label,
+          checked: model.id === current?.id,
+          onSelect: () => onChange({ llmConfigId: model.id }),
+        })),
+        "separator",
+        { heading: "思考强度" },
+        // 思考强度一行一个字 + 短说明，不放第二行，免得菜单太长。
+        ...EFFORTS.map((item): MenuItem => ({
+          label: item.short ? `${item.label} · ${item.short}` : item.label,
+          checked: options.reasoningEffort === item.id,
+          onSelect: () => onChange({ llmConfigId: current?.id ?? "", reasoningEffort: item.id }),
+        })),
+        "separator",
+        { label: "管理模型", icon: <Settings size={16} strokeWidth={1.75} />, onSelect: toSettings },
+      ]
+    : [{ label: "还没有模型", description: "去设置里添加一个", icon: <Settings size={16} strokeWidth={1.75} />, onSelect: toSettings }];
+
+  const modeItems: MenuItem[] = MODES.map((item) => {
+    const Icon = item.id === "ask" ? Hand : Zap;
+    return {
+      label: item.label,
+      description: item.hint,
+      icon: <Icon size={16} strokeWidth={1.75} />,
+      checked: item.id === mode.id,
+      onSelect: () => onChange({ approvalMode: item.id }),
+    };
+  });
 
   return (
-    <div ref={rootRef} className="agent-composer-tools">
-      <div className="agent-composer-menu-anchor">
-        <button
-          type="button"
-          className="agent-composer-tool"
-          aria-haspopup="menu"
-          aria-expanded={menu === "model"}
-          title="模型和思考强度"
-          onClick={() => toggle("model")}
-        >
+    <div className="agent-composer-tools">
+      <Menu label="模型和思考强度" side="top" align="start" open={modelOpen} onOpenChange={setModelOpen} items={modelItems} trigger={
+        <button type="button" className="agent-composer-tool" title="模型和思考强度">
           <Sparkles size={15} strokeWidth={1.75} />
           <span className="truncate">{current ? current.model || current.label : "模型"}</span>
           {options.reasoningEffort && <span className="agent-composer-tool-sub">{effort?.label}</span>}
           <ChevronDown size={12} strokeWidth={2} />
         </button>
-        {menu === "model" && (
-          <div className="agent-composer-menu" role="menu" aria-label="模型">
-            {models.length === 0 && (
-              <Link href={MODEL_SETTINGS_ROUTE} role="menuitem" className="agent-composer-menu-item">
-                <span className="agent-composer-menu-text">
-                  <strong>还没有模型</strong>
-                  <small>去设置里添加一个</small>
-                </span>
-              </Link>
-            )}
-            {models.map((model) => {
-              const selected = model.id === current?.id;
-              const expanded = effortFor === model.id;
-              return (
-                <div key={model.id}>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    aria-expanded={expanded}
-                    className="agent-composer-menu-item"
-                    onClick={() => setEffortFor(expanded ? "" : model.id)}
-                  >
-                    <span className="agent-composer-menu-text">
-                      <strong>{model.model || model.label}</strong>
-                      <small>{model.label}</small>
-                    </span>
-                    {selected && <Check size={14} />}
-                    <ChevronRight size={13} className={"agent-composer-chevron" + (expanded ? " is-open" : "")} />
-                  </button>
-                  {expanded && (
-                    <div className="agent-composer-effort" role="group" aria-label="思考强度">
-                      {EFFORTS.map((item) => {
-                        const on = selected && options.reasoningEffort === item.id;
-                        return (
-                          <button
-                            key={item.id || "default"}
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={on}
-                            title={item.hint}
-                            className={"agent-composer-effort-option" + (on ? " is-on" : "")}
-                            onClick={() => {
-                              onChange({ llmConfigId: model.id, reasoningEffort: item.id });
-                              setMenu("");
-                            }}
-                          >
-                            {item.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            <Link href={MODEL_SETTINGS_ROUTE} className="agent-composer-menu-foot">
-              管理模型
-            </Link>
-          </div>
-        )}
-      </div>
-      <div className="agent-composer-menu-anchor">
-        <button
-          type="button"
-          className="agent-composer-tool"
-          aria-haspopup="menu"
-          aria-expanded={menu === "mode"}
-          title={mode.hint}
-          onClick={() => toggle("mode")}
-        >
+      } />
+      <Menu label="模式" side="top" align="start" items={modeItems} trigger={
+        <button type="button" className="agent-composer-tool" title={mode.hint}>
           <ModeIcon size={15} strokeWidth={1.75} />
           <span>{mode.label}</span>
           <ChevronDown size={12} strokeWidth={2} />
         </button>
-        {menu === "mode" && (
-          <div className="agent-composer-menu" role="menu" aria-label="模式">
-            {MODES.map((item) => {
-              const Icon = item.id === "ask" ? Hand : Zap;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={item.id === mode.id}
-                  className="agent-composer-menu-item"
-                  onClick={() => {
-                    onChange({ approvalMode: item.id });
-                    setMenu("");
-                  }}
-                >
-                  <Icon size={16} strokeWidth={1.75} />
-                  <span className="agent-composer-menu-text">
-                    <strong>{item.label}</strong>
-                    <small>{item.hint}</small>
-                  </span>
-                  {item.id === mode.id && <Check size={14} />}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      } />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Input, Select } from "@/components/ui";
 import { request } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
@@ -42,14 +43,15 @@ export function ModelPicker({ baseUrl, apiKey, apiFormat, configId, value, onCha
     }, 800);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [baseUrl, apiKey, apiFormat, configId, revision]);
-  const field = "mt-2 min-h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-blue)]";
+  const options = [
+    ...(value && !models.some((model) => model.id === value) ? [{ value, label: `${value}（当前配置）` }] : []),
+    ...models.map((model) => ({ value: model.id, label: model.name === model.id ? model.id : `${model.name} · ${model.id}` })),
+  ];
   return <div className="space-y-2">
     <label className="block text-sm font-medium" htmlFor="embedded-model">选择模型</label>
-    {!manual ? <select id="embedded-model" className={field} value={value} onChange={(event) => onChange(event.target.value)} aria-invalid={!!error} aria-describedby="model-status">
-      <option value="">{loading ? "正在获取模型…" : "选择一个可用模型"}</option>
-      {value && !models.some((model) => model.id === value) && <option value={value}>{value}（当前配置）</option>}
-      {models.map((model) => <option key={model.id} value={model.id}>{model.name === model.id ? model.id : `${model.name} · ${model.id}`}</option>)}
-    </select> : <input id="embedded-model" name="model" autoComplete="off" spellCheck={false} value={value} onChange={(event) => onChange(event.target.value)} placeholder="输入服务支持的模型 ID…" className={field} aria-invalid={!!error} />}
+    {!manual ? <Select id="embedded-model" value={value || undefined} onValueChange={onChange} options={options}
+      placeholder={loading ? "正在获取模型…" : "选择一个可用模型"} />
+      : <Input id="embedded-model" name="model" autoComplete="off" spellCheck={false} value={value} onChange={(event) => onChange(event.target.value)} placeholder="输入服务支持的模型 ID…" aria-invalid={!!error} aria-describedby="model-status" />}
     <p id="model-status" role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">{status}</p>
     {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
     <div className="flex gap-4 text-xs">

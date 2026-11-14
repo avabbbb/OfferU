@@ -14,6 +14,7 @@ const PATH = {
   text: "M5 6V4h14v2M12 4v16M9 20h6",
   bold: "M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z",
   italic: "M19 4h-9M14 20H5M15 4 9 20",
+  underline: "M6 4v6a6 6 0 0 0 12 0V4M4 20h16",
   left: "M4 6h16M4 10h10M4 14h16M4 18h10",
   center: "M4 6h16M7 10h10M4 14h16M7 18h10",
   right: "M4 6h16M10 10h10M4 14h16M10 18h10",
@@ -55,7 +56,7 @@ const INDENTS: Block[] = [
   { icon: "outdent", name: "减少缩进", cmd: "outdent", keys: "jssj suojin outdent" },
 ];
 const SLASH = [...TYPES, ...ALIGNS, ...INDENTS];
-const STATEFUL = ["bold", "italic", "insertUnorderedList", "insertOrderedList", "justifyCenter", "justifyRight", "justifyFull"];
+const STATEFUL = ["bold", "italic", "underline", "insertUnorderedList", "insertOrderedList", "justifyCenter", "justifyRight", "justifyFull"];
 const SLASH_KEYS = new Set(["/", "、", "／"]);
 
 const escAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -112,9 +113,11 @@ export type BlockKeys = {
   onNext?: () => void; // 光标在结尾按 ↓
 };
 
-export function RichText({ value, onChange, rows = 2, label, compact, zoomable = !compact, focusSignal, placeholder, keys }: {
+// toolbar：在编辑框上面常驻一行格式按钮（加粗 / 斜体 / 下划线 / 无序 / 有序列表 / 链接），右栏表单里用（参考 offershow）；
+// 不传时仍是文档式：选中文字才浮出格式条。
+export function RichText({ value, onChange, rows = 2, label, compact, zoomable = !compact, focusSignal, placeholder, keys, toolbar }: {
   value: string; onChange: (next: string) => void; rows?: number; label: string; compact?: boolean;
-  zoomable?: boolean; focusSignal?: number; placeholder?: string; keys?: BlockKeys;
+  zoomable?: boolean; focusSignal?: number; placeholder?: string; keys?: BlockKeys; toolbar?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const last = useRef<string | null>(null);
@@ -277,8 +280,25 @@ export function RichText({ value, onChange, rows = 2, label, compact, zoomable =
     </div>
   );
 
+  // 常驻格式条：按下时不抢焦点（保住选区），点了直接对选区生效。
+  const fixed = (icon: Icon, name: string, cmd: string) => (
+    <button key={icon} type="button" title={name} aria-label={name} className="rt-btn" aria-pressed={STATEFUL.includes(cmd) ? on.includes(cmd) : undefined}
+      onMouseDown={(e) => e.preventDefault()} onClick={() => run(cmd)}>
+      <Svg icon={icon} />
+    </button>
+  );
+
   return (
-    <div className={"rt" + (compact ? " rt-compact" : "")}>
+    <div className={"rt" + (compact ? " rt-compact" : "") + (toolbar ? " rt-boxed" : "")}>
+      {toolbar && (
+        <div className="rt-fixedbar" role="toolbar" aria-label={label + "格式"}>
+          {fixed("bold", "加粗 ⌘B", "bold")}{fixed("italic", "斜体 ⌘I", "italic")}{fixed("underline", "下划线 ⌘U", "underline")}
+          <span className="rt-fixedbar-sep" aria-hidden />
+          {fixed("ul", "无序列表", "insertUnorderedList")}{fixed("ol", "有序列表", "insertOrderedList")}
+          <span className="rt-fixedbar-sep" aria-hidden />
+          {fixed("link", "链接", "link")}
+        </div>
+      )}
       <div ref={ref} role="textbox" aria-label={label} aria-multiline={!compact} contentEditable suppressContentEditableWarning
         data-placeholder={placeholder ?? (compact ? "写一条要点，回车新建下一条" : "写几句，输入 / 或 、 选择格式")}
         className="rf-input rt-edit" style={{ minHeight: (compact ? 1.6 : rows * 1.6) + 0.25 + "em" }}
@@ -290,10 +310,10 @@ export function RichText({ value, onChange, rows = 2, label, compact, zoomable =
         </button>
       )}
 
-      <Floating open={!!bubble && !slash} rect={bubble} onClose={() => { setBubble(null); setSub(""); }} label={label + "格式"} className="rt-bubble">
+      <Floating open={!!bubble && !slash && !toolbar} rect={bubble} onClose={() => { setBubble(null); setSub(""); }} label={label + "格式"} className="rt-bubble">
         <div className="rt-bar" role="toolbar" aria-label={label + "格式"}>
           {!compact && <span className="rt-group">{drop("type", typeNow, "文本类型")}{drop("align", alignNow, "对齐")}</span>}
-          <span className="rt-group">{btn("bold", "加粗 ⌘B", "bold", on.includes("bold"))}{btn("italic", "斜体 ⌘I", "italic", on.includes("italic"))}</span>
+          <span className="rt-group">{btn("bold", "加粗 ⌘B", "bold", on.includes("bold"))}{btn("italic", "斜体 ⌘I", "italic", on.includes("italic"))}{btn("underline", "下划线 ⌘U", "underline", on.includes("underline"))}</span>
           <span className="rt-group">{btn("link", "链接", "link")}{btn("clear", "清除格式", "clear")}</span>
         </div>
         {sub === "type" && list(TYPES, typeNow)}

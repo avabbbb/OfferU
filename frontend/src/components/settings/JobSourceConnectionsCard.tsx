@@ -52,8 +52,8 @@ export function JobSourceConnectionsCard() {
   }, []);
 
   return (
-    <section className="bauhaus-panel overflow-hidden bg-white" data-testid="job-source-connections">
-      <div className="border-b border-[var(--border-strong)]/12 px-6 py-5 md:px-8">
+    <section className="bauhaus-panel overflow-hidden" data-testid="job-source-connections">
+      <div className="px-6 py-5 md:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="bauhaus-label text-[var(--foreground-muted)]">Connections</p>
@@ -77,7 +77,7 @@ export function JobSourceConnectionsCard() {
         </div>
       </div>
 
-      <div className="divide-y divide-[var(--border)]">
+      <div className="divide-y divide-[var(--ou-line-separator)]">
         {loading && connections.length === 0 ? (
           <div className="flex items-center gap-3 px-6 py-6 md:px-8">
             <Spinner size="sm" color="warning" />
@@ -95,7 +95,7 @@ export function JobSourceConnectionsCard() {
           connections.map((conn) => (
             <div key={conn.source_id} className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 md:px-8">
               <div className="flex items-center gap-4">
-                <div className={`bauhaus-panel-sm flex h-11 w-11 items-center justify-center ${conn.connected ? "bg-[var(--surface-hover)] text-[var(--foreground)]" : "bg-[var(--surface-muted)] text-[var(--foreground-muted)]"}`}>
+                <div className={`bauhaus-panel-sm flex h-11 w-11 items-center justify-center ${conn.connected ? "bg-[var(--surface-hover)] text-[var(--ou-text-primary)]" : "bg-[var(--ou-bg-control)] text-[var(--ou-text-secondary)]"}`}>
                   <Plug size={18} />
                 </div>
                 <div>
@@ -111,7 +111,7 @@ export function JobSourceConnectionsCard() {
                   {conn.capabilities.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {conn.capabilities.map((cap) => (
-                        <span key={cap} className="rounded-sm bg-[var(--surface-muted)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--foreground-soft)]">
+                        <span key={cap} className="rounded-sm bg-[var(--ou-bg-control)] px-1.5 py-0.5 text-[length:var(--ou-type-xs)] font-bold text-[var(--foreground-soft)]">
                           {CAP_LABELS[cap] || cap}
                         </span>
                       ))}
