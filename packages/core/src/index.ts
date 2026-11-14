@@ -8,3 +8,4 @@ export * from "./llm";
 export * from "./llm-presets";
 export * from "./llm-config";
 export * from "./desensitize";
+export * from "./agent";
