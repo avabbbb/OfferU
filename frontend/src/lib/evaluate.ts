@@ -1,6 +1,6 @@
 // 岗位评估：POST /api/jobs/evaluate，SSE 推 start → job_start / job … → done。
 // 工具调用（evaluate_jobs）是同步的；网页用这条流看进度。
-import { apiUrl } from "@/lib/core";
+import { apiFetch } from "@/lib/transport";
 import { readSse } from "@/lib/sse";
 
 export type EvaluateItem = {
@@ -19,7 +19,7 @@ export async function evaluateJobs(
   onEvent: (event: EvaluateEvent) => void,
   options: { redo?: boolean } = {},
 ): Promise<void> {
-  const res = await fetch(apiUrl("/api/jobs/evaluate"), {
+  const res = await apiFetch("/api/jobs/evaluate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids, redo: Boolean(options.redo) }),

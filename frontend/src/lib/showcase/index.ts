@@ -7,7 +7,9 @@ import localforage from "localforage";
 import { clearAgentChat } from "@/lib/demo/agentSession";
 import { resetDemoData } from "@/lib/demo/store";
 
-export const SHOWCASE = process.env.VITE_SHOWCASE === "true";
+// SHOWCASE = "static web build without a backend" (TO C web app or the seeded
+// showcase); see lib/runtime/mode. UI components gate web-only behaviour on it.
+export { WEB_RUNTIME as SHOWCASE } from "@/lib/runtime/mode";
 export const SHOWCASE_UNSUPPORTED = "展示版只能浏览和修改已有内容，新增、删除和 AI 功能请下载桌面版体验。";
 
 type Json = Record<string, unknown>;

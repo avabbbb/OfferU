@@ -1,7 +1,5 @@
-import { SHOWCASE, showcaseHandle } from "./showcase";
-import { bridgeActive, bridgeHeaders } from "./bridge";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { resolveApiBase } from "@/lib/apiBase";
+import { apiFetch } from "./transport";
 
 export type DesktopRuntimeIdentity = {
   runtime_instance_id: string | null;
@@ -29,7 +27,6 @@ type HealthPayload = {
   build_identity?: unknown;
 };
 
-const API_BASE = resolveApiBase();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COMMIT = /^[0-9a-f]{40}$/;
 const FINGERPRINT = /^sha256:[0-9a-f]{64}$/;
@@ -94,11 +91,9 @@ export async function getDesktopRuntimeIdentity(timeoutMs = 1_000): Promise<Desk
 }
 
 export async function getRuntimeIdentity(): Promise<RuntimeIdentity> {
-  if (SHOWCASE && !bridgeActive()) return (await showcaseHandle("/api/diagnostics/runtime-identity")) as RuntimeIdentity;
-  const response = await fetch(`${API_BASE}/api/diagnostics/runtime-identity`, {
+  const response = await apiFetch("/api/diagnostics/runtime-identity", {
     cache: "no-store",
-    redirect: "error",
-    headers: { Accept: "application/json", ...bridgeHeaders() },
+    headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error("OfferU runtime identity is unavailable.");
   const payload = await response.json();
@@ -124,7 +119,7 @@ export function matchesDesktopRuntimeIdentity(
   if (
     health.status !== "ok" ||
     health.service !== "OfferU" ||
-    health.runtime !== "python" ||
+    (health.runtime !== "python" && health.runtime !== "node") ||
     health.runtime_instance_id !== expected.runtime_instance_id ||
     health.version !== expected.version ||
     health.runtime_mode !== expected.runtime_type

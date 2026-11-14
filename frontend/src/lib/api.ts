@@ -5,9 +5,10 @@
 // 基于 fetch API，支持 SWR 缓存
 // =============================================
 
-import { SHOWCASE, SHOWCASE_UNSUPPORTED, showcaseHandle } from "./showcase";
+import { SHOWCASE, SHOWCASE_UNSUPPORTED } from "./showcase";
 import { bridgeActive, bridgeHeaders } from "./bridge";
 import { resolveApiBase } from "./apiBase";
+import { apiFetch } from "./transport";
 import { safeClientErrorMessage } from "./safe-error";
 import { decideAgentActionInDesktop } from "./desktop-proposal-decision";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -59,16 +60,13 @@ function buildQuery(params?: Record<string, unknown>) {
 }
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  if (SHOWCASE && !bridgeActive()) {
-    // 展示站：回放录好的真实响应，改动存在浏览器里（见 lib/showcase）
-    return (await showcaseHandle(path, options)) as T;
-  }
+  // lib/transport decides who answers: the app inside this page (web build,
+  // IndexedDB) or the local backend over HTTP (desktop / paired companion).
   let res: Response;
   try {
-    res = await fetch(`${resolveApiBase()}${path}`, {
+    res = await apiFetch(path, {
       ...options,
-      headers: { "Content-Type": "application/json", ...bridgeHeaders(), ...(options?.headers || {}) },
-      redirect: "error",
+      headers: { "Content-Type": "application/json", ...(options?.headers || {}) },
     });
   } catch (error) {
     if (error instanceof Error && (error.name === "AbortError" || options?.signal?.aborted)) {
@@ -97,11 +95,9 @@ async function readEventStream<T>(
   onEvent?: (event: string, data: any) => void,
   signal?: AbortSignal
 ): Promise<T> {
-  if (SHOWCASE && !bridgeActive()) throw new Error(SHOWCASE_UNSUPPORTED);
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await apiFetch(path, {
     ...options,
-    headers: { Accept: "text/event-stream", ...bridgeHeaders(), ...(options?.headers || {}) },
-    redirect: "error",
+    headers: { Accept: "text/event-stream", ...(options?.headers || {}) },
     signal,
   });
   if (
@@ -270,7 +266,7 @@ export const resumeApi = {
   uploadPhoto: async (resumeId: number, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${API_BASE}/api/resume/${resumeId}/photo`, {
+    const res = await apiFetch(`${API_BASE}/api/resume/${resumeId}/photo`, {
       method: "POST",
       body: formData,
       headers: bridgeHeaders(),
@@ -286,7 +282,7 @@ export const resumeApi = {
   uploadLogo: async (resumeId: number, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${API_BASE}/api/resume/${resumeId}/logo`, {
+    const res = await apiFetch(`${API_BASE}/api/resume/${resumeId}/logo`, {
       method: "POST", body: formData, headers: bridgeHeaders(), redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
@@ -295,7 +291,7 @@ export const resumeApi = {
 
   // 导出
   exportPdf: (id: number) =>
-    fetch(`${API_BASE}/api/resume/${id}/export/pdf`, { method: "POST", headers: bridgeHeaders(), redirect: "error" }),
+    apiFetch(`${API_BASE}/api/resume/${id}/export/pdf`, { method: "POST", headers: bridgeHeaders(), redirect: "error" }),
 
   exportPdfUrl: (id: number) => `${API_BASE}/api/resume/${id}/export/pdf`,
 
@@ -1176,7 +1172,7 @@ export const agentRuntimeApi = {
   uploadAttachment: async (file: File): Promise<AgentAttachment> => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(API_BASE + "/api/agent/runtime/attachments", {
+    const res = await apiFetch(API_BASE + "/api/agent/runtime/attachments", {
       method: "POST",
       body: formData,
       headers: bridgeHeaders(),
@@ -1422,7 +1418,7 @@ export const agentBoardApi = {
     if (isTauri()) return invoke<AgentLaunchResult>("launch_agent", { agentId });
     const token = liteToken();
     if (!token) throw new Error("请用 offeru start 打开的工作台打开对话");
-    const res = await fetch(API_BASE + agentBoardPath(agentId, "/launch"), { method: "POST", headers: { Authorization: "Bearer " + token, ...bridgeHeaders() }, redirect: "error" });
+    const res = await apiFetch(API_BASE + agentBoardPath(agentId, "/launch"), { method: "POST", headers: { Authorization: "Bearer " + token, ...bridgeHeaders() }, redirect: "error" });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(res.status === 403 ? "工作台授权已失效，请重新运行 offeru start" : payload?.detail || "打开对话失败：" + res.status);
     return payload as AgentLaunchResult;
@@ -1825,7 +1821,7 @@ export const profileApi = {
 
   chat: async (data: { topic: string; message: string; session_id?: number }) => {
     if (SHOWCASE && !bridgeActive()) throw new Error(SHOWCASE_UNSUPPORTED);
-    const res = await fetch(`${API_BASE}/api/profile/chat`, {
+    const res = await apiFetch(`${API_BASE}/api/profile/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...bridgeHeaders() },
       body: JSON.stringify(data),
@@ -1839,7 +1835,7 @@ export const profileApi = {
     const formData = new FormData();
     formData.append("file", file);
     const params = new URLSearchParams({ parse_mode: parseMode });
-    const res = await fetch(`${API_BASE}/api/profile/import-resume?${params.toString()}`, {
+    const res = await apiFetch(`${API_BASE}/api/profile/import-resume?${params.toString()}`, {
       method: "POST",
       body: formData,
       headers: bridgeHeaders(),
@@ -1878,7 +1874,7 @@ export const profileApi = {
     formData.append("target_city", data.target_city || "");
     formData.append("job_goal", data.job_goal || "");
 
-    const res = await fetch(`${API_BASE}/api/profile/agent/start`, {
+    const res = await apiFetch(`${API_BASE}/api/profile/agent/start`, {
       method: "POST",
       body: formData,
       headers: bridgeHeaders(),

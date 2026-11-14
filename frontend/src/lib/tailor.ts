@@ -1,6 +1,6 @@
 // 按岗位改简历：POST /api/resume/{id}/tailor，SSE 推 start → delta…（起草）→ review…（每轮审稿）→ done | error。
 // abort 就是取消，后端没跑完不写库。review_only：不重新起草，拿已有的定制简历只跑审稿（档案补了新成果后再改一下）。
-import { apiUrl } from "@/lib/core";
+import { apiFetch } from "@/lib/transport";
 import { readSse } from "@/lib/sse";
 
 // 审稿给的一条修改：old 按原文精确替换成 new；跳过的带 why。
@@ -48,7 +48,7 @@ export function tailorNotes(event: Extract<TailorEvent, { type: "done" }>): stri
 
 export async function tailorResume(docId: number, jobId: number, signal: AbortSignal, onEvent: (event: TailorEvent) => void,
   options: { reviewOnly?: boolean } = {}): Promise<void> {
-  const res = await fetch(apiUrl("/api/resume/" + docId + "/tailor"), {
+  const res = await apiFetch("/api/resume/" + docId + "/tailor", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job_id: jobId, review_only: Boolean(options.reviewOnly) }), signal,
   });
@@ -62,7 +62,7 @@ export type ImpactDraft = { memory_id: number | null; title: string; data: Recor
 export type ImpactDropped = { index: number; old: string; question: string; quote: string; add?: string; why: string };
 
 export async function captureImpact(answers: ImpactAnswer[], jobId: number | null): Promise<{ drafts: ImpactDraft[]; dropped: ImpactDropped[] }> {
-  const res = await fetch(apiUrl("/api/resume/impact"), {
+  const res = await apiFetch("/api/resume/impact", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers, job_id: jobId }),
   });
   const data = await res.json().catch(() => null);

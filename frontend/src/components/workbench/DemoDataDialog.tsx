@@ -57,7 +57,7 @@ export function DemoDataDialog({ open, onClose }: Props) {
     setNotice("");
     try {
       await demoStore.ready();
-      downloadJson(packageFilename(), buildDemoPackage(demoStore.snapshot()));
+      downloadJson(packageFilename(), buildDemoPackage(await demoStore.snapshot()));
       setNotice("数据包已下载。里面不含 API Key 和 Agent 对话。");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "导出失败");
@@ -78,7 +78,7 @@ export function DemoDataDialog({ open, onClose }: Props) {
       const count = parsed.data.records.length;
       if (!window.confirm(`导入会用数据包里的 ${count} 条记录覆盖这个浏览器里的演示数据，并保留一份导入前快照。继续？`)) return;
       await demoStore.ready();
-      await rememberPreImportSnapshot(demoStore.snapshot());
+      await rememberPreImportSnapshot(await demoStore.snapshot());
       await demoStore.replace(parsed.data);
       setHasBackup(true);
       await refreshAll();
@@ -134,7 +134,7 @@ export function DemoDataDialog({ open, onClose }: Props) {
     try {
       await persist();
       await demoStore.ready();
-      const result = await uploadDemoSnapshot({ url, remoteDir, username, password }, demoStore.snapshot());
+      const result = await uploadDemoSnapshot({ url, remoteDir, username, password }, await demoStore.snapshot());
       setNotice(`已上传 ${result.payload.data.records.length} 条记录（${formatBytes(result.bytes)}）。`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "上传失败");
@@ -157,7 +157,7 @@ export function DemoDataDialog({ open, onClose }: Props) {
       const count = remote.data.records.length;
       if (!window.confirm(`下载会用远端 ${remote.exported_at.slice(0, 16).replace("T", " ")} 的 ${count} 条记录覆盖当前演示数据，并保留一份导入前快照。继续？`)) return;
       await demoStore.ready();
-      await rememberPreImportSnapshot(demoStore.snapshot());
+      await rememberPreImportSnapshot(await demoStore.snapshot());
       await demoStore.replace(remote.data);
       setHasBackup(true);
       await refreshAll();

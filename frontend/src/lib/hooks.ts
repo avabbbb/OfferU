@@ -7,8 +7,7 @@
 // =============================================
 
 import useSWR from "swr";
-import { SHOWCASE, showcaseHandle } from "@/lib/showcase";
-import { bridgeActive, bridgeHeaders } from "@/lib/bridge";
+import { apiFetch } from "@/lib/transport";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import type { CareerArtifact, CareerDelivery } from "@/lib/api";
@@ -32,13 +31,9 @@ function formatBackendNetworkError(_error?: unknown) {
  * 自动处理 JSON 解析和错误码
  */
 const fetcher = async (url: string) => {
-  if (SHOWCASE && !bridgeActive()) {
-    const parsed = new URL(url, window.location.href);
-    return showcaseHandle(parsed.pathname + parsed.search);
-  }
   let res: Response;
   try {
-    res = await fetch(url, { redirect: "error", headers: bridgeHeaders() });
+    res = await apiFetch(url);
   } catch {
     throw new Error(formatBackendNetworkError());
   }
@@ -50,22 +45,12 @@ const fetcher = async (url: string) => {
 };
 
 /**
- * 统一后端请求：非展示模式等价 fetch(API_BASE + path)；
- * 展示站（VITE_SHOWCASE）下回放录好的真实响应（见 lib/showcase），
+ * 统一后端请求：走 lib/transport（桌面版 = HTTP 本地后端；网页版 = 页面内的
+ * 同一个 Hono app + IndexedDB，展示站对还没迁的接口回放录好的响应），
  * 合成标准 Response；不支持的操作直接抛错。
  */
 async function showcaseFetch(url: string, init?: RequestInit): Promise<Response> {
-  if (!SHOWCASE || bridgeActive()) {
-    const target = /^https?:\/\//i.test(url)
-      ? url
-      : `${API_BASE}${url.startsWith("/") ? url : `/${url}`}`;
-    return fetch(target, { ...init, headers: { ...bridgeHeaders(), ...(init?.headers || {}) }, redirect: "error" });
-  }
-  const data = await showcaseHandle(url, init);
-  return new Response(JSON.stringify(data), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  return apiFetch(url, init);
 }
 
 // ---- 类型定义 ----

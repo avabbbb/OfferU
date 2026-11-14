@@ -1,3 +1,5 @@
+import { DATA_PACKAGE_FORMAT, parsePackage } from "@offeru/core";
+
 import type { DemoState } from "./seed";
 
 export const DEMO_PACKAGE_FORMAT = "offeru.demo-package";
@@ -41,6 +43,11 @@ export function parseDemoPackage(raw: unknown): DemoPackage {
     }
   }
   const pkg = recordOf(value);
+  if (pkg?.app === "offeru" && pkg.format === DATA_PACKAGE_FORMAT) {
+    // Packages exported by the companion / core (packages/core/src/portable.ts).
+    const parsed = parsePackage(value);
+    return { app: "offeru", format: DEMO_PACKAGE_FORMAT, version: DEMO_PACKAGE_VERSION, scope: "demo-core", exported_at: parsed.exported_at, data: parsed.data };
+  }
   if (!pkg || pkg.app !== "offeru" || pkg.format !== DEMO_PACKAGE_FORMAT) {
     throw new Error("这不是 OfferU 演示数据包。");
   }

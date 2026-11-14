@@ -21,6 +21,17 @@ const DB_STORE = "keys";
 const DEVICE_KEY = "device";
 
 let memoryKey = "";
+const configListeners = new Set<() => void>();
+
+/** The browser runtime rebuilds its model client when the saved provider config changes. */
+export function subscribeAgentConfig(listener: () => void): () => void {
+  configListeners.add(listener);
+  return () => configListeners.delete(listener);
+}
+
+function configChanged(): void {
+  for (const listener of configListeners) listener();
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -129,6 +140,7 @@ export async function saveAgentConfig(config: AgentConfig): Promise<AgentConfig>
   };
   await configStore.setItem(CONFIG_KEY, stored);
   memoryKey = normalized.remember ? "" : normalized.apiKey;
+  configChanged();
   return normalized;
 }
 
@@ -139,9 +151,11 @@ export async function forgetAgentKey(): Promise<void> {
     const { secret: _secret, ...rest } = stored;
     await configStore.setItem(CONFIG_KEY, { ...rest, remember: false });
   }
+  configChanged();
 }
 
 export async function clearAgentConfig(): Promise<void> {
   memoryKey = "";
   await configStore.removeItem(CONFIG_KEY);
+  configChanged();
 }

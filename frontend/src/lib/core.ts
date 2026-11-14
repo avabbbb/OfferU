@@ -5,9 +5,7 @@ import useSWR, { mutate as globalMutate } from "swr";
 
 import { request } from "@/lib/api";
 import { resolveApiBase } from "@/lib/apiBase";
-import { bridgeActive } from "@/lib/bridge";
-import { DEMO_TOOL_NAMES, demoTool } from "@/lib/demo/tools";
-import { SHOWCASE } from "@/lib/showcase";
+import { apiFetch } from "@/lib/transport";
 
 export type JobStatus = "saved" | "applied" | "test" | "interview" | "offer" | "rejected" | "closed";
 export type EventKind = "todo" | "deadline" | "test" | "interview";
@@ -46,9 +44,7 @@ export type Overview = {
 };
 
 export function tool<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T> {
-  if (SHOWCASE && !bridgeActive() && DEMO_TOOL_NAMES.has(name)) {
-    return demoTool<T>(name, args);
-  }
+  // Same endpoint everywhere; lib/transport routes it to the in-page app on the web build.
   return request<T>(`/api/tools/${name}`, { method: "POST", body: JSON.stringify(args) });
 }
 
@@ -81,7 +77,7 @@ export const apiUrl = (path: string) => `${resolveApiBase()}${path}`;
 export async function upload(file: File): Promise<{ name: string; original: string }> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(apiUrl("/api/files"), { method: "POST", body: form });
+  const res = await apiFetch("/api/files", { method: "POST", body: form });
   if (!res.ok) throw new Error("上传失败");
   return res.json();
 }

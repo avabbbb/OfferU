@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-import { resolveApiBase } from "./apiBase";
+import { apiFetch } from "./transport";
 import { liteToken } from "./liteSession";
 
 export type AgentActionDecision = "confirm" | "reject" | "undo";
@@ -17,8 +17,8 @@ export async function decideAgentActionInDesktop<T = unknown>(
   if (isTauri()) return invoke<T>("decide_agent_action", { actionId, decision });
   const token = liteToken();
   if (!token) throw new Error("请用 offeru start 打开的工作台处理这一步");
-  const res = await fetch(
-    `${resolveApiBase()}/api/agent/runtime/actions/${encodeURIComponent(actionId)}/${decision}`,
+  const res = await apiFetch(
+    `/api/agent/runtime/actions/${encodeURIComponent(actionId)}/${decision}`,
     { method: "POST", headers: { Authorization: `Bearer ${token}` }, redirect: "error" },
   );
   const payload = await res.json().catch(() => ({}));
