@@ -21,6 +21,24 @@ export interface FileStore extends FileSource {
   write(name: string, bytes: Uint8Array): Promise<void>;
 }
 
+/** In-memory FileStore: tests, and a stand-in on the web until the browser store keeps files in IndexedDB/OPFS. */
+export function memoryFileStore(seed: Record<string, Uint8Array> = {}): FileStore & { files: Map<string, Uint8Array> } {
+  const files = new Map(Object.entries(seed));
+  const safe = (name: string): string => name.split(/[\\/]/).pop() ?? "";
+  return {
+    files,
+    async read(name) {
+      const bytes = files.get(safe(name));
+      return bytes ? { bytes, type: guessMime(safe(name)) ?? "application/octet-stream" } : null;
+    },
+    async write(name, bytes) {
+      const key = safe(name);
+      if (!key || key === "." || key === "..") throw new Error("bad file name");
+      files.set(key, bytes);
+    },
+  };
+}
+
 /** Prints the renderer's HTML (A4). Companion: Playwright + local Chromium; absent elsewhere. */
 export interface PageRenderer {
   pdf(html: string): Promise<Uint8Array>;
@@ -56,11 +74,13 @@ export function parseLine(raw: string): MarkupLine {
 
 const BOLD = /\*\*(.+?)\*\*/g;
 const ITALIC = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g;
+// 下划线 ++词++：前面不能紧挨字母数字或 +（「C++、C++11」不算），两头不能是空白；\w 只认 ASCII，与 Python re.ASCII、前端 richMarkup 一致。
+const UNDER = /(?<![A-Za-z0-9_+])\+\+(?=[^ \t\n\r\f\v])(.+?)(?<=[^ \t\n\r\f\v])\+\+(?![A-Za-z0-9_+])/g;
 const LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 
-/** 转义，行内认加粗、斜体和 [文字](链接)。 */
+/** 转义，行内认加粗、斜体、++下划线++ 和 [文字](链接)。 */
 export function inlineHtml(text: string): string {
-  const out = escapeHtml(text, false).replace(BOLD, "<strong>$1</strong>").replace(ITALIC, "<em>$1</em>");
+  const out = escapeHtml(text, false).replace(BOLD, "<strong>$1</strong>").replace(ITALIC, "<em>$1</em>").replace(UNDER, "<u>$1</u>");
   return out.replace(LINK, (_m, label: string, href: string) => `<a href="${href.replaceAll('"', "%22")}">${label}</a>`);
 }
 

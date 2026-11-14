@@ -1,9 +1,5 @@
-// Node-only resume routes: printing with a local Chromium and the school-logo PNGs bundled on disk.
-//   GET  /api/resume/{doc_id}/pdf
-//   GET  /api/resume/{doc_id}/png
-//   GET  /api/resume/assets/school-logos/{file}
-//   POST /api/resume/assets/school-logos/{file}/use
-// Plus the Node FileStore (<data>/files), the Playwright PageRenderer and exportResumePdf for the export tool.
+// Node-only resume pieces: printing with a local Chromium, the school-logo PNGs bundled on disk, the <data>/files store.
+// Plus the Node FileStore (<data>/files), the on-disk school-logo source, the Playwright PageRenderer and exportResumePdf.
 
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -24,8 +20,7 @@ import {
 } from "@offeru/core";
 
 import type { AppEnv } from "../../app";
-import { transparentLogo } from "../resume/image";
-import { baseName, needFiles } from "../resume";
+import { baseName, needRenderer } from "../resume";
 
 // ---------- files ----------
 
@@ -58,28 +53,23 @@ export const filesDirFor = (dbFile: string): string => process.env.OFFERU_FILES_
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/**
- * The ~800 bundled emblems (6 MB). They still live in the Python tree; when Python is deleted, move the folder to
- * backend-ts/assets/school_logos (first candidate) or point OFFERU_SCHOOL_LOGO_DIR at it.
- */
+/** The ~800 bundled emblems (5.8 MB): backend-ts/assets/school_logos, or OFFERU_SCHOOL_LOGO_DIR (packaged builds). */
 export function schoolLogoDir(): string | null {
-  const candidates = [
-    process.env.OFFERU_SCHOOL_LOGO_DIR,
-    resolve(here, "../../../assets/school_logos"),
-    resolve(here, "../../../../backend/app/assets/school_logos"),
-  ].filter((p): p is string => Boolean(p));
+  const candidates = [process.env.OFFERU_SCHOOL_LOGO_DIR, resolve(here, "../../../assets/school_logos")]
+    .filter((p): p is string => Boolean(p));
   return candidates.find((p) => existsSync(join(p, "index.json"))) ?? null;
 }
 
-async function schoolLogo(file: string): Promise<Uint8Array> {
-  if (!isSchoolLogoFile(file)) throw new CoreError("未知的校徽文件", "not_found");
-  const dir = schoolLogoDir();
-  try {
-    if (dir) return new Uint8Array(await readFile(join(dir, file)));
-  } catch {
-    // fall through
-  }
-  throw new CoreError("校徽不存在", "not_found");
+/** deps.schoolLogos for the companion: read the PNG from disk; null when it is not there. */
+export function nodeSchoolLogos(dir: string | null = schoolLogoDir()): (file: string) => Promise<Uint8Array | null> {
+  return async (file) => {
+    if (!dir || !isSchoolLogoFile(file)) return null;
+    try {
+      return new Uint8Array(await readFile(join(dir, file)));
+    } catch {
+      return null;
+    }
+  };
 }
 
 // ---------- printing ----------
@@ -159,13 +149,6 @@ export function playwrightRenderer(): PageRenderer {
   };
 }
 
-function needRenderer(renderer: PageRenderer | null | undefined): PageRenderer {
-  if (!renderer) throw new CoreError(NO_BROWSER, "unsupported");
-  return renderer;
-}
-
-const disposition = (fallback: string, name: string): string =>
-  `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 
 /**
  * Tool export_resume_pdf (core/tools.py): print a resume doc into <exportsDir>/<name>.pdf and return its path.
@@ -191,36 +174,11 @@ export async function exportResumePdf(
 
 // ---------- routes ----------
 
+/**
+ * Nothing Node-only is left to mount: /pdf, /png and the school-logo PNGs now live in routes/resume (runtime-agnostic)
+ * and use deps.renderer / deps.schoolLogos, which server.ts fills with playwrightRenderer() / nodeSchoolLogos().
+ * Kept so routes/companion/index.ts does not change.
+ */
 export function registerResumeCompanion(app: Hono<AppEnv>): void {
-  for (const kind of ["pdf", "png"] as const) {
-    app.get(`/api/resume/:doc_id{[0-9]+}/${kind}`, async (c) => {
-      const { store, files, renderer } = c.get("deps");
-      const doc = await store.get("doc", Number(c.req.param("doc_id")));
-      if (!doc) throw new CoreError("简历不存在", "not_found");
-      const html = await resumeDocHtml(store, doc, files);
-      const printer = needRenderer(renderer);
-      const bytes = kind === "pdf" ? await printer.pdf(html) : await printer.png(html);
-      const pdfName = resumeFileName(doc, await store.first("profile"));
-      const name = kind === "pdf" ? pdfName : pdfName.slice(0, -4) + ".png";
-      return c.body(bytes as Uint8Array<ArrayBuffer>, 200, {
-        "Content-Type": kind === "pdf" ? "application/pdf" : "image/png",
-        "Content-Disposition": disposition(`resume.${kind}`, name),
-      });
-    });
-  }
-
-  app.get("/api/resume/assets/school-logos/:file", async (c) => {
-    const bytes = await schoolLogo(c.req.param("file"));
-    return c.body(bytes as Uint8Array<ArrayBuffer>, 200, { "Content-Type": "image/png", "Cache-Control": "max-age=86400" });
-  });
-
-  // 选中的校徽抠成透明底存进 files/，返回文件名；前端写进 doc.style.logo。
-  app.post("/api/resume/assets/school-logos/:file/use", async (c) => {
-    const file = c.req.param("file");
-    const bytes = await schoolLogo(file);
-    const files = needFiles(c);
-    const name = "logo-" + file;
-    await files.write(name, transparentLogo(bytes));
-    return c.json({ name });
-  });
+  void app;
 }

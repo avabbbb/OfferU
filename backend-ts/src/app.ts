@@ -16,12 +16,14 @@ export interface AppDeps {
   pairingToken?: () => string;
   runtime: "node" | "worker";
   storage: "sqlite" | "none";
-  /** Model for tailor / impact; absent = "没配模型". */
-  llm?: LlmClient | null;
+  /** The user's configured model (BYOK); called per request so a changed key applies at once. Absent/null = no model. */
+  llm?: () => LlmClient | null;
   /** Uploads (<data>/files on the companion); absent on the stateless Worker. */
   files?: FileStore | null;
-  /** HTML → PDF/PNG/page count (Playwright on the companion); absent elsewhere. */
+  /** HTML → PDF/PNG/page count (Playwright on the companion); absent elsewhere (the web page prints with window.print). */
   renderer?: PageRenderer | null;
+  /** Bundled school-emblem PNGs by file name: disk on the companion, a static-asset fetch on the web; null = missing. */
+  schoolLogos?: ((file: string) => Promise<Uint8Array | null>) | null;
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };

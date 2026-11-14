@@ -63,3 +63,18 @@ export function searchSchoolLogos(query: string, limit = 20, index: Record<strin
 
 /** Only bundled emblem names (0001.png …) are valid; anything else is not ours to serve. */
 export const isSchoolLogoFile = (name: string): boolean => /^\d{4}\.png$/.test(name || "");
+
+type FetchBytes = (url: string) => Promise<{ ok: boolean; arrayBuffer(): Promise<ArrayBuffer> }>;
+
+/**
+ * deps.schoolLogos for the web: the PNGs are static assets next to the page (<base>/0001.png …), fetched one at a
+ * time when a user picks a school, so the 5.8 MB never enters the JS bundle. null when missing or not ours.
+ */
+export function staticSchoolLogos(baseUrl: string, fetchFn: FetchBytes): (file: string) => Promise<Uint8Array | null> {
+  const base = baseUrl.replace(/\/+$/, "");
+  return async (file) => {
+    if (!isSchoolLogoFile(file)) return null;
+    const res = await fetchFn(`${base}/${file}`);
+    return res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
+  };
+}

@@ -29,15 +29,25 @@ export function checkResumeDocFields(data: Json): void {
   if (data.pending_asks !== undefined && data.pending_asks !== null) checkAsks(data.pending_asks);
 }
 
-/** 简历以 doc.resume 为准，body 从它派生；只给 body（agent / 旧代码）的简历就解析成 resume。 */
-export async function withResume(store: CoreStore, data: Json, id: number | undefined): Promise<Json> {
+/**
+ * 简历以 doc.resume 为准，body 从它派生；只给 body（agent / 旧代码）的简历就解析成 resume（Python tools._with_resume）。
+ * existingKind: kind of the record being updated, when data does not carry one. Same shape as core-tools'
+ * ResumeDocNormalizer hook, so it can be registered with setResumeDocNormalizer after the merge.
+ */
+export function normalizeResumeDoc(data: Json, existingKind: string | undefined): Json {
   let resume;
   if (data.resume !== undefined && data.resume !== null) {
     resume = normalizeResume(data.resume);
   } else {
-    const kind = data.kind || (id !== undefined ? (await store.get("doc", id))?.kind : undefined);
+    const kind = data.kind || existingKind;
     if (data.body === undefined || data.body === null || kind !== "resume") return data;
     resume = resumeFromMarkdown(pyStr(data.body));
   }
   return { ...data, resume, body: resumeToMarkdown(resume) };
+}
+
+export async function withResume(store: CoreStore, data: Json, id: number | undefined): Promise<Json> {
+  const needKind = (data.resume === undefined || data.resume === null) && !data.kind && id !== undefined;
+  const existing = needKind ? (await store.get("doc", id))?.kind : undefined;
+  return normalizeResumeDoc(data, typeof existing === "string" ? existing : undefined);
 }

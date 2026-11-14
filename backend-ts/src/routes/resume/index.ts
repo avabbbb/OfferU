@@ -8,12 +8,16 @@ import {
   normalizeResume,
   renderResumeHtml,
   resolveStyle,
+  resumeDocHtml,
+  resumeFileName,
   resumeFromMarkdown,
   runTailor,
+  isSchoolLogoFile,
   searchSchoolLogos,
   templateCss,
   todayIso,
   type FileStore,
+  type PageRenderer,
   type Json,
   type TailorEvent,
 } from "@offeru/core";
@@ -28,9 +32,12 @@ import { transparentLogo } from "./image";
  *   POST /api/resume/{doc_id}/tailor      (SSE)
  *   POST /api/resume/impact
  *   GET  /api/resume/assets/school-logos?q=
+ *   GET  /api/resume/assets/school-logos/{file}       (needs deps.schoolLogos)
+ *   POST /api/resume/assets/school-logos/{file}/use   (needs deps.schoolLogos + deps.files)
+ *   GET  /api/resume/{doc_id}/pdf|png     (needs deps.renderer; 501 without it — the web page prints with window.print)
  *   POST /api/resume/logo                 (needs deps.files)
  *   POST /api/files, GET /api/files/{name} (needs deps.files)
- * PDF/PNG and the bundled school-logo PNGs need the disk/Chromium: routes/companion/resume.ts.
+ * The Playwright renderer, the on-disk logo source and the disk FileStore are built in routes/companion/resume.ts.
  */
 
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -42,6 +49,16 @@ export function needFiles(c: Context<AppEnv>): FileStore {
   if (!files) throw new CoreError("这个运行环境不保存文件：请连本机 OfferU", "unsupported");
   return files;
 }
+
+const NO_PRINTER = "这里没法生成 PDF/PNG：网页版请用浏览器打印（另存为 PDF）；本机版装 Chrome / Edge 和 playwright-core";
+
+export function needRenderer(renderer: PageRenderer | null | undefined): PageRenderer {
+  if (!renderer) throw new CoreError(NO_PRINTER, "unsupported");
+  return renderer;
+}
+
+const disposition = (fallback: string, name: string): string =>
+  `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 
 /** Path(name).name */
 export const baseName = (name: string): string => name.split(/[\\/]/).pop() ?? "";
@@ -63,6 +80,15 @@ async function uploadedFile(c: Context<AppEnv>): Promise<File> {
   const file = form.file;
   if (!(file instanceof File)) throw new CoreError("要用 multipart/form-data 传 file");
   return file;
+}
+
+/** One bundled emblem: deps.schoolLogos reads it from disk (companion) or fetches the static asset (web). */
+async function schoolLogo(c: Context<AppEnv>, file: string): Promise<Uint8Array> {
+  if (!isSchoolLogoFile(file)) throw new CoreError("未知的校徽文件", "not_found");
+  const source = c.get("deps").schoolLogos;
+  const bytes = source ? await source(file).catch(() => null) : null;
+  if (!bytes) throw new CoreError("校徽不存在", "not_found");
+  return bytes;
 }
 
 const sse = (event: TailorEvent): string => `data: ${JSON.stringify(event)}\n\n`;
@@ -118,7 +144,7 @@ export function registerResume(app: Hono<AppEnv>): void {
     c.req.raw.signal?.addEventListener("abort", () => abort.abort());
     const events = runTailor({
       store: deps.store,
-      llm: deps.llm,
+      llm: deps.llm?.() ?? null,
       files: deps.files,
       measure: deps.renderer ? (html) => deps.renderer!.pageCount(html) : null,
       actor: "Agent",
@@ -148,10 +174,28 @@ export function registerResume(app: Hono<AppEnv>): void {
     });
   });
 
+  for (const kind of ["pdf", "png"] as const) {
+    app.get(`/api/resume/:doc_id{[0-9]+}/${kind}`, async (c) => {
+      const { store, files, renderer } = c.get("deps");
+      const doc = await store.get("doc", Number(c.req.param("doc_id")));
+      if (!doc) throw new CoreError("简历不存在", "not_found");
+      const printer = needRenderer(renderer);
+      const html = await resumeDocHtml(store, doc, files);
+      const bytes = kind === "pdf" ? await printer.pdf(html) : await printer.png(html);
+      const pdfName = resumeFileName(doc, await store.first("profile"));
+      const name = kind === "pdf" ? pdfName : pdfName.slice(0, -4) + ".png";
+      return c.body(bytes as Uint8Array<ArrayBuffer>, 200, {
+        "Content-Type": kind === "pdf" ? "application/pdf" : "image/png",
+        "Content-Disposition": disposition(`resume.${kind}`, name),
+      });
+    });
+  }
+
   // 追问成果：用户回答 → 记忆草稿，只出草稿不写库。Body: {answers: [{old, question, answer}], job_id?}.
   app.post("/api/resume/impact", async (c) => {
     const body = impactBody(await jsonBody(c));
-    const { store, llm } = c.get("deps");
+    const { store } = c.get("deps");
+    const llm = c.get("deps").llm?.() ?? null;
     const job = body.job_id ? await store.get("job", body.job_id) : null;
     const title = job ? [job.company, job.title].filter(truthy).map(String).join(" · ") : "";
     if (!llm) {
@@ -164,6 +208,21 @@ export function registerResume(app: Hono<AppEnv>): void {
 
   // 校徽库搜索（随应用内置约 800 所学校）：返回候选，前端让用户挑一个。
   app.get("/api/resume/assets/school-logos", (c) => c.json({ items: searchSchoolLogos(c.req.query("q") ?? "") }));
+
+  app.get("/api/resume/assets/school-logos/:file", async (c) => {
+    const bytes = await schoolLogo(c, c.req.param("file"));
+    return c.body(bytes as Uint8Array<ArrayBuffer>, 200, { "Content-Type": "image/png", "Cache-Control": "max-age=86400" });
+  });
+
+  // 选中的校徽抠成透明底存进 files/，返回文件名；前端写进 doc.style.logo。
+  app.post("/api/resume/assets/school-logos/:file/use", async (c) => {
+    const file = c.req.param("file");
+    const bytes = await schoolLogo(c, file);
+    const files = needFiles(c);
+    const name = "logo-" + file;
+    await files.write(name, transparentLogo(bytes));
+    return c.json({ name });
+  });
 
   // 自己上传的校徽：抠成透明底的 PNG 存进 files/，返回文件名。
   app.post("/api/resume/logo", async (c) => {
