@@ -3,6 +3,11 @@
 
 import { CoreError } from "../types";
 import { cleanText, guard, guardCounts, guardWarning, unescapeHtml, type GuardCounts } from "./posting-guard";
+import { searchExa } from "./search/exa";
+import { searchFirecrawl } from "./search/firecrawl";
+import { searchKeenable } from "./search/keenable";
+import { searchParallel } from "./search/parallel";
+import type { ProviderCall, RawHit } from "./search/shared";
 
 export type HttpFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -90,19 +95,42 @@ export async function fetchPage(fetcher: HttpFetch | undefined, url: string): Pr
 
 // ---------- web search ----------
 
-export type SearchResult = { title: string; url: string; snippet: string; engine: string };
+export type SearchResult = {
+  title: string;
+  url: string;
+  snippet: string;
+  engine: string;
+  /** Publish date as the provider gave it (ISO date or date-time); only set when the provider returns one. */
+  published?: string;
+};
+
+export type SearchOutcome = { items: SearchResult[]; errors: string[] };
 
 /** A search backend. `search` returns [] for "nothing found"; `available` false means nothing is configured. */
 export interface SearchClient {
   readonly available: boolean;
   search(query: string, limit: number): Promise<SearchResult[]>;
+  /** Same as search, plus each provider's failure (`name: reason`) when every provider failed or came back empty. */
+  searchDetailed?(query: string, limit: number): Promise<SearchOutcome>;
 }
 
+/** Keyed (paid) providers ported from Python, then the providers that also have a keyless path. */
+export const KEYED_SEARCH_PROVIDERS = ["bocha", "tavily", "serper"] as const;
+export const KEYLESS_SEARCH_PROVIDERS = ["parallel", "exa", "firecrawl", "keenable"] as const;
+export type SearchProviderId = (typeof KEYED_SEARCH_PROVIDERS)[number] | (typeof KEYLESS_SEARCH_PROVIDERS)[number];
+export const SEARCH_PROVIDERS: readonly ("auto" | SearchProviderId)[] = ["auto", ...KEYED_SEARCH_PROVIDERS, ...KEYLESS_SEARCH_PROVIDERS];
+
 export type SearchKeys = {
-  provider?: "auto" | "bocha" | "tavily" | "serper";
+  provider?: "auto" | SearchProviderId;
   bochaApiKey?: string;
   tavilyApiKey?: string;
   serperApiKey?: string;
+  parallelApiKey?: string;
+  exaApiKey?: string;
+  firecrawlApiKey?: string;
+  keenableApiKey?: string;
+  /** Allow the keyless public endpoints of parallel / exa / firecrawl / keenable (default true). */
+  keyless?: boolean;
 };
 
 /** Login-walled / anti-scraping sites: only the user may copy text from them. */
@@ -132,25 +160,34 @@ function isPublicHttpUrl(url: string): boolean {
   }
 }
 
-function cleanResult(title: unknown, url: unknown, snippet: unknown, engine: string): SearchResult | null {
+function cleanResult(title: unknown, url: unknown, snippet: unknown, engine: string, published?: unknown): SearchResult | null {
   const clean = String(url ?? "").trim();
   if (!clean || !isPublicHttpUrl(clean)) return null;
-  return {
+  const result: SearchResult = {
     title: String(title ?? "").trim().slice(0, 300),
     url: clean.slice(0, 2000),
     snippet: String(snippet ?? "").trim().slice(0, 1000),
     engine,
   };
+  const date = typeof published === "string" ? published.trim().slice(0, 40) : "";
+  if (date) result.published = date;
+  return result;
 }
 
 /**
- * Bocha / Tavily / Serper fallback chain (Python services/web_search.web_search):
- * first non-empty result wins, provider errors fall through. ddgs (a Python-only
+ * Search fallback chain (Python services/web_search.web_search, extended):
+ * auto = providers the user gave a key for first (bocha → tavily → serper → parallel → exa →
+ * firecrawl → keenable), then the keyless public endpoints parallel → exa → keenable. Keyless
+ * firecrawl is explicit-only: in live tests (2026-11-15) it was 1.3–4.4 s per query with no dates.
+ * An explicit provider runs only that one (with its key if set, else keyless where it has a
+ * keyless path). First non-empty result wins; provider errors fall through. ddgs (a Python-only
  * optional package) is not ported.
  */
 export function createSearchClient(keys: SearchKeys, fetcher: HttpFetch): SearchClient {
   const provider = keys.provider ?? "auto";
-  type Runner = (query: string, limit: number) => Promise<SearchResult[]>;
+  if (!SEARCH_PROVIDERS.includes(provider)) throw new CoreError(`未知 search_provider: ${provider}`, "invalid");
+  const keyless = keys.keyless !== false;
+  type Runner = { name: string; run: (query: string, limit: number) => Promise<SearchResult[]> };
   const post = async (url: string, body: unknown, headers: Record<string, string> = {}): Promise<any> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
@@ -168,50 +205,85 @@ export function createSearchClient(keys: SearchKeys, fetcher: HttpFetch): Search
       clearTimeout(timer);
     }
   };
+  const wants = (name: SearchProviderId) => provider === "auto" || provider === name;
+  const ported = (name: SearchProviderId, call: ProviderCall, apiKey?: string): Runner => ({
+    name: apiKey ? name : `${name}(免 Key)`,
+    run: async (query, limit) => (await call(fetcher, query, limit))
+      .map((hit) => cleanResult(hit.title, hit.url, hit.snippet, name, hit.published))
+      .filter((r): r is SearchResult => r !== null)
+      .slice(0, limit),
+  });
+  const PORTED: Record<(typeof KEYLESS_SEARCH_PROVIDERS)[number], { key?: string; search: (f: HttpFetch, q: string, n: number, key?: string) => Promise<RawHit[]> }> = {
+    parallel: { key: keys.parallelApiKey, search: searchParallel },
+    exa: { key: keys.exaApiKey, search: searchExa },
+    firecrawl: { key: keys.firecrawlApiKey, search: searchFirecrawl },
+    keenable: { key: keys.keenableApiKey, search: searchKeenable },
+  };
   const chain: Runner[] = [];
-  if ((provider === "auto" || provider === "bocha") && keys.bochaApiKey) {
-    chain.push(async (query, limit) => {
+  if (wants("bocha") && keys.bochaApiKey) {
+    chain.push({ name: "bocha", run: async (query, limit) => {
       const payload = await post("https://api.bochaai.com/v1/web-search", { query, count: limit, summary: true }, { Authorization: `Bearer ${keys.bochaApiKey}` });
       const items: any[] = payload?.data?.webPages?.value ?? [];
       return items.slice(0, limit).map((item) => cleanResult(item.name, item.url, item.summary || item.snippet, "bocha")).filter((r): r is SearchResult => r !== null);
-    });
+    } });
   }
-  if ((provider === "auto" || provider === "tavily") && keys.tavilyApiKey) {
-    chain.push(async (query, limit) => {
+  if (wants("tavily") && keys.tavilyApiKey) {
+    chain.push({ name: "tavily", run: async (query, limit) => {
       const payload = await post("https://api.tavily.com/search", { api_key: keys.tavilyApiKey, query, max_results: limit });
       const items: any[] = payload?.results ?? [];
       return items.slice(0, limit).map((item) => cleanResult(item.title, item.url, item.content, "tavily")).filter((r): r is SearchResult => r !== null);
-    });
+    } });
   }
-  if ((provider === "auto" || provider === "serper") && keys.serperApiKey) {
-    chain.push(async (query, limit) => {
+  if (wants("serper") && keys.serperApiKey) {
+    chain.push({ name: "serper", run: async (query, limit) => {
       const payload = await post("https://google.serper.dev/search", { q: query, num: limit }, { "X-API-KEY": keys.serperApiKey! });
       const items: any[] = payload?.organic ?? [];
       return items.slice(0, limit).map((item) => cleanResult(item.title, item.link, item.snippet, "serper")).filter((r): r is SearchResult => r !== null);
-    });
+    } });
   }
+  // Keyed mode of the newer providers, still before any keyless endpoint.
+  for (const name of KEYLESS_SEARCH_PROVIDERS) {
+    const { key, search } = PORTED[name];
+    if (wants(name) && key) chain.push(ported(name, (f, q, n) => search(f, q, n, key), key));
+  }
+  if (keyless) {
+    for (const name of KEYLESS_SEARCH_PROVIDERS) {
+      const { key, search } = PORTED[name];
+      if (provider === "auto" && name === "firecrawl") continue; // explicit-only when keyless
+      if (wants(name) && !key) chain.push(ported(name, (f, q, n) => search(f, q, n)));
+    }
+  }
+  const searchDetailed = async (query: string, limit: number): Promise<SearchOutcome> => {
+    const clean = query.trim();
+    if (!clean) throw new CoreError("query 不能为空");
+    const safe = Math.max(1, Math.min(Math.trunc(limit), 20));
+    const errors: string[] = [];
+    for (const { name, run } of chain) {
+      try {
+        const results = await run(clean, safe);
+        if (results.length) return { items: results, errors: [] };
+        errors.push(`${name}: 没有结果`);
+      } catch (cause) {
+        errors.push(`${name}: ${(cause instanceof Error ? cause.message : String(cause)).slice(0, 200)}`);
+      }
+    }
+    return { items: [], errors };
+  };
   return {
     available: chain.length > 0,
+    searchDetailed,
     async search(query, limit) {
-      const clean = query.trim();
-      if (!clean) throw new CoreError("query 不能为空");
-      const safe = Math.max(1, Math.min(Math.trunc(limit), 20));
-      for (const run of chain) {
-        try {
-          const results = await run(clean, safe);
-          if (results.length) return results;
-        } catch {
-          // next provider
-        }
-      }
-      return [];
+      return (await searchDetailed(query, limit)).items;
     },
   };
 }
 
-export const NO_SEARCH = "没配搜索服务：在设置里填 Bocha / Tavily / Serper 的 key（或装 ddgs）后才能搜网页";
+export const NO_SEARCH = "没配搜索服务：选「自动」可用免 Key 搜索（Parallel / Exa / Firecrawl / Keenable），或填 Bocha / Tavily / Serper 等的 key 后才能搜网页";
 
-export async function webSearch(search: SearchClient | null | undefined, query: string, limit = 8): Promise<{ query: string; items: SearchResult[] }> {
+/** web_search tool. `errors` (provider: reason) appears only when nothing came back, so the Agent can say why. */
+export async function webSearch(search: SearchClient | null | undefined, query: string, limit = 8): Promise<{ query: string; items: SearchResult[]; errors?: string[] }> {
   if (!search?.available) throw new CoreError(NO_SEARCH, "unsupported");
-  return { query, items: await search.search(query, limit) };
+  if (!search.searchDetailed) return { query, items: await search.search(query, limit) };
+  const { items, errors } = await search.searchDetailed(query, limit);
+  return items.length || !errors.length ? { query, items } : { query, items, errors };
 }

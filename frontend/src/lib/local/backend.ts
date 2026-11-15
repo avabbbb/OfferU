@@ -10,6 +10,9 @@
 //   agentRuns    IndexedDB (agentRuns.ts)
 //   llmFetch     direct to the provider; falls back to the Worker's /llm-proxy when the
 //                provider sends no CORS headers
+//   search       keyless web search (Parallel → Exa → Firecrawl → Keenable public endpoints),
+//                fetched straight from the page: all four answer CORS (Access-Control-Allow-Origin)
+//                so nothing goes through the Worker
 // Companion-only capabilities (local files, Playwright PDF, poppler, BOSS login, Agent board,
 // MCP) are simply not wired, so their routes answer 501 like on any runtime without them.
 // Nothing here may import node:* (scripts/check-browser-bundle.mjs guards the build).
@@ -17,7 +20,7 @@
 import { createApp, type AppDeps } from "@offeru/backend/app";
 import { agentHost } from "@offeru/backend/routes/agent";
 import { ConfigRuntime } from "@offeru/backend/routes/config";
-import { staticSchoolLogos } from "@offeru/core";
+import { createSearchClient, staticSchoolLogos } from "@offeru/core";
 
 import { BrowserDemoStore } from "@/lib/demo/store";
 
@@ -65,6 +68,7 @@ export function createLocalBackend(baseFetch: Fetch = globalThis.fetch.bind(glob
   const config = new ConfigRuntime(indexedDbConfigStore(), llmFetch);
   void config.get().catch(() => undefined);
   const logoBase = new URL("school-logos/", globalThis.location?.href ?? "http://localhost/").toString();
+  const webSearchClient = createSearchClient({ provider: "auto" }, (input, init) => baseFetch(input, init));
   const store = new BrowserDemoStore(() => ({ version: 1, nextRecordId: 1, nextChangeId: 1, records: [], changes: [] }), "offeru-local");
   const ready = store.ready().then(() => undefined);
   const deps: AppDeps = {
@@ -75,6 +79,7 @@ export function createLocalBackend(baseFetch: Fetch = globalThis.fetch.bind(glob
     llm: () => config.llm(),
     llmFetch,
     fetch: (input, init) => baseFetch(input, init),
+    search: () => webSearchClient,
     files: indexedDbFileStore("offeru-local-files"),
     attachmentFiles: indexedDbFileStore("offeru-local-attachments"),
     backups: indexedDbBackupFiles("offeru-local-backups"),

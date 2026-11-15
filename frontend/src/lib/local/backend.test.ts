@@ -25,6 +25,24 @@ describe("in-page backend", () => {
     expect((await json(saved)).record.title).toBe("网页版记一条");
   });
 
+  it("web_search works in the page with no key: keyless public endpoint fetched directly (no Worker relay)", async () => {
+    const base = vi.fn(async (input: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { structuredContent: { results: [
+        { url: "https://campus-talent.alibaba.com/campus/position/1", title: "AI产品经理", publish_date: "2026-10-08", excerpts: ["负责AI应用"] },
+      ] } } }), { headers: { "content-type": "application/json" } });
+    });
+    const backend = createLocalBackend(base as never);
+    const res = await backend.fetch(new Request("http://localhost/api/tools/web_search", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: "阿里 AI 产品经理", limit: 3 }),
+    }));
+    expect(res.status).toBe(200);
+    expect((await json(res)).items).toEqual([
+      { title: "AI产品经理", url: "https://campus-talent.alibaba.com/campus/position/1", snippet: "负责AI应用", engine: "parallel", published: "2026-10-08" },
+    ]);
+    expect(base.mock.calls.map(([url]) => url)).toEqual(["https://search.parallel.ai/mcp"]);
+  });
+
   it("companion-only routes are 501, not fake successes", async () => {
     const backend = createLocalBackend(vi.fn() as never);
     expect((await backend.fetch(new Request("http://localhost/api/agent-board"))).status).toBe(501);
