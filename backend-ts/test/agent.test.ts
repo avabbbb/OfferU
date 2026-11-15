@@ -96,11 +96,12 @@ describe("POST /api/agent/runtime/runs", () => {
     // system prompt + every registry tool this runtime can run (no companion: no read_file / find_files;
     // export_resume_pdf / tailor_resume / email_sync are not in core) + request_user_input reach the model
     expect(seen[0].messages[0].role).toBe("system");
+    // (sorted by name: a byte-stable head of the prompt-cache prefix, docs/perf/agent-latency-cache.md)
     expect(seen[0].tools?.map((tool) => tool.name)).toEqual([
       "overview", "search", "list", "get", "save", "delete", "undo", "changes",
       "web_search", "fetch_page", "split_resume", "add_job", "evaluate_jobs", "apply_answer", "draft_email", "reconcile_memory",
       "export_data", "request_user_input",
-    ]);
+    ].sort());
 
     // user-only guard: the Agent may not confirm a memory; the error goes back to the model
     const toolReply = seen[1].messages.find((message) => message.role === "tool");
