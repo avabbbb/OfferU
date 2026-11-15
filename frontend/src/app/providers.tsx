@@ -9,6 +9,7 @@ import { SWRConfig } from "swr";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SHOWCASE } from "@/lib/showcase";
+import { LOCAL_WEB } from "@/lib/local/mode";
 import { resolveApiBase } from "@/lib/apiBase";
 import {
   getDesktopRuntimeIdentity,
@@ -23,7 +24,8 @@ const BACKEND_STARTUP_TIMEOUT_MS = 45_000;
 const BACKEND_STARTUP_SLOW_HINT_MS = 8_000;
 
 export function BackendReadyGate({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(SHOWCASE);
+  // 网页版（local-web）的 /api 在页面内运行，无需等待任何本地服务。
+  const [ready, setReady] = useState(SHOWCASE || LOCAL_WEB);
   const [startupError, setStartupError] = useState(false);
   const [slowHint, setSlowHint] = useState(false);
   const [readinessState, setReadinessState] = useState<"waiting" | "connection" | "identity-mismatch" | "native-identity-unavailable" | "backend-failed">("waiting");
@@ -35,7 +37,7 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
   } | null>(null);
 
   useEffect(() => {
-    if (SHOWCASE) return; // 展示模式无 Python 后端，直接放行
+    if (SHOWCASE || LOCAL_WEB) return; // 展示模式与网页版不依赖本地服务，直接放行
     const desktopRuntime = isDesktopRuntime();
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -132,10 +134,14 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
           data-testid="backend-ready-gate"
           data-readiness-state={readinessState}
         >
-          <span
-            className={`mt-1 h-5 w-5 shrink-0 ${startupError ? "bg-[var(--primary-red)]" : "animate-pulse bg-[var(--primary-red)]"}`}
-            aria-hidden="true"
-          />
+          {startupError ? (
+            <span className="mt-1 h-5 w-5 shrink-0 rounded-full bg-[var(--primary-red)]" aria-hidden="true" />
+          ) : (
+            <span
+              className="mt-0.5 h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--primary-red)]"
+              aria-hidden="true"
+            />
+          )}
           <div className="min-w-0">
             <p className="bauhaus-label text-[var(--foreground-muted)]">OfferU</p>
             {startupError ? (
@@ -165,7 +171,7 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
               </>
             ) : (
               <>
-                <p className="text-sm font-semibold">正在启动 Python 工作台…</p>
+                <p className="text-sm font-semibold">{isDesktopRuntime() ? "正在启动 OfferU…" : "正在连接本地服务…"}</p>
                 {slowHint && (
                   <>
                     <p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">
