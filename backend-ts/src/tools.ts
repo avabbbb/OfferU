@@ -3,7 +3,7 @@ import {
   nowIso,
   todayIso,
   TOOL_NAMES,
-  TOOL_SPECS,
+  ALL_TOOL_SPECS,
   type CoreStore,
   type HttpFetch,
   type LlmClient,
@@ -33,7 +33,7 @@ export type ToolRuntime = {
 };
 
 /** GET /api/tools — same shape as Python: {name, description, input: JSON schema}. */
-export const TOOL_LIST = TOOL_SPECS.map((spec) => ({ name: spec.name, description: spec.description, input: spec.inputSchema }));
+export const TOOL_LIST = ALL_TOOL_SPECS.map((spec) => ({ name: spec.name, description: spec.description, input: spec.inputSchema }));
 export { TOOL_NAMES };
 
 const isStore = (value: ToolRuntime | CoreStore): value is CoreStore => typeof (value as CoreStore).transaction === "function";

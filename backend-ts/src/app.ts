@@ -1,7 +1,8 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type SearchClient, type FileStore, type AgentRunStore, type PageRenderer } from "@offeru/core";
+import { isCoreError, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type SearchClient, type FileStore, type AgentRunStore, type BackupFiles, type PageRenderer } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
+import type { AgentBoardService } from "./routes/agent-board";
 import type { BossLoginService } from "./routes/companion/boss-login";
 import { TOOL_NAMES, type ToolRuntime } from "./tools";
 
@@ -33,6 +34,14 @@ export interface AppDeps {
   schoolLogos?: ((file: string) => Promise<Uint8Array | null>) | null;
   /** Companion only: BOSS 直聘 QR login via the boss CLI; absent = 501. */
   bossLogin?: (() => Promise<BossLoginService>) | null;
+  /** Agent composer uploads (companion: <data>/agent_attachments; web: the browser file store). Absent = 501. */
+  attachmentFiles?: FileStore | null;
+  /** PDF → text for attachments (companion: poppler pdftotext). Absent = PDF uploads answer 501. */
+  pdfText?: ((bytes: Uint8Array) => Promise<string>) | null;
+  /** Companion only: the Agent board (/api/agent-board). Absent = 501. */
+  agentBoard?: AgentBoardService | null;
+  /** Named data backups (companion: <data>/backups). Absent = backup list/create/restore answer 501; export/import still work. */
+  backups?: BackupFiles | null;
   /** Agent run rows (SQLite on the companion, IndexedDB in the browser); absent = in-memory. */
   agentRuns?: AgentRunStore;
 }

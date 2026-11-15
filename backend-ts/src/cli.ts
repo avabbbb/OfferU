@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 
+import { dirname } from "node:path";
+
 import { runMcpServer } from "./mcp";
+import { NodeAgentBoard } from "./routes/companion/agent-board";
 import { dbPath } from "./paths";
 import { startHttpServer } from "./server";
-import { TOOL_SPECS } from "@offeru/core";
+import { ALL_TOOL_SPECS } from "@offeru/core";
 
 import { nodeToolRuntime } from "./node-runtime";
 import { callTool, TOOL_NAMES } from "./tools";
@@ -65,7 +68,7 @@ async function main(): Promise<number> {
   }
 
   if (command === "tool" && !args[0]) {
-    for (const spec of TOOL_SPECS) process.stdout.write(`${spec.name}: ${spec.description}\n`);
+    for (const spec of ALL_TOOL_SPECS) process.stdout.write(`${spec.name}: ${spec.description}\n`);
     return 0;
   }
 
@@ -86,7 +89,8 @@ async function main(): Promise<number> {
     }
 
     if (command === "mcp") {
-      await runMcpServer(runtime);
+      const board = new NodeAgentBoard({ dataDir: dirname(dbPath()) });
+      await runMcpServer(runtime, { onClientCall: (client) => board.recordClientCall(client) });
       return 0;
     }
 

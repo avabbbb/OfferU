@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 
 import { createAdaptorServer } from "@hono/node-server";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { pairingToken } from "./pairing";
@@ -10,6 +11,9 @@ import { SqliteAgentRunStore } from "./agent-store";
 import { nodeToolRuntime } from "./node-runtime";
 import { agentHost } from "./routes/agent";
 import { registerCompanionRoutes } from "./routes/companion";
+import { nodeAttachmentFiles, popplerPdfText } from "./routes/companion/attachments";
+import { NodeAgentBoard } from "./routes/companion/agent-board";
+import { nodeBackupFiles } from "./routes/companion/backups";
 import { nodeBossLogin } from "./routes/companion/boss-cli";
 import { filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
 import { openStore } from "./store";
@@ -31,6 +35,10 @@ export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDe
     renderer: "renderer" in overrides ? overrides.renderer : playwrightRenderer(),
     schoolLogos: "schoolLogos" in overrides ? overrides.schoolLogos : nodeSchoolLogos(),
     bossLogin: nodeBossLogin(),
+    attachmentFiles: nodeAttachmentFiles(dbPath()),
+    pdfText: popplerPdfText(),
+    backups: nodeBackupFiles(dbPath()),
+    agentBoard: new NodeAgentBoard({ dataDir: dirname(dbPath()) }),
     agentRuns: new SqliteAgentRunStore(store),
     ...overrides,
   };

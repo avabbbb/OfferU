@@ -3,9 +3,11 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { recordRow } from "@offeru/core";
 import type {
   ChangeRow,
   CoreStore,
+  DataRows,
   Json,
   PutOptions,
   RecordType,
@@ -209,6 +211,24 @@ export class SqliteCoreStore implements CoreStore {
     const row = this.db.prepare("SELECT COUNT(id) AS n, MAX(at) AS last FROM changes WHERE actor = ? AND at >= ?")
       .get(actor, since) as { n: number; last: string | null };
     return { count: Number(row.n), last: row.last };
+  }
+
+  async dumpAll(): Promise<DataRows> {
+    const records = (this.db.prepare("SELECT * FROM records ORDER BY id").all() as Row[]).map((row) => recordRow(recordFromRow(row)));
+    const changes = (this.db.prepare("SELECT * FROM changes ORDER BY id").all() as ChangeSqlRow[]).map(changeFromRow);
+    return { records, changes };
+  }
+
+  /** Restore: run inside transaction() so a failed insert leaves the old data. */
+  async replaceAll(rows: DataRows): Promise<void> {
+    this.db.exec("DELETE FROM records; DELETE FROM changes;");
+    const record = this.db.prepare("INSERT INTO records(id, type, job_id, data, created_at, updated_at) VALUES (?,?,?,?,?,?)");
+    for (const row of rows.records) record.run(row.id, row.type, row.job_id, JSON.stringify(row.data), row.created_at, row.updated_at);
+    const change = this.db.prepare("INSERT INTO changes(id, at, actor, summary, type, record_id, before, after, undone_at) VALUES (?,?,?,?,?,?,?,?,?)");
+    for (const row of rows.changes) {
+      change.run(row.id, row.at, row.actor, row.summary, row.type, row.record_id,
+        row.before === null ? null : JSON.stringify(row.before), row.after === null ? null : JSON.stringify(row.after), row.undone_at);
+    }
   }
 
   close(): void {

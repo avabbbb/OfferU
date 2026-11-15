@@ -1,0 +1,550 @@
+{
+ "snapshot": {
+  "format": "offeru-data",
+  "version": 1,
+  "exported_at": "2026-11-15T12:00:00",
+  "counts": {
+   "profile": 1,
+   "memory": 1,
+   "job": 1,
+   "event": 1,
+   "doc": 1,
+   "changes": 9
+  },
+  "records": [
+   {
+    "id": 1,
+    "type": "profile",
+    "job_id": null,
+    "data": {
+     "name": "张三",
+     "school": "某大学"
+    },
+    "created_at": "2026-11-15T03:34:40",
+    "updated_at": "2026-11-15T03:34:40"
+   },
+   {
+    "id": 2,
+    "type": "job",
+    "job_id": null,
+    "data": {
+     "status": "applied",
+     "company": "甲公司",
+     "title": "后端实习",
+     "url": "https://jobs.example.com/1",
+     "applied_at": "2026-11-01"
+    },
+    "created_at": "2026-11-15T03:34:40",
+    "updated_at": "2026-11-15T03:34:40"
+   },
+   {
+    "id": 3,
+    "type": "event",
+    "job_id": 2,
+    "data": {
+     "title": "笔试",
+     "kind": "test",
+     "at": "2026-11-20T19:00"
+    },
+    "created_at": "2026-11-15T03:34:40",
+    "updated_at": "2026-11-15T03:34:40"
+   },
+   {
+    "id": 4,
+    "type": "memory",
+    "job_id": null,
+    "data": {
+     "source": "agent",
+     "confirmed": false,
+     "kind": "skill",
+     "title": "SQL",
+     "body": "熟悉窗口函数"
+    },
+    "created_at": "2026-11-15T03:34:40",
+    "updated_at": "2026-11-15T03:34:40"
+   },
+   {
+    "id": 7,
+    "type": "doc",
+    "job_id": null,
+    "data": {
+     "kind": "resume",
+     "title": "主简历",
+     "body": "# 张三\n\n## 教育经历\n\n**某大学** 计算机 本科 2023-2027\n",
+     "resume": {
+      "version": 1,
+      "basics": {
+       "name": "张三",
+       "target": "",
+       "contacts": []
+      },
+      "sections": [
+       {
+        "id": "9c8a7d89",
+        "type": "education",
+        "title": "教育经历",
+        "hidden": false,
+        "items": [
+         {
+          "id": "f35189eb",
+          "title": "",
+          "subtitle": "",
+          "date": "",
+          "location": "",
+          "bullets": [],
+          "text": "**某大学** 计算机 本科 2023-2027"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "created_at": "2026-11-15T03:34:40",
+    "updated_at": "2026-11-15T03:34:40"
+   }
+  ],
+  "changes": [
+   {
+    "id": 1,
+    "at": "2026-11-15T03:34:40",
+    "actor": "你",
+    "summary": "新建档案「张三」",
+    "type": "profile",
+    "record_id": 1,
+    "before": null,
+    "after": {
+     "name": "张三",
+     "school": "某大学",
+     "job_id": null
+    },
+    "undone_at": null
+   },
+   {
+    "id": 2,
+    "at": "2026-11-15T03:34:40",
+    "actor": "你",
+    "summary": "新建岗位「甲公司 · 后端实习」",
+    "type": "job",
+    "record_id": 2,
+    "before": null,
+    "after": {
+     "status": "saved",
+     "company": "甲公司",
+     "title": "后端实习",
+     "url": "https://jobs.example.com/1",
+     "job_id": null
+    },
+    "undone_at": null
+   },
+   {
+    "id": 3,
+    "at": "2026-11-15T03:34:40",
+    "actor": "你",
+    "summary": "更新岗位「甲公司 · 后端实习」：已投递",
+    "type": "job",
+    "record_id": 2,
+    "before": {
+     "status": "saved",
+     "company": "甲公司",
+     "title": "后端实习",
+     "url": "https://jobs.example.com/1",
+     "job_id": null
+    },
+    "after": {
+     "status": "applied",
+     "company": "甲公司",
+     "title": "后端实习",
+     "url": "https://jobs.example.com/1",
+     "applied_at": "2026-11-01",
+     "job_id": null
+    },
+    "undone_at": null
+   },
+   {
+    "id": 4,
+    "at": "2026-11-15T03:34:40",
+    "actor": "你",
+    "summary": "新建事项「笔试」",
+    "type": "event",
+    "record_id": 3,
+    "before": null,
+    "after": {
+     "title": "笔试",
+     "kind": "test",
+     "at": "2026-11-20T19:00",
+     "job_id": 2
+    },
+    "undone_at": null
+   },
+   {
+    "id": 5,
+    "at": "2026-11-15T03:34:40",
+    "actor": "agent",
+    "summary": "新建记忆「SQL」",
+    "type": "memory",
+    "record_id": 4,
+    "before": null,
+    "after": {
+     "source": "agent",
+     "confirmed": false,
+     "kind": "skill",
+     "title": "SQL",
+     "body": "熟悉窗口函数",
+     "job_id": null
+    },
+    "undone_at": null
+   },
+   {
+    "id": 6,
+    "at": "2026-11-15T03:34:40",
+    "actor": "你",
+    "summary": "新建记忆「临时」",
+    "type": "memory",
+    "record_id": 5,
+    "before": null,
+    "after": {
+     "source": "user",
+     "confirmed": true,
+     "kind": "note",
+     "title": "临时",
+     "job_id": null
+    },
+    "undone_at": null
+   },
+   {
+    "id": 7,
+    "at": "2026-11-15T03:34:40",
+    "actor": "你",
+    "summary": "删除记忆「临时」",
+    "type": "memory",
+    "record_id": 5,
+    "before": {
+     "source": "user",
+     "confirmed": true,
+     "kind": "note",
+     "title": "临时",
+     "job_id": null
+    },
+    "after": null,
+    "undone_at": null
+   },
+   {
+    "id": 8,
+    "at": "2026-11-15T03:34:40",
+    "actor": "你",
+    "summary": "新建事项「撤销掉的」",
+    "type": "event",
+    "record_id": 6,
+    "before": null,
+    "after": {
+     "title": "撤销掉的",
+     "kind": "todo",
+     "job_id": null
+    },
+    "undone_at": "2026-11-15T03:34:40"
+   },
+   {
+    "id": 9,
+    "at": "2026-11-15T03:34:40",
+    "actor": "你",
+    "summary": "新建文档「主简历」",
+    "type": "doc",
+    "record_id": 7,
+    "before": null,
+    "after": {
+     "kind": "resume",
+     "title": "主简历",
+     "body": "# 张三\n\n## 教育经历\n\n**某大学** 计算机 本科 2023-2027\n",
+     "resume": {
+      "version": 1,
+      "basics": {
+       "name": "张三",
+       "target": "",
+       "contacts": []
+      },
+      "sections": [
+       {
+        "id": "9c8a7d89",
+        "type": "education",
+        "title": "教育经历",
+        "hidden": false,
+        "items": [
+         {
+          "id": "f35189eb",
+          "title": "",
+          "subtitle": "",
+          "date": "",
+          "location": "",
+          "bullets": [],
+          "text": "**某大学** 计算机 本科 2023-2027"
+         }
+        ]
+       }
+      ]
+     },
+     "job_id": null
+    },
+    "undone_at": null
+   }
+  ]
+ },
+ "views": {
+  "list": {
+   "profile": {
+    "total": 1,
+    "items": [
+     {
+      "name": "张三",
+      "school": "某大学",
+      "id": 1,
+      "type": "profile",
+      "job_id": null,
+      "created_at": "2026-11-15T03:34:40",
+      "updated_at": "2026-11-15T03:34:40",
+      "label": "张三"
+     }
+    ]
+   },
+   "memory": {
+    "total": 1,
+    "items": [
+     {
+      "source": "agent",
+      "confirmed": false,
+      "kind": "skill",
+      "title": "SQL",
+      "body": "熟悉窗口函数",
+      "id": 4,
+      "type": "memory",
+      "job_id": null,
+      "created_at": "2026-11-15T03:34:40",
+      "updated_at": "2026-11-15T03:34:40",
+      "label": "SQL"
+     }
+    ]
+   },
+   "job": {
+    "total": 1,
+    "items": [
+     {
+      "status": "applied",
+      "company": "甲公司",
+      "title": "后端实习",
+      "url": "https://jobs.example.com/1",
+      "applied_at": "2026-11-01",
+      "id": 2,
+      "type": "job",
+      "job_id": null,
+      "created_at": "2026-11-15T03:34:40",
+      "updated_at": "2026-11-15T03:34:40",
+      "label": "甲公司 · 后端实习"
+     }
+    ]
+   },
+   "event": {
+    "total": 1,
+    "items": [
+     {
+      "title": "笔试",
+      "kind": "test",
+      "at": "2026-11-20T19:00",
+      "id": 3,
+      "type": "event",
+      "job_id": 2,
+      "created_at": "2026-11-15T03:34:40",
+      "updated_at": "2026-11-15T03:34:40",
+      "label": "笔试"
+     }
+    ]
+   },
+   "doc": {
+    "total": 1,
+    "items": [
+     {
+      "kind": "resume",
+      "title": "主简历",
+      "body": "# 张三\n\n## 教育经历\n\n**某大学** 计算机 本科 2023-2027\n",
+      "resume": {
+       "version": 1,
+       "basics": {
+        "name": "张三",
+        "target": "",
+        "contacts": []
+       },
+       "sections": [
+        {
+         "id": "9c8a7d89",
+         "type": "education",
+         "title": "教育经历",
+         "hidden": false,
+         "items": [
+          {
+           "id": "f35189eb",
+           "title": "",
+           "subtitle": "",
+           "date": "",
+           "location": "",
+           "bullets": [],
+           "text": "**某大学** 计算机 本科 2023-2027"
+          }
+         ]
+        }
+       ]
+      },
+      "id": 7,
+      "type": "doc",
+      "job_id": null,
+      "created_at": "2026-11-15T03:34:40",
+      "updated_at": "2026-11-15T03:34:40",
+      "label": "主简历"
+     }
+    ]
+   }
+  },
+  "get_job": {
+   "record": {
+    "status": "applied",
+    "company": "甲公司",
+    "title": "后端实习",
+    "url": "https://jobs.example.com/1",
+    "applied_at": "2026-11-01",
+    "id": 2,
+    "type": "job",
+    "job_id": null,
+    "created_at": "2026-11-15T03:34:40",
+    "updated_at": "2026-11-15T03:34:40"
+   },
+   "events": [
+    {
+     "title": "笔试",
+     "kind": "test",
+     "at": "2026-11-20T19:00",
+     "id": 3,
+     "type": "event",
+     "job_id": 2,
+     "created_at": "2026-11-15T03:34:40",
+     "updated_at": "2026-11-15T03:34:40",
+     "label": "笔试"
+    }
+   ],
+   "docs": []
+  },
+  "get_memory": {
+   "record": {
+    "source": "agent",
+    "confirmed": false,
+    "kind": "skill",
+    "title": "SQL",
+    "body": "熟悉窗口函数",
+    "id": 4,
+    "type": "memory",
+    "job_id": null,
+    "created_at": "2026-11-15T03:34:40",
+    "updated_at": "2026-11-15T03:34:40"
+   }
+  },
+  "changes": {
+   "items": [
+    {
+     "id": 9,
+     "at": "2026-11-15T03:34:40",
+     "actor": "你",
+     "summary": "新建文档「主简历」",
+     "type": "doc",
+     "record_id": 7,
+     "created": 1,
+     "deleted": 0,
+     "undone_at": null
+    },
+    {
+     "id": 8,
+     "at": "2026-11-15T03:34:40",
+     "actor": "你",
+     "summary": "新建事项「撤销掉的」",
+     "type": "event",
+     "record_id": 6,
+     "created": 1,
+     "deleted": 0,
+     "undone_at": "2026-11-15T03:34:40"
+    },
+    {
+     "id": 7,
+     "at": "2026-11-15T03:34:40",
+     "actor": "你",
+     "summary": "删除记忆「临时」",
+     "type": "memory",
+     "record_id": 5,
+     "created": 0,
+     "deleted": 1,
+     "undone_at": null
+    },
+    {
+     "id": 6,
+     "at": "2026-11-15T03:34:40",
+     "actor": "你",
+     "summary": "新建记忆「临时」",
+     "type": "memory",
+     "record_id": 5,
+     "created": 1,
+     "deleted": 0,
+     "undone_at": null
+    },
+    {
+     "id": 5,
+     "at": "2026-11-15T03:34:40",
+     "actor": "agent",
+     "summary": "新建记忆「SQL」",
+     "type": "memory",
+     "record_id": 4,
+     "created": 1,
+     "deleted": 0,
+     "undone_at": null
+    },
+    {
+     "id": 4,
+     "at": "2026-11-15T03:34:40",
+     "actor": "你",
+     "summary": "新建事项「笔试」",
+     "type": "event",
+     "record_id": 3,
+     "created": 1,
+     "deleted": 0,
+     "undone_at": null
+    },
+    {
+     "id": 3,
+     "at": "2026-11-15T03:34:40",
+     "actor": "你",
+     "summary": "更新岗位「甲公司 · 后端实习」：已投递",
+     "type": "job",
+     "record_id": 2,
+     "created": 0,
+     "deleted": 0,
+     "undone_at": null
+    },
+    {
+     "id": 2,
+     "at": "2026-11-15T03:34:40",
+     "actor": "你",
+     "summary": "新建岗位「甲公司 · 后端实习」",
+     "type": "job",
+     "record_id": 2,
+     "created": 1,
+     "deleted": 0,
+     "undone_at": null
+    },
+    {
+     "id": 1,
+     "at": "2026-11-15T03:34:40",
+     "actor": "你",
+     "summary": "新建档案「张三」",
+     "type": "profile",
+     "record_id": 1,
+     "created": 1,
+     "deleted": 0,
+     "undone_at": null
+    }
+   ]
+  }
+ }
+}

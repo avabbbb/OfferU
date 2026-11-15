@@ -9,7 +9,12 @@ import type { Context, Hono } from "hono";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import {
   CoreError,
+  MAX_UPLOAD_BYTES,
   MemoryAgentRunStore,
+  loadAttachment,
+  prepareAttachmentMessage,
+  saveAttachment,
+  type AttachmentDeps,
   agentActionUndoPreview,
   agentActions,
   canonicalAgentRunEvent,
@@ -53,10 +58,18 @@ export function agentHost(deps: AppDeps): AgentHost {
         readFile: deps.companion?.readFile,
       }),
       handlers: deps.companion?.handlers,
+      prepareAttachments: deps.attachmentFiles
+        ? (message, ids) => prepareAttachmentMessage(attachmentDeps(deps), message, ids)
+        : undefined,
     });
     hosts.set(deps, host);
   }
   return host;
+}
+
+function attachmentDeps(deps: AppDeps): AttachmentDeps {
+  if (!deps.attachmentFiles) throw new CoreError("这个运行环境不保存附件；请在网页本地版或本机 OfferU 里发送文件", "unsupported");
+  return { files: deps.attachmentFiles, pdfText: deps.pdfText ?? undefined };
 }
 
 function requireRunStorage(deps: AppDeps): void {
@@ -210,6 +223,30 @@ export function registerAgent(app: Hono<AppEnv>): void {
   app.get("/api/agent/runtime", (c) => c.json(agentHost(c.get("deps")).status()));
 
   // Hosted CLI providers (codex / claude) are a companion feature not ported yet.
+  // Composer uploads (Python POST/GET /api/agent/runtime/attachments): multipart field "file".
+  app.post("/api/agent/runtime/attachments", async (c) => {
+    const files = attachmentDeps(c.get("deps"));
+    const form = await c.req.formData().catch(() => null);
+    const file = form?.get("file");
+    if (!file || typeof file === "string") throw new CoreError("请选择要上传的文件");
+    const blob = file as File;
+    // Python reads MAX_UPLOAD_BYTES + 1 so the size check below still fires.
+    const bytes = new Uint8Array(await blob.slice(0, MAX_UPLOAD_BYTES + 1).arrayBuffer());
+    return c.json(await saveAttachment(files, blob.name || "", bytes));
+  });
+
+  app.get("/api/agent/runtime/attachments/:id", async (c) => {
+    let loaded;
+    try {
+      loaded = await loadAttachment(attachmentDeps(c.get("deps")), c.req.param("id"));
+    } catch (error) {
+      if (error instanceof CoreError && error.code !== "unsupported") throw new CoreError(error.message, "not_found");
+      throw error;
+    }
+    if (loaded.attachment.kind !== "image") throw new CoreError("只能预览图片附件", "not_found");
+    return new Response(loaded.bytes as unknown as ArrayBuffer, { headers: { "Content-Type": loaded.attachment.mime_type } });
+  });
+
   app.get("/api/agent/runtime/providers/health", (c) => c.json({ providers: [] }));
 
   // ---- runs ----

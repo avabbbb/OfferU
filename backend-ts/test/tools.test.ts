@@ -64,8 +64,9 @@ async function post(target: ReturnType<typeof app>, name: string, body: unknown,
 describe("tool registry (Python TOOLS)", () => {
   it("GET /api/tools lists the 21 Python tools as {name, description, input}", async () => {
     const listed = await (await app().request("/api/tools")).json() as { tools: Array<{ name: string; description: string; input: Record<string, unknown> }> };
-    expect(listed.tools.map((tool) => tool.name)).toEqual(PYTHON_TOOL_ORDER);
-    for (const tool of listed.tools) {
+    // Python's 21 in Python order, then the TS-only backup tools.
+    expect(listed.tools.map((tool) => tool.name)).toEqual([...PYTHON_TOOL_ORDER, "export_data", "import_data"]);
+    for (const tool of listed.tools.slice(0, PYTHON_TOOL_ORDER.length)) {
       expect(Object.keys(tool)).toEqual(["name", "description", "input"]);
       expect(tool.input).toEqual(TOOL_SPECS.find((spec) => spec.name === tool.name)!.inputSchema);
     }
@@ -292,7 +293,8 @@ describe("MCP and CLI surfaces", () => {
     await client.connect(clientTransport);
     try {
       const listed = await client.listTools();
-      expect(listed.tools.map((tool) => tool.name)).toEqual(PYTHON_TOOL_ORDER);
+      // import_data (replaces every record) is user-only, so MCP clients never see it.
+      expect(listed.tools.map((tool) => tool.name)).toEqual([...PYTHON_TOOL_ORDER, "export_data"]);
       expect(listed.tools[3].inputSchema).toEqual(TOOL_SPECS[3].inputSchema);
       const saved = await client.callTool({ name: "save", arguments: { type: "memory", data: { title: "SQL" } } }) as any;
       expect(JSON.parse(saved.content[0].text).record).toMatchObject({ source: "agent", confirmed: false });

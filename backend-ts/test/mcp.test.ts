@@ -26,8 +26,8 @@ describe("TS MCP surface", () => {
     await client.connect(clientTransport);
     try {
       const listed = await client.listTools();
-      expect(listed.tools.map((tool) => tool.name)).toEqual(TOOL_SPECS.map((spec) => spec.name));
-      expect(listed.tools).toHaveLength(21);
+      expect(listed.tools.map((tool) => tool.name)).toEqual([...TOOL_SPECS.map((spec) => spec.name), "export_data"]);
+      expect(listed.tools).toHaveLength(22); // 21 Python tools + export_data
       const result = await client.callTool({ name: "overview", arguments: {} }) as { content: Array<{ type: string; text?: string }> };
       const text = result.content[0];
       expect(text.type).toBe("text");
