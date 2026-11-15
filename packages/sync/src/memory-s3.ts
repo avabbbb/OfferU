@@ -75,7 +75,8 @@ export class MemoryS3 {
       return new Response(null, { status: 204 });
     }
     if (method === "PUT") {
-      const bytes = body instanceof Uint8Array ? new Uint8Array(body) as Bytes : new Uint8Array(0) as Bytes;
+      // ArrayBuffer.isView, not instanceof: bodies from another realm (jsdom tests) are still bytes.
+      const bytes = (ArrayBuffer.isView(body) ? new Uint8Array(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength)) : new Uint8Array(0)) as Bytes;
       if (headers.get("x-amz-content-sha256") !== await sha256Hex(bytes)) return this.error(400, "XAmzContentSHA256Mismatch");
       const ifNoneMatch = this.conditionalWrites ? headers.get("if-none-match") : null;
       const ifMatch = this.conditionalWrites ? headers.get("if-match") : null;
