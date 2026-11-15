@@ -65,6 +65,8 @@ import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";
 import { AgentComposerControls, useComposerOptions } from "./AgentComposerControls";
 import { AgentOrb, AnimatedPlaceholder, ComposerGrip, useComposerWidth } from "./AgentComposerChrome";
+import { AgentOrbIcon, AgentWorkingOrb } from "./AgentWorkingOrb";
+import { agentOrbState } from "@/lib/agentWorkingOrb";
 import { AgentAttachmentTray, AgentMessageAttachments, type SentAttachment } from "./AgentAttachmentTray";
 import { useComposerAttachments, type ComposerAttachment } from "./useComposerAttachments";
 import { AGENT_ATTACHMENT_ACCEPT, ATTACHMENT_ONLY_MESSAGE, hasDraggedFiles } from "@/lib/agentAttachments";
@@ -306,6 +308,9 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   // 输入框：能发就是「发送」胶囊；正在跑又没东西可发时，发送键收成一个小像素格加载（参考 Inspora「composer mockup」）。
   const canSend = (Boolean(input.trim()) || composerAttachments.readyCount > 0) && !composerAttachments.uploading;
   const working = loading;
+  // 输入框左侧的点阵球和最新一轮的运行胶囊同一个阶段。
+  const latestTurn = inFlightTurns[inFlightTurns.length - 1];
+  const composerOrbState = agentOrbState(latestTurn ? latestTurn.progressText : progressText, { streaming: Boolean(latestTurn?.streamingText) });
   const [sentPulse, setSentPulse] = useState(false);
   const pulseTimer = useRef<number | null>(null);
   useEffect(() => () => { if (pulseTimer.current) window.clearTimeout(pulseTimer.current); }, []);
@@ -1131,6 +1136,16 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
                     </p>
                   )}
 
+                  {HOSTED_ACTIVE_STATUSES.has(hostedDetail.status) && (
+                    <div className="mt-2">
+                      <AgentWorkingOrb
+                        label={hostedDetail.events.length > 0
+                          ? hostedEventLabel(hostedDetail.events[hostedDetail.events.length - 1])
+                          : "正在启动外部执行器"}
+                      />
+                    </div>
+                  )}
+
                   <div className="custom-scrollbar mt-2 max-h-40 space-y-1 overflow-y-auto border-t border-[var(--border)] pt-2">
                     {hostedDetail.events.length === 0 && (
                       <p className="text-[10.5px] text-[var(--foreground-muted)]">等待第一个 Provider 事件…</p>
@@ -1186,7 +1201,12 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
                 </div>
               )}
               <ToolExecutionList executions={turn.toolStream.toolExecutions} />
-              <AgentRunPill text={turn.progressText} steps={Object.keys(turn.toolStream.toolExecutions).length} />
+              <AgentRunPill
+                text={turn.progressText}
+                steps={Object.keys(turn.toolStream.toolExecutions).length}
+                streaming={Boolean(turn.streamingText)}
+                toolRunning={Object.values(turn.toolStream.toolExecutions).some((tool) => tool.status === "running")}
+              />
             </div>
           ))}
           {inFlightTurns.length === 0 && <ToolExecutionList executions={toolStream.toolExecutions} />}
@@ -1268,7 +1288,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
                   onClick={() => document.getElementById("agent-turn-" + turn.id)?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
                   className="agent-task-row"
                 >
-                  <Loader2 size={12} className="shrink-0 animate-spin text-[var(--foreground-muted)]" />
+                  <AgentOrbIcon state={agentOrbState(turn.progressText, { streaming: Boolean(turn.streamingText) })} />
                   <span className="min-w-0 flex-1 truncate text-left text-[var(--foreground)]">{prompt}</span>
                   <span className="max-w-[40%] shrink-0 truncate text-[10.5px] text-[var(--foreground-muted)]">
                     {turn.progressText || "进行中"}
@@ -1341,7 +1361,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
             onPointerDown={(event) => composerWidth.startDrag("right", event)}
             onKeyDown={(event) => composerWidth.onGripKey("right", event)} />
           <div className="agent-composer-main">
-          <AgentOrb working={working} />
+          <AgentOrb working={working} state={composerOrbState} />
           {!input && !runNeedsUser && <AnimatedPlaceholder />}
           <Textarea
             value={input}
@@ -1621,10 +1641,10 @@ function JobCardList({ jobs }: { jobs: AgentJobCard[] }) {
 }
 
 /**
- * 运行中：一个胶囊 = 呼吸的紫点 + 扫光的一行步骤（换字时就地淡入）+ 已用时间 / 步数。
- * 参考 Inspora「agent dashboard」的运行胶囊和 Motif 的 thinking-block。
+ * 运行中：一个胶囊 = Thinking Orbs 点阵球（按阶段换形态）+ 静态的一行步骤 + 已用时间 / 步数。
+ * 参考 Inspora 5-8 · Jakub Antalik「Thinking orbs」；胶囊与换场见 AgentWorkingOrb。
  */
-function AgentRunPill({ text, steps = 0 }: { text: string; steps?: number }) {
+function AgentRunPill({ text, steps = 0, streaming, toolRunning }: { text: string; steps?: number; streaming?: boolean; toolRunning?: boolean }) {
   const [startedAt] = useState(() => Date.now());
   const [now, setNow] = useState(startedAt);
   useEffect(() => {
@@ -1632,18 +1652,13 @@ function AgentRunPill({ text, steps = 0 }: { text: string; steps?: number }) {
     return () => window.clearInterval(timer);
   }, []);
   const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
-  const label = (text || "正在思考").replace(/\.{3}$|…$/, "");
   return (
-    <div className="ou-run-pill" role="status" aria-live="polite">
-      <span className="ou-run-dot" aria-hidden />
-      <span key={label} className="ou-swap min-w-0 truncate">
-        <span className="ou-shimmer">{label}</span>
-      </span>
-      <span className="ou-run-meta">
-        {steps > 0 ? `${steps} 步 · ` : ""}
-        {seconds}s
-      </span>
-    </div>
+    <AgentWorkingOrb
+      testId="agent-run-pill"
+      label={text}
+      context={{ streaming, toolRunning }}
+      meta={(steps > 0 ? `${steps} 步 · ` : "") + `${seconds}s`}
+    />
   );
 }
 

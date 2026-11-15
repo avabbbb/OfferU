@@ -28,7 +28,8 @@
 
 | 参考 | 借了什么 | 落在哪 |
 | --- | --- | --- |
-| Inspora · *agent dashboard*（Jessy Barret） | 运行胶囊、一行步骤就地替换、完成后计数 | `AgentRunPill`、`.ou-run-pill`、`.ou-swap` |
+| Inspora · *agent dashboard*（Jessy Barret） | 运行胶囊、一行步骤就地替换、完成后计数 | `AgentRunPill`（已换成点阵球胶囊）、`.ou-swap` |
+| Inspora 5-8 · *Animated thinking orb*（Jakub Antalik，npm `thinking-orbs`，MIT） | 点阵球按阶段换形态、静态标签 + 省略号、全圆角胶囊、换场模糊 + 滑动 + 淡出 | `AgentWorkingOrb`、`.ou-orb-pill`、`lib/agentWorkingOrb.ts` |
 | Motif（motif.sweetretry.com，MIT） | 上下文用量环、「已处理 · N 次工具调用」折叠头、思考扫光 | `components/ui/agent/ContextUsageRing`、`.ou-activity`、`.ou-shimmer` |
 | vechooool.com · *gilhuybrecht* 设计套件 | DESIGN.md 的一页式套件结构 | [DESIGN.md](DESIGN.md) |
 | Apple HIG | 颜色只表达一种意思、减少动态效果、焦点可见 | 全局 |

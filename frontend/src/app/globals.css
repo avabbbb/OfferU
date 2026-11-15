@@ -2184,18 +2184,12 @@ body {
   animation: agent-orb-spin 6s linear infinite, agent-orb-breathe 3.2s var(--ou-ease-standard) infinite;
   transition: scale 0.42s var(--ou-ease-spring), opacity var(--ou-motion-base) var(--ou-ease-standard), filter var(--ou-motion-base) var(--ou-ease-standard);
 }
-.offeru-agent-panel .agent-orb-dots { position: absolute; inset: 0.25rem; display: grid; grid-template-columns: 1fr 1fr; place-items: center; }
-.offeru-agent-panel .agent-orb-dots i { width: 0.3125rem; height: 0.3125rem; border-radius: 50%; background: var(--ou-text-primary); scale: 0; transition: scale var(--ou-motion-base) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-orb-think { position: absolute; inset: 0; display: grid; place-items: center; animation: ou-orb-in var(--ou-motion-slow) var(--ou-ease-standard) 0.2s both; }
 .offeru-agent-panel .agent-orb[data-working] .agent-orb-ball { scale: 0.12; opacity: 0; filter: grayscale(1); transition: scale 0.38s var(--ou-ease-emphasized), opacity 0.3s var(--ou-ease-standard) 0.08s, filter 0.2s linear; }
-.offeru-agent-panel .agent-orb[data-working] .agent-orb-dots { animation: agent-orb-spin 1s linear 0.36s infinite; }
-.offeru-agent-panel .agent-orb[data-working] .agent-orb-dots i { scale: 1; transition: scale 0.32s var(--ou-ease-spring) calc(0.28s + var(--d, 0s)); }
-.offeru-agent-panel .agent-orb-dots i:nth-child(2) { --d: 0.05s; }
-.offeru-agent-panel .agent-orb-dots i:nth-child(4) { --d: 0.1s; }
-.offeru-agent-panel .agent-orb-dots i:nth-child(3) { --d: 0.15s; }
 @keyframes agent-orb-spin { to { rotate: 360deg; } }
 @keyframes agent-orb-breathe { 0%, 100% { scale: 1; } 50% { scale: 1.06; } }
 @media (prefers-reduced-motion: reduce) {
-  .offeru-agent-panel .agent-orb-ball, .offeru-agent-panel .agent-orb[data-working] .agent-orb-dots { animation: none; }
+  .offeru-agent-panel .agent-orb-ball { animation: none; }
 }
 /* Prompt bar v2.1：动效节奏学 inspora AI prompt bar 与 stavapo 的代码版，颜色全走 Glass token */
 .offeru-agent-panel .agent-composer { isolation: isolate; }
@@ -2247,9 +2241,6 @@ body {
 .offeru-agent-panel .agent-placeholder > span { display: inline-block; white-space: pre; animation: agent-ph-in 0.55s var(--ou-ease-emphasized) both; }
 .offeru-agent-panel .agent-placeholder[data-leaving] { opacity: 0; filter: blur(0.375rem); transform: translateY(-0.25rem); }
 @keyframes agent-ph-in { from { opacity: 0; filter: blur(0.375rem); transform: translateY(0.3em); } }
-/* 处理中的四点：方阵 → 转 90° → 收成一点 → 再散开，循环（像参考视频里的思考态） */
-.offeru-agent-panel .agent-orb[data-working] .agent-orb-dots { animation: agent-orb-think 1.6s var(--ou-ease-standard) 0.36s infinite; }
-@keyframes agent-orb-think { 0% { rotate: 0deg; scale: 1; } 35% { rotate: 90deg; scale: 1; } 52% { rotate: 135deg; scale: 0.3; } 68% { rotate: 180deg; scale: 1; } 100% { rotate: 360deg; scale: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .offeru-agent-panel .agent-foot, .offeru-agent-panel .agent-composer::before, .offeru-agent-panel .agent-composer-controls > *, .offeru-agent-panel .agent-placeholder > span, .offeru-agent-panel .agent-composer-badge, .offeru-agent-panel .agent-composer-send { animation: none !important; }
 }

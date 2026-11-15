@@ -1,8 +1,9 @@
 // Migrated from luyishui/OfferU @ 3a446ff, MIT. Tool reducer cases and view
 // remain upstream source; the event adapter binds the existing Career Runtime.
 import { useEffect, useState } from "react";
-import { CheckCircle2, ChevronRight, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, XCircle } from "lucide-react";
 import type { ToolExecutionState } from "@/lib/embeddedAgentStream";
+import { AgentOrbIcon } from "./AgentWorkingOrb";
 
 // 一组工具从首个开始到最后结束的秒数；运行中的工具按 now 计。
 export function toolGroupSeconds(rows: ToolExecutionState[], now: number): number {
@@ -52,7 +53,7 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
         onClick={() => setOpen((value) => !value)}
       >
         {running ? (
-          <Loader2 size={12} className="shrink-0 animate-spin text-[var(--foreground-muted)]" />
+          <AgentOrbIcon state="working" />
         ) : failed ? (
           <XCircle size={12} className="shrink-0 text-[var(--primary-red)]" />
         ) : (
@@ -74,7 +75,7 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
             return (
               <div key={tool.id} role="listitem" data-status={tool.status} className="agent-tool-row">
                 {tool.status === "running" ? (
-                  <Loader2 size={12} className="shrink-0 animate-spin text-[var(--foreground-muted)]" />
+                  <AgentOrbIcon state="working" />
                 ) : tool.status === "error" ? (
                   <XCircle size={12} className="shrink-0 text-[var(--primary-red)]" />
                 ) : (

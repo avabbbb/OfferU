@@ -1,8 +1,10 @@
 "use client";
 
-// 输入栏的外观部件：左上角的流光小球（处理中变成转圈的四个点），以及左右两侧的拖动把手。
+// 输入栏的外观部件：左上角的流光小球（处理中换成 Thinking Orbs 点阵球），以及左右两侧的拖动把手。
 // 宽度变窄时胶囊变成只剩图标，是 globals.css 里的容器查询做的，这里不管。
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import type { AgentOrbState } from "@/lib/agentWorkingOrb";
+import { AgentOrbIcon } from "./AgentWorkingOrb";
 
 const STORAGE_KEY = "offeru.agent.composerWidth";
 export const COMPOSER_MIN_WIDTH = 280;
@@ -107,14 +109,19 @@ export function ComposerGrip({ side, width, onPointerDown, onKeyDown, onReset }:
   );
 }
 
-/** 流光小球：空闲时慢慢转、轻轻呼吸；处理中缩成一点，再散成 2×2 的四个点转圈。 */
-export function AgentOrb({ working }: { working: boolean }) {
+/**
+ * 流光小球：空闲时慢慢转、轻轻呼吸；处理中小球收起，换成 Thinking Orbs 点阵球（state 跟着当前阶段走，
+ * 和消息流里的运行胶囊同一个状态）。参考 Inspora 5-8 · Jakub Antalik「Thinking orbs」。
+ */
+export function AgentOrb({ working, state = "breathing" }: { working: boolean; state?: AgentOrbState }) {
   return (
     <span className="agent-orb" data-working={working ? "" : undefined} aria-hidden>
       <span className="agent-orb-ball" />
-      <span className="agent-orb-dots">
-        <i /><i /><i /><i />
-      </span>
+      {working && (
+        <span className="agent-orb-think">
+          <AgentOrbIcon state={state} />
+        </span>
+      )}
     </span>
   );
 }

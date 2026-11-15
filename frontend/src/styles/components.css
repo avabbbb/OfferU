@@ -731,25 +731,34 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
   animation: ou-shimmer var(--ou-motion-shimmer) linear infinite;
 }
 
-/* 运行胶囊：输入框上方的小胶囊，状态点呼吸。 */
-@keyframes ou-breathe { 0%, 100% { opacity: 0.45; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1); } }
-.ou-run-pill {
+/* Agent 工作胶囊（参考 Inspora 5-8 · Jakub Antalik「Thinking orbs」）：点阵球 + 静态标签，动效只在球里。
+ * 换阶段：旧的模糊 + 右滑 + 淡出，新的淡入（--ou-motion-slow；减少动效时 token 归零、旧的直接隐藏）。 */
+.ou-orb-pill {
   display: inline-flex;
   max-width: 100%;
   align-items: center;
   gap: var(--ou-space-2);
-  padding: var(--ou-space-1) var(--ou-space-3);
+  padding: var(--ou-space-1) var(--ou-space-3) var(--ou-space-1) var(--ou-space-2);
   border-radius: var(--ou-radius-pill);
   background: var(--ou-bg-floating);
   -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
   backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
-  box-shadow: var(--ou-elev-2);
+  box-shadow: var(--ou-glass-highlight), var(--ou-elev-1);
   font-size: var(--ou-type-sm);
   color: var(--ou-text-secondary);
   animation: ou-rise-in var(--ou-motion-slow) var(--ou-ease-spring) both;
 }
-.ou-run-dot { width: 0.4rem; height: 0.4rem; flex: none; border-radius: var(--ou-radius-pill); background: var(--ou-tone-purple-dot); animation: ou-breathe 1.4s var(--ou-ease-standard) infinite; }
-.ou-run-meta { flex: none; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); font-variant-numeric: tabular-nums; }
+.ou-orb-pill[data-size="64"] { gap: var(--ou-space-3); padding: var(--ou-space-2) var(--ou-space-6) var(--ou-space-2) var(--ou-space-2); font-size: var(--ou-type-body); }
+.ou-orb-stack { display: grid; min-width: 0; }
+.ou-orb-phase { grid-area: 1 / 1; display: inline-flex; min-width: 0; align-items: center; animation: ou-orb-in var(--ou-motion-slow) var(--ou-ease-standard) both; }
+.ou-orb-pill .ou-orb-phase { gap: var(--ou-space-2); }
+.ou-orb-pill[data-size="64"] .ou-orb-phase { gap: var(--ou-space-3); }
+.ou-orb-phase[data-leaving] { pointer-events: none; animation: ou-orb-out var(--ou-motion-slow) var(--ou-ease-standard) both; }
+.ou-orb { flex: none; display: block; }
+.ou-orb-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ou-orb-meta { flex: none; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); font-variant-numeric: tabular-nums; }
+@keyframes ou-orb-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ou-orb-out { from { opacity: 1; filter: none; transform: none; } to { opacity: 0; filter: blur(var(--ou-space-1)); transform: translateX(var(--ou-space-3)); } }
 
 /* 「已处理 · N 次工具调用」折叠头（参考 Motif agent-activity）。 */
 .ou-activity > summary { display: inline-flex; align-items: center; gap: var(--ou-space-1); padding: var(--ou-space-1) 0; list-style: none; cursor: pointer; font-size: var(--ou-type-sm); color: var(--ou-text-tertiary); transition: color var(--ou-motion-fast) var(--ou-ease-standard); }
@@ -772,7 +781,7 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 
 @media (prefers-reduced-motion: reduce) {
   .ou-shimmer { animation: none; background: none; color: var(--ou-text-secondary); }
-  .ou-run-dot { animation: none; opacity: 1; }
+  .ou-orb-phase[data-leaving] { display: none; }
 }
 
 

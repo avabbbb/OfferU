@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Bot, KeyRound, Loader2, Send, Settings2, Square, Trash2 } from "lucide-react";
+import { AgentWorkingOrb } from "./AgentWorkingOrb";
 
 import { AgentMarkdown } from "./AgentMarkdown";
 import { runDemoAgent, type AgentConfig } from "@/lib/demo/agent";
@@ -251,7 +252,7 @@ export function DemoAgentPanel() {
         <>
           <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
             <div className="space-y-4">
-              {messages.map((message) => (
+              {messages.filter((message) => !(busy && message.role === "assistant" && !message.content)).map((message) => (
                 <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
                   <div className={message.role === "user"
                     ? "max-w-[88%] rounded-lg bg-[var(--foreground)] px-3 py-2 text-[13px] leading-relaxed text-[var(--background)]"
@@ -262,6 +263,7 @@ export function DemoAgentPanel() {
                   </div>
                 </div>
               ))}
+              {busy && <DemoWorkingPill activity={activity} streaming={messages[messages.length - 1]?.role === "assistant" && Boolean(messages[messages.length - 1]?.content)} />}
               {activity.length > 0 && (
                 <ul className="space-y-1 border-l border-[var(--border)] pl-3 text-[11px] text-[var(--foreground-muted)]">
                   {activity.map((item) => <li key={item.id} className={item.failed ? "text-[var(--foreground)]" : ""}>{item.text}</li>)}
@@ -305,4 +307,11 @@ export function DemoAgentPanel() {
       )}
     </section>
   );
+}
+
+/** 演示 Agent 的运行胶囊：工具在跑 → 调用工具，正文在流 → 生成回复，否则在想。 */
+function DemoWorkingPill({ activity, streaming }: { activity: Activity[]; streaming: boolean }) {
+  const last = activity[activity.length - 1];
+  const label = last && !last.done ? "助手正在调用 OfferU 工具" : streaming ? "正在生成回复" : "正在思考";
+  return <AgentWorkingOrb testId="agent-run-pill" label={label} />;
 }

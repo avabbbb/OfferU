@@ -191,8 +191,8 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 | `.ou-page-enter` | 上浮 6px + 淡入 | 每次切换页面 |
 | `.ou-enter` + `--i` | 同上，按序号错开 | 看板卡片、工具调用行、新消息 |
 | `.ou-swap`（配 `key`） | 淡入 + 去模糊 | Agent「一行步骤」换字 |
-| `.ou-shimmer` | 文字扫光 | 正在思考 / 运行中 |
-| `.ou-run-pill` | 浮起胶囊 + 呼吸紫点 + 计时 | Agent 运行中 |
+| `.ou-shimmer` | 文字扫光 | 通用「加载中」文字（Agent 运行胶囊不再用） |
+| `.ou-orb-pill` | 玻璃胶囊 + Thinking Orbs 点阵球 + 静态标签 + 计时；换阶段旧的模糊右滑淡出、新的淡入 | Agent 运行中（`AgentWorkingOrb`） |
 | `.ou-activity` | 折叠头箭头旋转、内容上浮 | 「已处理 · N 次工具调用」 |
 | `.ou-button:active` | 缩到 0.97 | 所有按钮 |
 | `.ou-check-draw` | 勾线画出 | 完成 |
