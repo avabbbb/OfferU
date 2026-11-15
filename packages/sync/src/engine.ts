@@ -39,7 +39,47 @@ export type SyncEngineOptions = {
   maxAttempts?: number;
   chunks?: ChunkParams;
   kdfIterations?: number;
+  /** parallel object transfers (default 4) */
+  concurrency?: number;
+  /** called whenever the phase or a transfer counter changes */
+  onProgress?: (progress: SyncProgress) => void;
 };
+
+export type SyncPhase = "connect" | "lock" | "download" | "merge" | "upload" | "commit" | "done";
+
+/**
+ * Live counters for the UI. `total` is known once the phase starts; uploads
+ * that were already in the bucket (resumed run, another device uploaded the
+ * same content) count as `skipped`, not `done`.
+ */
+export type SyncProgress = {
+  phase: SyncPhase;
+  attempt: number;
+  download: { done: number; total: number; bytes: number };
+  upload: { done: number; total: number; bytes: number; skipped: number };
+};
+
+export function emptyProgress(): SyncProgress {
+  return { phase: "connect", attempt: 0, download: { done: 0, total: 0, bytes: 0 }, upload: { done: 0, total: 0, bytes: 0, skipped: 0 } };
+}
+
+/** Runs `fn` over `items` with at most `limit` in flight; rejects on the first failure. */
+async function pool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  let failed: unknown = null;
+  const worker = async () => {
+    while (failed === null && next < items.length) {
+      const item = items[next++];
+      try {
+        await fn(item);
+      } catch (error) {
+        failed ??= error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  if (failed !== null) throw failed;
+}
 
 export type SyncResult = {
   at: string;
@@ -51,7 +91,9 @@ export type SyncResult = {
   /** records whose remote entry changed in the new snapshot */
   pushed: number;
   uploaded: { objects: number; bytes: number };
-  downloaded: { objects: number };
+  downloaded: { objects: number; bytes: number };
+  /** chunks the bucket already had (resumed upload, same content from another device) */
+  skipped: number;
   conflicts: number;
   resurrected: number;
   attempts: number;
@@ -105,12 +147,23 @@ export class SyncEngine {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly chunks: ChunkParams;
   private repo: RemoteRepo | null = null;
+  private progress: SyncProgress = emptyProgress();
+  private deviceId = "";
 
   constructor(private readonly options: SyncEngineOptions) {
     this.actor = options.actor ?? "同步";
     this.now = options.now ?? (() => new Date());
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.chunks = options.chunks ?? DEFAULT_CHUNKS;
+  }
+
+  private report(patch: Partial<SyncProgress> = {}): void {
+    this.progress = { ...this.progress, ...patch };
+    this.options.onProgress?.(structuredClone(this.progress));
+  }
+
+  private get concurrency(): number {
+    return this.options.concurrency ?? 4;
   }
 
   /** Opens the repo and checks the passphrase without syncing. */
@@ -136,9 +189,12 @@ export class SyncEngine {
   }
 
   async sync(): Promise<SyncResult> {
+    this.progress = emptyProgress();
+    this.report();
     const repo = await this.connect();
     const initialized = repo.created;
     let state = await this.loadState(repo);
+    this.report({ phase: "lock" });
     const lock = this.options.lock ?? {};
     await repo.acquireLock(state.device, {
       ttlMs: lock.ttlMs ?? 120_000,
@@ -149,18 +205,20 @@ export class SyncEngine {
     });
     const result: SyncResult = {
       at: "", index: null, initialized, pulled: 0, pushed: 0,
-      uploaded: { objects: 0, bytes: 0 }, downloaded: { objects: 0 }, conflicts: 0, resurrected: 0, attempts: 0,
+      uploaded: { objects: 0, bytes: 0 }, downloaded: { objects: 0, bytes: 0 }, skipped: 0, conflicts: 0, resurrected: 0, attempts: 0,
     };
     try {
       const maxAttempts = this.options.maxAttempts ?? 4;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         result.attempts = attempt;
+        this.report({ attempt });
         const done = await this.attempt(repo, state, result);
         state = done.state;
         await this.options.state.save(state);
         if (done.committed) {
           result.at = state.last_sync_at!;
           result.index = state.last_index;
+          this.report({ phase: "done" });
           return result;
         }
       }
@@ -172,9 +230,11 @@ export class SyncEngine {
 
   private async attempt(repo: RemoteRepo, state: SyncState, result: SyncResult): Promise<{ state: SyncState; committed: boolean }> {
     const nowIso = this.now().toISOString();
+    this.deviceId = state.device;
     const latest = await repo.getLatest();
     const remoteIndex = latest ? await repo.getIndex(latest.ref.index) : null;
     const remote = await this.readRemote(repo, state, remoteIndex, result);
+    this.report({ phase: "merge" });
 
     // Merge + apply locally in one transaction so concurrent local writes queue behind us.
     const applied = await this.options.store.transaction(async () => {
@@ -240,21 +300,46 @@ export class SyncEngine {
     if (unchanged) {
       return {
         committed: true,
-        state: { ...working, base: committedBase(), last_index: latest?.ref.index ?? null, last_sync_at: nowIso },
+        state: { ...working, uploaded: undefined, base: committedBase(), last_index: latest?.ref.index ?? null, last_sync_at: nowIso },
       };
     }
 
-    // Upload only chunks the bucket does not already hold.
-    const known = new Set<string>();
+    // Upload only chunks the bucket does not already hold. Content addressing makes this
+    // resumable: chunks a previous (interrupted) attempt already PUT are in state.uploaded
+    // and skipped without a request; anything else is checked with HEAD first.
+    const known = new Set<string>(state.uploaded ?? []);
     for (const entry of Object.values(remote.entries)) if (!isTomb(entry)) entry.c.forEach((id) => known.add(id));
     for (const entry of Object.values(state.base)) if ("c" in entry) entry.c.forEach((id) => known.add(id));
-    for (const [id, part] of uploads) {
-      if (known.has(id) || await repo.hasObject(id)) continue;
-      await repo.putObject(id, part);
-      known.add(id);
-      result.uploaded.objects += 1;
-      result.uploaded.bytes += part.length;
+    const pending = [...uploads].filter(([id]) => !known.has(id));
+    const checkpoint = [...(state.uploaded ?? [])];
+    const upload = { done: 0, total: pending.length, bytes: 0, skipped: 0 };
+    this.report({ phase: "upload", upload: { ...upload } });
+    let sinceSave = 0;
+    const saveCheckpoint = () => this.options.state.save({ ...working, uploaded: [...checkpoint] });
+    try {
+      await pool(pending, this.concurrency, async ([id, part]) => {
+        if (await repo.hasObject(id)) {
+          upload.skipped += 1;
+          result.skipped += 1;
+        } else {
+          await repo.putObject(id, part);
+          upload.done += 1;
+          upload.bytes += part.length;
+          result.uploaded.objects += 1;
+          result.uploaded.bytes += part.length;
+        }
+        checkpoint.push(id);
+        this.report({ upload: { ...upload } });
+        if ((sinceSave += 1) >= 32) {
+          sinceSave = 0;
+          await saveCheckpoint();
+        }
+      });
+    } catch (error) {
+      await saveCheckpoint().catch(() => undefined);
+      throw error;
     }
+    this.report({ phase: "commit" });
     for (const uid of Object.keys(records)) {
       if (canonicalJson(records[uid]) !== canonicalJson(remote.entries[uid])) result.pushed += 1;
     }
@@ -264,9 +349,9 @@ export class SyncEngine {
     const ok = await repo.casLatest({ index: indexId, device: working.device, at: nowIso }, latest?.etag ?? null);
     if (!ok) {
       result.pushed = 0;
-      return { committed: false, state: working };
+      return { committed: false, state: { ...working, uploaded: checkpoint } };
     }
-    return { committed: true, state: { ...working, base: committedBase(), last_index: indexId, last_sync_at: nowIso } };
+    return { committed: true, state: { ...working, uploaded: undefined, base: committedBase(), last_index: indexId, last_sync_at: nowIso } };
   }
 
   private async loadState(repo: RemoteRepo | null): Promise<SyncState> {
@@ -288,7 +373,7 @@ export class SyncEngine {
   ): Promise<{ sides: Map<string, Side>; entries: Record<string, IndexEntry> }> {
     const sides = new Map<string, Side>();
     const entries = index?.records ?? {};
-    const cache = new Map<string, Uint8Array>();
+    const wanted = new Map<string, string[]>();
     for (const [uid, entry] of Object.entries(entries)) {
       if (isTomb(entry)) {
         sides.set(uid, { uid, deleted_at: entry.t });
@@ -299,16 +384,23 @@ export class SyncEngine {
         sides.set(uid, base.r);
         continue;
       }
-      const parts: Uint8Array[] = [];
-      for (const id of entry.c) {
-        let part = cache.get(id);
-        if (!part) {
-          part = await repo.getObject(id);
-          cache.set(id, part);
-          result.downloaded.objects += 1;
-        }
-        parts.push(part);
-      }
+      wanted.set(uid, entry.c);
+    }
+    const ids = [...new Set([...wanted.values()].flat())];
+    const cache = new Map<string, Uint8Array>();
+    const download = { done: 0, total: ids.length, bytes: 0 };
+    this.report({ phase: "download", download: { ...download } });
+    await pool(ids, this.concurrency, async (id) => {
+      const part = await repo.getObject(id);
+      cache.set(id, part);
+      download.done += 1;
+      download.bytes += part.length;
+      result.downloaded.objects += 1;
+      result.downloaded.bytes += part.length;
+      this.report({ download: { ...download } });
+    });
+    for (const [uid, chunkIds] of wanted) {
+      const parts = chunkIds.map((id) => cache.get(id)!);
       const total = parts.reduce((sum, part) => sum + part.length, 0);
       const joined = new Uint8Array(total);
       let offset = 0;
@@ -322,10 +414,12 @@ export class SyncEngine {
   }
 
   /**
-   * Local records as merge sides keyed by uid. On the first sync with a repo,
-   * unmapped local records adopt the uid of an identical remote record (and the
-   * single profile adopts the remote profile), so linking a second device that
-   * already has the same data does not duplicate it.
+   * Local records as merge sides keyed by uid. A local record that has no uid yet
+   * (created since the last sync) adopts the uid of an identical remote record
+   * this device has not seen (same type + data + created_at), so the same record
+   * arriving by two paths (a backup import here, a sync there) is not duplicated.
+   * On the first sync with a repo the single local profile also adopts the remote
+   * profile, so linking a second device does not create two profiles.
    */
   private async readLocal(state: SyncState, remote: Map<string, Side>, adopt: boolean): Promise<LocalView> {
     const rows: StoredRecord[] = [];
@@ -333,7 +427,7 @@ export class SyncEngine {
     rows.sort((a, b) => a.id - b.id);
 
     const uids: Record<string, string> = {};
-    const claimed = new Set<string>();
+    const claimed = new Set<string>(Object.keys(state.base));
     for (const row of rows) {
       const uid = state.uids[String(row.id)];
       if (uid) {
@@ -341,23 +435,21 @@ export class SyncEngine {
         claimed.add(uid);
       }
     }
-    if (adopt) {
-      const byContent = new Map<string, string>();
-      const profiles: string[] = [];
-      for (const side of remote.values()) {
-        if (!isLive(side) || claimed.has(side.uid)) continue;
-        byContent.set(canonicalJson({ type: side.type, data: side.data, created_at: side.created_at }), side.uid);
-        if (side.type === "profile") profiles.push(side.uid);
-      }
-      for (const row of rows) {
-        if (uids[String(row.id)]) continue;
-        const key = canonicalJson({ type: row.type, data: dataOf(row), created_at: row.created_at });
-        let uid = byContent.get(key);
-        if ((!uid || claimed.has(uid)) && row.type === "profile" && profiles.length === 1 && !claimed.has(profiles[0])) uid = profiles[0];
-        if (uid && !claimed.has(uid)) {
-          uids[String(row.id)] = uid;
-          claimed.add(uid);
-        }
+    const byContent = new Map<string, string>();
+    const profiles: string[] = [];
+    for (const side of remote.values()) {
+      if (!isLive(side) || claimed.has(side.uid)) continue;
+      byContent.set(canonicalJson({ type: side.type, data: side.data, created_at: side.created_at }), side.uid);
+      if (side.type === "profile") profiles.push(side.uid);
+    }
+    for (const row of rows) {
+      if (uids[String(row.id)]) continue;
+      const key = canonicalJson({ type: row.type, data: dataOf(row), created_at: row.created_at });
+      let uid = byContent.get(key);
+      if (adopt && (!uid || claimed.has(uid)) && row.type === "profile" && profiles.length === 1 && !claimed.has(profiles[0])) uid = profiles[0];
+      if (uid && !claimed.has(uid)) {
+        uids[String(row.id)] = uid;
+        claimed.add(uid);
       }
     }
     for (const row of rows) uids[String(row.id)] ??= randomId(16);
@@ -417,7 +509,18 @@ export class SyncEngine {
           JSON.stringify({ ...loser.data, updated_at: loser.updated_at }, null, 2),
           "```",
         ].join("\n"),
-        sync_conflict: { uid: loser.uid, type: loser.type, fields, at },
+        // Structured copy of the losing values so the conflict view can put them back
+        // (keep-mine / keep-theirs) without parsing the note body. `loser` is the side
+        // that lost, as seen from the device that wrote this note.
+        sync_conflict: {
+          uid: loser.uid,
+          type: loser.type,
+          fields,
+          at,
+          loser: winner === "local" ? "remote" : "local",
+          device: this.deviceId,
+          values: Object.fromEntries(fields.map((field) => [field, field === "job_id" ? loser.job : loser.data[field] ?? null])),
+        },
       },
       created_at: at,
       updated_at: at,

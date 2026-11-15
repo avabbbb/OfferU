@@ -17,6 +17,12 @@ export type SyncState = {
   uids: Record<string, string>;
   /** uid -> record as of the last synced snapshot */
   base: Record<string, BaseEntry>;
+  /**
+   * Chunk ids already PUT to this repo by an attempt that has not committed yet
+   * (interrupted first sync, lost CAS). The next attempt skips them without a HEAD,
+   * so a big upload resumes where it stopped. Cleared on commit.
+   */
+  uploaded?: string[];
 };
 
 export interface SyncStateStore {
