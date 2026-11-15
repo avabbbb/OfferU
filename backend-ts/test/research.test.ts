@@ -110,6 +110,43 @@ describe("evaluate stream (Python test_evaluate_stream)", () => {
     expect(await collect()).toEqual([{ type: "done", count: 0, change_ids: [], items: [], failed: [], remaining: 0 }]);
   });
 
+  it("evaluates up to 3 jobs at once and splits a short JD's posting alongside its evaluation; events stay in order", async () => {
+    store = new SqliteCoreStore(":memory:");
+    for (const company of ["甲", "乙", "丙"]) await saveRecord(store, { type: "job", data: { company, title: "后端", jd: "Go" } }, ctx()());
+    let inFlight = 0;
+    let peak = 0;
+    const slow: LlmClient = {
+      async chat() {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        inFlight -= 1;
+        return GOOD;
+      },
+    };
+    let enrichPeak = 0;
+    let enriching = 0;
+    const enrich = async () => {
+      enriching += 1;
+      enrichPeak = Math.max(enrichPeak, enriching);
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      inFlight -= 1;
+      enriching -= 1;
+      return [];
+    };
+    const events: EvaluateEvent[] = [];
+    const started = Date.now();
+    for await (const event of evaluateStream(store, slow, { context: ctx(), enrich })) events.push(event);
+    // serial would be 3 × (split 60 + evaluate 60) = 360 ms; here ≈ 3 splits back to back ≈ 180 ms
+    expect(Date.now() - started).toBeLessThan(300);
+    expect(peak).toBeGreaterThanOrEqual(3);
+    expect(enrichPeak).toBe(1); // posting splits write the store: one at a time
+    expect(events.slice(1, -1).map((event) => event.type)).toEqual(["job_start", "job", "job_start", "job", "job_start", "job"]);
+    expect(events.at(-1)).toMatchObject({ type: "done", count: 3 });
+  });
+
   it("re-evaluating overwrites the same evaluation doc", async () => {
     store = new SqliteCoreStore(":memory:");
     const job = (await saveRecord(store, { type: "job", data: { company: "甲", title: "后端", jd: "Go" } }, ctx()())).record;

@@ -93,15 +93,38 @@ async function persist(store: CoreStore, job: StoredRecord, result: JobEvaluatio
   });
 }
 
-/** Run a prepared evaluation. Throws CoreError when no job got a usable evaluation (nothing written). */
+/** Jobs evaluated at once (model calls in flight); events and writes stay in job order. */
+export const EVALUATE_CONCURRENCY = 3;
+/** Without a posting, the evaluation prompt carries the JD up to this many code points (jobText). */
+const JD_IN_PROMPT = 3000;
+
+/** A tiny FIFO lock: store writes (posting split, evaluation persist) never overlap. */
+function writeLock(): <T>(fn: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(fn: () => Promise<T>) => {
+    const run = tail.then(fn);
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}
+
+type Evaluated = { job: StoredRecord; result: JobEvaluation | null; enrichIds: number[] };
+
+/**
+ * Run a prepared evaluation. Throws CoreError when no job got a usable evaluation (nothing written).
+ *
+ * Latency: up to EVALUATE_CONCURRENCY jobs are in flight at once. A job without a posting is
+ * split first (Python evaluate_stream) because the evaluation reads the split; when its whole
+ * JD already fits the evaluation prompt (≤ 3000 code points) the two calls do not depend on
+ * each other and run side by side. Events and writes keep job order.
+ */
 export async function* runEvaluation(
   store: CoreStore,
   llm: LlmClient,
   prepared: PreparedEvaluation,
   options: Pick<EvaluateOptions, "signal" | "enrich" | "context">,
 ): AsyncGenerator<EvaluateEvent> {
-  let jobs = prepared.jobs;
-  const { remaining } = prepared;
+  const { jobs, remaining } = prepared;
   if (!jobs.length) {
     yield { type: "done", count: 0, change_ids: [], items: [], failed: [], remaining };
     return;
@@ -111,32 +134,54 @@ export async function* runEvaluation(
   const changeIds: number[] = [];
   const items: EvaluateItem[] = [];
   const failed: string[] = [];
+  const locked = writeLock();
   yield { type: "start", total };
 
-  const bare = jobs.filter((job) => !truthy(job.posting)).map((job) => job.id);
-  if (bare.length && options.enrich) {
+  const split = async (job: StoredRecord): Promise<number[]> => {
     try {
-      changeIds.push(...(await options.enrich(bare, options.signal)).filter((id): id is number => typeof id === "number" && id > 0));
-      jobs = await Promise.all(jobs.map(async (job) => (await store.get("job", job.id)) ?? job));
+      const ids = await locked(() => options.enrich!([job.id], options.signal));
+      return ids.filter((id): id is number => typeof id === "number" && id > 0);
     } catch (error) {
       if (options.signal?.aborted) throw error;
-      // Splitting the posting is best effort; evaluation runs anyway.
+      return []; // Splitting the posting is best effort; evaluation runs anyway.
     }
-  }
+  };
+  const evaluateOne = async (job: StoredRecord): Promise<Evaluated> => {
+    options.signal?.throwIfAborted();
+    if (truthy(job.posting) || !options.enrich) return { job, result: await evaluateJob(llm, profileText, job, options.signal), enrichIds: [] };
+    if (Array.from(String(job.jd ?? "")).length <= JD_IN_PROMPT) {
+      const [enrichIds, result] = await Promise.all([split(job), evaluateJob(llm, profileText, job, options.signal)]);
+      return { job: (await store.get("job", job.id)) ?? job, result, enrichIds };
+    }
+    const enrichIds = await split(job);
+    const current = (await store.get("job", job.id)) ?? job;
+    return { job: current, result: await evaluateJob(llm, profileText, current, options.signal), enrichIds };
+  };
+
+  const tasks: Array<Promise<Evaluated>> = [];
+  const startUpTo = (count: number) => {
+    while (tasks.length < Math.min(count, jobs.length)) {
+      const task = evaluateOne(jobs[tasks.length]);
+      task.catch(() => undefined); // awaited in order below; never an unhandled rejection
+      tasks.push(task);
+    }
+  };
 
   for (const [offset, job] of jobs.entries()) {
     const index = offset + 1;
     options.signal?.throwIfAborted();
+    startUpTo(offset + EVALUATE_CONCURRENCY);
     yield { type: "job_start", id: job.id, label: label(job), index, total };
-    const result = await evaluateJob(llm, profileText, job, options.signal);
+    const { job: current, result, enrichIds } = await tasks[offset];
+    changeIds.push(...enrichIds);
     if (!result) {
-      failed.push(label(job));
+      failed.push(label(current));
       continue;
     }
-    const { docId, changeIds: written } = await persist(store, job, result, options.context());
+    const { docId, changeIds: written } = await locked(() => persist(store, current, result, options.context()));
     changeIds.push(...written);
     const item: EvaluateItem = {
-      id: job.id, label: label(job), score: result.score, reasons: result.reasons, greeting: result.greeting || "", doc_id: docId,
+      id: current.id, label: label(current), score: result.score, reasons: result.reasons, greeting: result.greeting || "", doc_id: docId,
     };
     items.push(item);
     yield { type: "job", index, total, ...item };
