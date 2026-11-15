@@ -17,6 +17,7 @@ import { nodeBackupFiles } from "./routes/companion/backups";
 import { nodeBossLogin } from "./routes/companion/boss-cli";
 import { filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
 import { openStore } from "./store";
+import { CompanionSync } from "./sync";
 import type { SqliteCoreStore } from "./store";
 
 export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDeps> = {}): Server {
@@ -40,6 +41,7 @@ export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDe
     backups: nodeBackupFiles(dbPath()),
     agentBoard: new NodeAgentBoard({ dataDir: dirname(dbPath()) }),
     agentRuns: new SqliteAgentRunStore(store),
+    sync: new CompanionSync(store, dirname(dbPath())),
     ...overrides,
   };
   const app = createApp(deps);

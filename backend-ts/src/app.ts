@@ -3,6 +3,7 @@ import { isCoreError, type CoreErrorCode, type CoreStore, type HttpFetch, type L
 
 import { registerRoutes } from "./routes";
 import type { AgentBoardService } from "./routes/agent-board";
+import type { SyncController } from "./routes/sync";
 import type { BossLoginService } from "./routes/companion/boss-login";
 import { TOOL_NAMES, type ToolRuntime } from "./tools";
 
@@ -44,6 +45,8 @@ export interface AppDeps {
   backups?: BackupFiles | null;
   /** Agent run rows (SQLite on the companion, IndexedDB in the browser); absent = in-memory. */
   agentRuns?: AgentRunStore;
+  /** S3/R2 sync (companion: config + state next to the SQLite file). Absent = /api/sync answers 501. */
+  sync?: SyncController;
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };

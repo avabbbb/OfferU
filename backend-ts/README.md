@@ -13,6 +13,8 @@ This is the first vertical slice of the Python -> TypeScript migration.
 GET  /api/health
 GET  /api/tools
 POST /api/tools/{overview,list,get,save,delete,undo,changes,search}
+GET  /api/sync/status
+POST /api/sync/{configure,now}     # S3/R2 E2EE sync, see docs/sync.md
 ```
 
 The Node adapter is `src/store.ts`; route logic is `src/server.ts`; tool
