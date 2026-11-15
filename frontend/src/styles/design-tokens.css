@@ -122,6 +122,9 @@
   --ou-capsule-bg: var(--ou-color-surface);
   --ou-capsule-hover: rgba(255, 255, 255, 0.62);
   --ou-capsule-shadow: 0 1px 2px rgba(60, 50, 80, 0.06), 0 4px 12px rgba(60, 50, 80, 0.07);
+  /* 输入框 / 编辑框：一圈发丝描边 + 顶部内高光 + 轻投影，让白框在白卡上也立得住。 */
+  --ou-field-edge: inset 0 0 0 1px rgba(60, 50, 80, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(60, 50, 80, 0.06), 0 2px 6px rgba(60, 50, 80, 0.04);
+  --ou-field-edge-hover: inset 0 0 0 1px rgba(60, 50, 80, 0.18), 0 1px 2px rgba(60, 50, 80, 0.07), 0 4px 12px rgba(60, 50, 80, 0.07);
   --ou-tile-bg: rgba(255, 255, 255, 0.72); /* frosted icon tile */
   --ou-tile-shadow: 0 1px 2px rgba(60, 50, 80, 0.08);
   --ou-highlight-code: #fbebc8; /* pale amber behind inline code */
@@ -297,6 +300,8 @@
   --ou-capsule-bg: rgba(255, 255, 255, 0.12);
   --ou-capsule-hover: rgba(255, 255, 255, 0.07);
   --ou-capsule-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ou-field-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.10), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --ou-field-edge-hover: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 2px 8px rgba(0, 0, 0, 0.35);
   --ou-tile-bg: rgba(255, 255, 255, 0.08);
   --ou-tile-shadow: none;
   --ou-highlight-code: #4a3a1c;

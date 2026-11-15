@@ -230,14 +230,14 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
   padding: 0 var(--ou-space-3);
   border-radius: var(--ou-radius-control);
   background: var(--ou-bg-surface-solid);
-  box-shadow: var(--ou-capsule-shadow);
+  box-shadow: var(--ou-field-edge);
   color: var(--ou-text-primary);
   font: inherit;
   font-size: var(--ou-type-body);
   transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
 }
 .ou-input::placeholder, .ou-select-trigger [data-placeholder] { color: var(--ou-text-placeholder); }
-.ou-input:hover { box-shadow: var(--ou-elev-1); }
+.ou-input:hover { box-shadow: var(--ou-field-edge-hover); }
 .ou-input:focus-visible, .ou-input[data-state="open"] { outline: none; box-shadow: var(--ou-ring-focus); }
 .ou-select-content { min-width: var(--radix-select-trigger-width); z-index: calc(var(--ou-layer-popover) + 1); }
 .ou-select-wrap { display: flex; min-width: 0; }
