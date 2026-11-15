@@ -9,7 +9,7 @@ import { ToolExecutionList } from "./EmbeddedAgentStreamView";
 import { AgentAskPanel } from "./AgentAskPanel";
 import { AgentMarkdown } from "./AgentMarkdown";
 import { applyRuntimeToolEvent, createInitialAgentStreamState, type AgentStreamState } from "@/lib/embeddedAgentStream";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button, Textarea } from "@heroui/react";
 import {
   Activity,
@@ -56,6 +56,8 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 import { AgentConnectionStatus } from "./AgentConnectionPanel";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { SHOWCASE } from "@/lib/showcase";
+import { getBridgeState, subscribeBridge } from "@/lib/bridge";
+import { DemoAgentPanel } from "./DemoAgentPanel";
 import { contextUsageFromEvent, type AgentContextUsage } from "@/lib/agentContextUsage";
 import { ContextUsageRing } from "@/components/ui/agent/ContextUsageRing";
 import Link from "next/link";
@@ -240,6 +242,11 @@ function progressForEvent(event: string, operation: unknown): string | null {
 }
 
 export function AgentPanel({ onClose }: { onClose?: () => void } = {}) {
+  const bridge = useSyncExternalStore(subscribeBridge, getBridgeState, getBridgeState);
+  return SHOWCASE && !bridge.active ? <DemoAgentPanel /> : <BackendAgentPanel onClose={onClose} />;
+}
+
+function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const [messages, setMessages] = useState<PanelMessage[]>([
     {
       id: "welcome",

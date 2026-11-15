@@ -1,108 +1,51 @@
-# OfferU Development Guide
+# 开发指南
 
-本文件只面向源码开发与隔离测试，不是 Public Release 用户安装说明。陌生用户发布路径必须由 installer 完成，不得要求 Python、Node、repo 或终端。
+面向源码开发。架构见 [ARCHITECTURE](./ARCHITECTURE.md)，部署见 [DEPLOY-CLOUDFLARE](./DEPLOY-CLOUDFLARE.md)。旧的 Python 开发指南在 [archive/2026-11](./archive/2026-11/DEVELOPMENT-python-2026-09.md)。
 
-## Environment
+## 环境
 
-当前主要开发环境是 Windows：Python 3.12、Node.js 22+、npm；只有运行桌面壳时需要 Rust/Tauri toolchain。
+- Node.js 24+（伴侣用 `node:sqlite`），npm。
+- 只有跑桌面壳时需要 Rust / Tauri；只有跑 Python 回滚后端或生成契约夹具时需要 Python 3.12（`backend/.venv`）。
 
-```powershell
-Set-Location <OfferU>
-py -3.12 -m venv backend\.venv312
-backend\.venv312\Scripts\python.exe -m pip install --upgrade pip
-backend\.venv312\Scripts\python.exe -m pip install -r backend\requirements.txt
-npm --prefix frontend ci
+```bash
+npm --prefix backend-ts install
+npm --prefix frontend install
 ```
 
-`backend/.env` 与 `backend/config.json` 可能包含本地 Provider 配置，不得提交或放入日志、trace、诊断包和公开 Issue。
+`packages/core` 没有自己的依赖，两边通过 `file:../packages/core` 引用源码。前端的网页版构建会编译 `backend-ts/src`，所以两个目录都要装依赖。
 
-如果使用 `docker compose up -d`，必须先在仓库根目录 `.env` 中自行填写唯一的
-`DB_PASSWORD` 和 `SECRET_KEY`；Compose 不再提供固定默认凭据，缺少任一项会直接拒绝启动。
-Docker Compose 的 PostgreSQL 仅属于开发编排；OfferU 的 Data Safety 暂存恢复是本地 SQLite 能力，容器不会把外部数据库伪装成本地可恢复备份目标。
+## 常用命令
 
-## Browser development
+| 目的 | 命令 |
+| --- | --- |
+| 网页版开发（页面内后端，数据在浏览器） | `cd frontend && npx vite --mode local-web --port 7410` |
+| 连本机后端开发 | `cd backend-ts && OFFERU_TS_PORT=8766 npm run dev`（先停掉 Python 后端），另开 `cd frontend && npm run dev` |
+| 网页版构建 | `cd frontend && npm run build:web`（产物 `frontend/dist`，自带 Node 内置模块检查） |
+| 桌面 / 普通构建 | `cd frontend && npm run build`；桌面壳 `npm run tauri -- dev` |
+| 本地跑 Worker | `cd backend-ts && npm run build:web && npm run worker:dev` |
+| 部署检查 | `cd backend-ts && npm run worker:dry-run` |
+| CLI / MCP | `cd backend-ts && npm run cli -- doctor`、`npm run cli -- tool overview`、`npm run cli -- mcp` |
+| Python 回滚后端 | `cd backend && .venv/bin/python run_server.py`（8766） |
 
-终端 A：
+非网页版构建的前端固定连 `127.0.0.1:8766`（`frontend/src/lib/apiBase.ts`，刻意不允许指向别的地址），所以本机开发时让 TS 伴侣监听 8766；它默认 8767 是为了能和 Python 后端并排跑对照。网页版开发模式下没有 Worker，所以模型服务商不允许浏览器跨域时，「测试连接」会失败；要完整验证转发，用 `npm run worker:dev`。
 
-```powershell
-Set-Location <OfferU>\backend
-.\.venv312\Scripts\python.exe run_server.py
+伴侣的数据目录：`OFFERU_DATA_DIR`（默认 `backend-ts/.data`），数据库 `OFFERU_DB_PATH`。开发和测试不要指向真实数据。
+
+## 测试
+
+```bash
+cd backend-ts && npm test && npm run typecheck      # 路由、工具、契约、Worker
+cd frontend   && npm test && npm run typecheck      # 组件、lib、页面内后端
+cd frontend   && npm run design:audit               # 只拦新增的视觉违规
 ```
 
-终端 B：
+- **契约测试**：`backend-ts/test/*.contract.test.ts`、`*-parity.test.ts` 用 `backend-ts/test/fixtures/` 里 Python 生成的期望（`gen_*.py` 是生成脚本）比对 TS 的输出。改了 Python 行为或迁新工具时，重新生成夹具并提交。
+- **HTTP 测试**：路由测试用 `createApp(deps).request(...)` 走完整 Hono 管线；伴侣端到端测试（`server.test.ts`）起真实 HTTP 服务。
+- **页面内后端**：`frontend/src/lib/local/backend.test.ts` 在 jsdom 里把 `createApp` 跑在浏览器适配器上。
+- 不写只为覆盖率的测试；每个新工具 / 路由至少一条走 HTTP 的测试和一条契约用例。
 
-```powershell
-Set-Location <OfferU>
-npm --prefix frontend run dev
-```
+## 数据和密钥
 
-前端固定为 <http://127.0.0.1:7410>，后端固定为 <http://127.0.0.1:8766>。不要打开 `8080`：它不是网页服务，只是可选本地 llama.cpp Provider endpoint。OfferU 不会自动启动 Edge；自动化验收只使用隔离的 managed Chromium 无头模式。出现 `Failed to fetch` / CORS 时，先检查 Windows 用户环境变量 `CORS_ORIGINS`；系统环境变量优先于 `backend/.env`，必须包含 `http://localhost:7410,http://127.0.0.1:7410`。
-
-只读检查不需要浏览器：
-
-```powershell
-Set-Location backend
-.\.venv312\Scripts\python.exe -m app.cli doctor --pretty
-```
-
-## Desktop development
-
-```powershell
-npm --prefix frontend run tauri -- dev
-```
-
-桌面开发壳会启动自己的前端与后端，不要同时保留浏览器开发的两个进程。`tauri build` 生成的 release 壳使用打包 Python sidecar、Node runtime 和 agent-runtime；当前 bundle/lifecycle smoke 已有证据，但在签名、previous-release upgrade 和 clean-machine 人工验收完成前，仍不能当作公开发行版。
-
-## Internal Beta fixture journey
-
-1. Welcome 选择快速创建或导入简历；
-2. 补充至少一条可核对经历；
-3. 在 Opportunity 保存岗位并粘贴 JD；
-4. 选择明确标记的 Replay/Fixture 本地准备；
-5. 从 Job Detail 查看情报、证据缺口、材料和面试；
-6. 在 Resume Workspace 审核 Proposal、手动编辑、保存 Version、导出 PDF；
-7. 在 Today/Pipeline 查看同一 Career Truth 的投影；
-8. 完成 Interview → Debrief → Learning Candidate → Profile review。
-
-Replay/Fixture、合成公司和比较岗位不代表实时市场数据。Showcase 使用独立 IndexedDB 虚构数据，不能作为 Python Runtime 验收。
-
-## Development data isolation
-
-真实 `backend/offeru.db` 不得用于自动化写入验收。为每次 E2E 设置新的隔离 `DATABASE_URL`、workspace 和 browser state，并确认没有把临时环境变量留给用户环境。
-
-停服后手工复制 SQLite 文件只能用于开发期应急副本，不是 Public Release Backup Gate。正式备份必须使用 SQLite Online Backup API，包含 DB、相关资产和版本 manifest；正式恢复必须经过 staging、完整性检查、重启与失败回滚。当前权威状态见 [`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)。
-
-Settings 的 JSON export 用于可读数据携带，不等于完整备份，也不能原样恢复 Provider 凭据或全部本地资产。
-
-## Suggested verification commands
-
-项目级 `AGENTS.md` 要求实现 Agent 不执行这些命令，由使用者或明确授权的验收阶段运行：
-
-```powershell
-Set-Location backend
-.\.venv312\Scripts\python.exe -m pytest tests -q
-
-Set-Location ..\frontend
-npm run typecheck
-npm run build
-```
-
-单个命令通过不代表 Public Release Ready。正式证据还必须覆盖 migration、backup/restore、security、desktop packaging、clean install、live provider、failure E2E、10/10 critical journey、50-run stability 与 soak。
-
-## Current facts and goals
-
-- 设计文档入口：[`docs/README.md`](./README.md)
-- 当前 Gate：[`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)、[`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md)
-- Release matrix：[`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)
-
-## 展示站（GitHub Pages）
-
-`VITE_SHOWCASE=true npm run build` 构建的是没有 Python 后端的展示站：页面的读请求回放 `frontend/src/lib/showcase/snapshot.json`（真实后端录下来的响应），用户的修改存在浏览器 IndexedDB（localforage），新增、删除和 AI 功能会提示下载桌面版。
-
-接口或页面改了以后重录快照（会用一个临时空数据目录起后端，不碰你的数据；需要先关掉占用 7410/8766 的服务）：
-
-```sh
-PYTHON=backend/.venv/bin/python sh frontend/scripts/showcase/refresh.sh
-```
-
-演示数据在 `frontend/scripts/showcase/seed.py`，只通过公开接口写入。
+- 网页版的数据库名：`offeru-local`（记录）、`offeru-local-files` / `-attachments` / `-backups`、`offeru-local-agent`、`offeru-local-config`。展示站 demo 用 `offeru-demo`，互不影响。
+- 网页版的模型 Key 加密后存 IndexedDB，设备密钥不可导出；这只防磁盘上的明文，同源脚本仍能使用 Key。
+- 伴侣的模型设置在 `<data>/offeru-ts-config.json`（0600）。不要提交 `.data/`、`backend/.env`、`backend/config.json`。

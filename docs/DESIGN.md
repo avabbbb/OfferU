@@ -13,27 +13,26 @@
 **非目标**
 
 - 不做权限审批流、提案队列、Run 生命周期、Operation Registry。旧版的这些设计已归档。
-- 不做多用户、云同步、服务端部署。
+- 不做多用户；不在服务器上存用户数据。网页版部署在 Cloudflare Worker 上，但 Worker 只发静态文件和转发模型请求（见 [DEPLOY-CLOUDFLARE](./DEPLOY-CLOUDFLARE.md)）。跨设备同步只用用户自己的 S3 / R2 存储桶，端到端加密（见 10.1 和 [sync.md](./sync.md)）。
 - 不为每种 Agent 宿主写适配层，只提供 MCP 和命令行两种接入。
 
 ## 2. 总体结构
 
+> 2026-11 起后端是 TypeScript：规则在 `packages/core`，HTTP 应用是 `backend-ts/src/app.ts` 的 `createApp(deps)`，同一份代码跑在浏览器页面里（网页版）、Node 伴侣里（桌面版）。运行形态、能力矩阵和代码位置见 [ARCHITECTURE](./ARCHITECTURE.md)。下面各节的工具语义、数据模型、撤销规则不变；提到的 `core/*.py` 是 Python 回滚后端里的对应实现，TS 版在 `packages/core/src/` 的同名领域目录。
+
 ```text
- 网页 (Vite + React)      浏览器插件        Codex / Claude Code      桌面小球
-        │ HTTP              │ HTTP              │ MCP / offeru tool      │ HTTP
-        └──────────────┬────┴───────────────────┴────────────────────────┘
-                       ▼
-          FastAPI  127.0.0.1:8766
-          /api/tools/{name}   /mcp   /api/agent（Ctrl+K）
-                       │
-                       ▼
-          app/core/tools.py   ← 唯一的工具层：参数校验、枚举、overview 规则
-                       │
-                       ▼
-          app/core/store.py   ← SQLite offeru.db：records + changes
-                       │
-          内置 Agent（app/core/agent.py → app/agent 循环）   后台 Codex（app/core/handoff.py）
-          OpenAI 兼容接口，最多 6 步        codex exec + OfferU MCP
+ 网页（Vite + React）  浏览器插件     Codex / Claude Code       内置 Agent
+        │ fetch /api/*     │ HTTP          │ MCP stdio / offeru-ts tool │
+        └─────────┬────────┴───────────────┴────────────┬───────────────┘
+                  ▼                                     ▼
+   createApp(deps)（Hono）  /api/tools/{name}  /api/agent/*  /api/config  …
+                  │
+                  ▼
+   packages/core  ← 唯一的工具层：参数校验、枚举、overview 规则、撤销、Agent 循环
+                  │ CoreStore
+       ┌──────────┴───────────┐
+       ▼                      ▼
+ IndexedDB（网页版，页面内）   SQLite offeru.db（桌面伴侣）：records + changes
 ```
 
 谁调用的工具，就记谁的名字（actor）：网页是「你」，MCP 取客户端名（codex / claude），命令行取 `OFFERU_ACTOR`，内置 Agent 是「助手」。
@@ -160,6 +159,13 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 不做：发信、标已读、删信、保存原始邮件。
 - services/email_sync.py 只管账号、凭据和游标，每封新信交给 core/mail.classify / apply 写入。旧 Operation Registry 里的候选进展操作（ingest_application_signal、list / review_application_progress 等）已下线，不再暴露给外置 Agent；旧候选表 application_progress_candidates 只剩历史数据，没有写入方，前端不展示，随 legacy 清理一起删表。邮箱同步已不再调用 ingest_application_signal。
 
+### 10.1 云同步（S3 / R2）
+
+- 引擎在 `packages/sync`（`@offeru/sync`，只用 fetch + WebCrypto，浏览器 / companion / Worker 共用），注入 CoreStore、BlobStore（S3 SigV4）和本机状态存储。格式、合并规则、威胁模型和 CORS 见 [sync.md](./sync.md)。
+- 远端是 dejavu 式的内容寻址快照：objects（加密块，id = HMAC）、indexes（快照索引）、refs/latest（If-Match 比较交换）、lock（带过期）。只上传桶里没有的块。
+- 合并以本机上次同步的快照为 base，逐条记录三方合并、字段级合并；真冲突按 updated_at 后写赢，输的版本存成一篇冲突文档；修改赢过并发删除。结果在一个事务里写回，每条一行 change（actor「同步」），可撤销。
+- companion 路由 `GET /api/sync/status`、`POST /api/sync/{configure,now}`；设置 › 数据 › 云同步。凭据和口令只存在本机。
+
 ## 11. 前端
 
 > **新增及迁移 UI 规范（唯一有效依据）**：[`docs/design/visual-system.md`](design/visual-system.md)，配套 Tokens 在 `frontend/src/styles/design-tokens.css`。组件规格见 [`docs/design/components.md`](design/components.md)，组件代码在 `frontend/src/components/ui/`（Radix Primitives + `--ou-*` Token）。2026-11-13 起全站旧变量已桥接到色卡 v2；本节描述与 v2 冲突时以 v2 为准。
@@ -241,20 +247,13 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 pywebview 小窗，随 `offeru start` 打开，轮询 overview；有新的改动或临近的日程时头像动一下；悬停展开今天的待办，可以勾掉。
 
-## 14. 目录（重构完成后）
+## 14. 目录
 
-```text
-backend/app/core/   store.py  tools.py  resume.py  tailor.py  templates/  agent.py  handoff.py  mail.py
-backend/app/        main.py  mcp_server.py  entry.py
-backend/skill/      SKILL.md（≤4KB）
-frontend/src/       app/  components/core/  lib/core.ts
-extension/          smartfill（PR4 改接 /api/tools）
-```
-
-PR5 删除：`app/ops.py`、`app/services/`、`app/agents/`、`app/agent/`、旧 `routes/`、旧 Skill 生成器和 `models/models.py` 里的旧表。
+见 [ARCHITECTURE §2](./ARCHITECTURE.md#2-代码在哪)。Python 后端（`backend/app/core/` 等）保留为回滚路径，不再加功能。
 
 ## 15. 测试策略
 
-- 后端：`tests/test_core.py` 走真实的 HTTP + MCP + 撤销路径，每个新工具至少一条端到端用例。旧测试随旧代码一起删。
-- 前端：每个 PR 用 Playwright 在干净数据目录下把主线点一遍并截图。
-- 不写只为提高覆盖率的单元测试，不写防御性分支。
+- 后端：`backend-ts/test/` 用 `createApp(deps).request()` 走完整 HTTP 管线，伴侣端到端测试起真实服务；每个迁移的工具 / 路由有一条和 Python 对照的契约用例（`test/fixtures/` 由 Python 生成）。
+- 页面内后端：`frontend/src/lib/local/backend.test.ts` 在 jsdom 里跑同一个 app。
+- 前端：vitest；改界面时用 Playwright 在干净数据目录下把主线点一遍并截图。
+- 不写只为提高覆盖率的单元测试，不写防御性分支。命令见 [DEVELOPMENT](./DEVELOPMENT.md)。

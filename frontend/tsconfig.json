@@ -15,6 +15,7 @@
     "incremental": true,
     "paths": {
       "@/*": ["./src/*"],
+      "@offeru/backend/*": ["../backend-ts/src/*"],
       "next/dynamic": ["./src/compat/next-dynamic.tsx"],
       "next/link": ["./src/compat/next-link.tsx"],
       "next/navigation": ["./src/compat/next-navigation.ts"]

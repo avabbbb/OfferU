@@ -279,40 +279,36 @@ Runtime 诊断、实验性 Provider 和 Provider Health 都属于高级/开发�
 
 ## 架构
 
-OfferU 刻意把系统拆成三个权威：
+一套规则，三个运行的地方：
 
 ```mermaid
 flowchart LR
-    U[用户] --> UI[OfferU]
-    UI --> A[Agent Runtime]
-    A --> O[Operation Registry]
-    O --> C[Career Runtime]
-    O --> P[提案 / 审批]
-    P --> U
-    C --> D[(本地职业数据)]
+    UI[React 界面] -->|fetch /api/*| APP[Hono 应用<br/>backend-ts createApp]
+    EXT[浏览器插件] --> APP
+    AG[Codex / Claude Code] -->|MCP stdio / CLI| APP
+    APP --> CORE[packages/core<br/>工具、规则、撤销、Agent 循环]
+    CORE --> IDB[(IndexedDB<br/>网页版)]
+    CORE --> SQL[(SQLite<br/>桌面伴侣)]
 ```
 
-- **推理权威** —— 可替换的 Agent Runtime 负责规划、推理和选择能力。
-- **执行权威** —— Operation Registry 负责校验 schema、权限、副作用、dry run、提案和审计。
-- **事实权威** —— Python Career Runtime 持有 Profile、Jobs、Applications、Resumes、Interviews、
-  Memory 等持久化职业状态。
+- **`packages/core`** —— 纯 TypeScript 的领域规则：工具表、校验、overview、改动记录与撤销、简历渲染、内置 Agent 循环。不依赖 React、DOM、Node。
+- **`backend-ts`** —— 一个运行时无关的 Hono 应用加各运行形态的适配器：网页版里它**跑在页面内**（数据在 IndexedDB）；桌面版是 **Node 伴侣**（SQLite、本机文件、PDF、BOSS 登录）；**Cloudflare Worker** 入口只发静态网站、转发模型请求，不存任何东西（不用 D1 / KV / Durable Objects / R2）。
+- **`backend/`** —— 原来的 Python（FastAPI）后端，保留为回滚路径，也提供还没迁移的领域（邮箱同步、面试）。
 
-这也是为什么底层 Agent Harness 可以持续演进，而职业事实始终不会被搬进模型或外部 Runtime。
-GUI、CLI、TUI、Skill 和 Agent 集成共用同一个 Operation Registry，没有任何一个入口能自己写业务状态。
-
-完整边界与领域词汇见 [系统设计](./docs/DESIGN.md)。
+各运行形态能做什么、代码在哪、怎么加工具：[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。数据模型与工具语义：[系统设计](./docs/DESIGN.md)。
 
 ---
 
 ## 当前技术栈
 
 ```text
-React / TypeScript   → 产品界面
-Python / FastAPI     → 职业领域运行时、Operation Registry、
-                       自动化与持久化
-Tauri / Rust         → 桌面外壳、进程生命周期、系统集成
-Agent Runtime        → 可替换的推理引擎
-SQLite               → 本地职业数据
+React / TypeScript   → 产品界面（Vite）
+TypeScript + Hono    → 后端：packages/core 规则 + backend-ts 适配器
+IndexedDB            → 网页版数据（在用户自己的浏览器里）
+SQLite (node:sqlite) → 桌面伴侣数据
+Cloudflare Workers   → 静态托管 + 无状态模型转发（免费计划）
+Tauri / Rust         → 桌面外壳
+Python / FastAPI     → 旧后端，回滚路径
 ```
 
 OfferU 刻意不在 UI、CLI、插件和 Agent 集成之间复制业务逻辑。
@@ -327,8 +323,8 @@ OfferU 刻意不在 UI、CLI、插件和 Agent 集成之间复制业务逻辑。
 - 浏览器自动化可以辅助填表，但绝不能静默提交申请。
 - 职业证据保留来源；行为信号与模型推断先进入审核收件箱。
 - Provider 失败必须可见，不允许用"假成功"掩盖。
-- API Key 只存系统钥匙串（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service），
-  配置文件只保留 `credential_ref`；钥匙串不可用时保存直接失败，不回退为明文。
+- 数据留在你手里：网页版在你的浏览器里，桌面版在你的电脑上。Cloudflare Worker 只发静态文件、转发模型请求，不保存用户数据，也不记录这些请求。
+- 网页版的 API Key 用浏览器内不可导出的密钥加密后再存进 IndexedDB；旧的 Python 后端把 Key 存在系统钥匙串。
 - 凭据不进入模型上下文、日志和版本库。
 
 当前安全状态见 [SECURITY.md](./SECURITY.md)。
@@ -337,49 +333,34 @@ OfferU 刻意不在 UI、CLI、插件和 Agent 集成之间复制业务逻辑。
 
 ## 开始使用
 
-OfferU 还没有对外发布签名安装包。源码开发与内测请看：
+OfferU 还没有对外发布签名安装包。
 
-- [DEVELOPMENT.md](./docs/DEVELOPMENT.md) —— 环境与开发启动
+**网页版（数据只在你的浏览器里）**
 
-面向普通用户的最终路径是：
-
-```text
-下载
-→ 安装
-→ 自动发现本机 AI
-→ 支持时自动投影/注册 OfferU Skill
-→ 简历 + 可选授权 AI 记忆 → Profile
-→ 浏览器保存第一个岗位
-→ 打开 canonical Job Workspace
-→ 可选连接求职邮箱
-→ Today 主动告诉你下一步
+```bash
+npm --prefix backend-ts install && npm --prefix frontend install
+cd backend-ts
+npm run build:web        # 以 local-web 模式构建前端
+npx wrangler deploy      # Cloudflare Workers 免费计划；本地预览用 npm run worker:dev
 ```
 
-> 如果仓库根目录存在 `OfferU.exe`，那是历史 `0.1.0` 二进制，不是当前 Release Candidate，不要运行。
-> 网页入口始终是 `http://127.0.0.1:7410`；`8080` 只是可选的本地 llama.cpp 模型端点。
+打开网站，在设置 → 模型里填自己的 API Key 即可使用。详见 [docs/DEPLOY-CLOUDFLARE.md](./docs/DEPLOY-CLOUDFLARE.md)。
+
+**源码开发** —— [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md)（npm 命令、测试、契约测试）。
 
 ---
 
 ## 发布状态
 
-OfferU 用证据驱动的发布 Gate 判断能否发布，构建成功不等于可以发布。当前状态、验证证据、
-已知问题和质量评分见：
+- Python → TS 迁移进度：[docs/backend-ts-migration.md](./docs/backend-ts-migration.md)
+- 已知缺口：[docs/KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
 
-- [KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
-- [RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md)
-
-开发者建议检查命令：
-
-```powershell
-Set-Location backend
-.\.venv312\Scripts\python.exe -m pytest tests -q
-
-Set-Location ..\frontend
-npm run typecheck
-npm run build
+```bash
+cd backend-ts && npm test && npm run typecheck
+cd frontend && npm test && npm run typecheck && npm run build:web
 ```
 
-这些命令只验证各自范围，不代表"可内测"或"可发布"。
+这些命令只验证各自范围，不代表"可发布"。
 
 ---
 
@@ -401,9 +382,10 @@ OfferU 正在快速走向公开的本地优先版本。贡献前请先读：
 
 - [产品需求](./docs/PRD.md) —— 用户、范围和验收
 - [系统设计](./docs/DESIGN.md) —— 数据、工具、Agent 和撤销
+- [架构](./docs/ARCHITECTURE.md) —— core / 适配器 / 运行形态
 - [DEVELOPMENT.md](./docs/DEVELOPMENT.md) —— 开发设置
 
-请不要绕过 Operation Registry 直接做业务变更，也不要引入第二个职业事实来源。
+业务规则只写在 `packages/core`，所有写入走工具表；不要引入第二个职业事实来源。
 
 ---
 

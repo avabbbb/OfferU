@@ -7,6 +7,7 @@
 
 import os
 import re
+import hmac
 import logging
 from contextlib import asynccontextmanager
 from typing import Any, Optional
@@ -167,6 +168,20 @@ app = FastAPI(
 # 重指 LLM base_url 形成数据外泄链）。因此 env 提供的值必须过白名单：仅允许本机回环、
 # tauri 协议与浏览器扩展来源；其余一律拒绝并明示，绝不静默放宽。
 _CORS_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "[::1]", "tauri.localhost"}
+# The public showcase is an explicit exception to the loopback-only CORS rule.
+# It still needs the loopback pairing token for every data request.
+_BRIDGE_ORIGIN_RE = re.compile(
+    r"^https://(?:offeru\.avabbbb\.com|offeru-showcase\.pages\.dev|[a-z0-9-]+\.offeru-showcase\.pages\.dev)$"
+)
+_BRIDGE_ORIGINS = ("https://offeru.avabbbb.com", "https://offeru-showcase.pages.dev")
+
+
+def _is_bridge_origin(origin: str) -> bool:
+    return bool(_BRIDGE_ORIGIN_RE.match(origin))
+
+
+def _is_trusted_write_origin(origin: str) -> bool:
+    return origin in _TRUSTED_WRITE_ORIGINS or _is_bridge_origin(origin) or bool(re.match(_EXTENSION_ORIGIN, origin))
 
 
 def _is_allowed_cors_origin(origin: str) -> bool:
@@ -203,13 +218,17 @@ if _dropped_cors_origins:
 for _offeru_frontend_origin in ("http://localhost:7410", "http://127.0.0.1:7410"):
     if _offeru_frontend_origin not in cors_origins:
         cors_origins.append(_offeru_frontend_origin)
+for _bridge_origin in _BRIDGE_ORIGINS:
+    if _bridge_origin not in cors_origins:
+        cors_origins.append(_bridge_origin)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_origin_regex=_EXTENSION_ORIGIN,
+    allow_origin_regex=f"(?:{_EXTENSION_ORIGIN})|(?:{_BRIDGE_ORIGIN_RE.pattern})",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type"],
+    allow_headers=["Accept", "Content-Type", "X-OfferU-Pairing"],
+    allow_private_network=True,
 )
 
 # The OfferU UI itself: the dev/web frontend and the desktop WebView.
@@ -363,15 +382,34 @@ async def add_security_headers(request, call_next):
             detail="请求被拒绝：仅允许本机回环来源",
             kind="forbidden_host",
         )
+    # The static showcase is allowed by CORS, but every data request must carry
+    # the loopback pairing token. health/pairing stay unauthenticated so the
+    # page can probe and the local settings page can show the token.
+    origin = request.headers.get("origin")
+    if (
+        origin
+        and _is_bridge_origin(origin)
+        and request.method != "OPTIONS"
+        and request.url.path.startswith("/api/")
+        and request.url.path not in ("/api/health", "/api/pairing")
+    ):
+        from app.core.bridge import pairing_token
+
+        supplied = request.headers.get("x-offeru-pairing", "")
+        if not supplied or not hmac.compare_digest(supplied, pairing_token()):
+            return _error_response(
+                request,
+                status_code=403,
+                detail="请求被拒绝：本机 OfferU 未配对或配对 token 已变化",
+                kind="forbidden_bridge_pairing",
+            )
     # CSRF boundary: a button click runs directly (no second confirmation), so
     # a state-changing request must come from the OfferU UI itself. Browsers
     # always send Origin on cross-site writes; CLI/MCP/sidecar calls send none.
-    origin = request.headers.get("origin")
     if (
         request.method not in ("GET", "HEAD", "OPTIONS")
         and origin
-        and origin not in _TRUSTED_WRITE_ORIGINS
-        and not re.match(_EXTENSION_ORIGIN, origin)
+        and not _is_trusted_write_origin(origin)
     ):
         return _error_response(
             request,
@@ -416,6 +454,8 @@ async def add_security_headers(request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()")
+    if request.method == "OPTIONS" and request.headers.get("access-control-request-private-network", "").lower() == "true":
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
     return response
@@ -693,6 +733,22 @@ def get_file(name: str):
     if not path.is_file():
         raise HTTPException(status_code=404, detail="文件不存在")
     return FileResponse(path)
+
+
+@app.get("/api/pairing")
+async def pairing_info(request: Request):
+    """Local-only: the static demo asks the user to paste this token once."""
+    origin = request.headers.get("origin")
+    if origin and not (_is_allowed_cors_origin(origin) or origin == "tauri://localhost"):
+        raise HTTPException(status_code=403, detail="配对信息只给本机 OfferU 页面")
+    from app.core.bridge import pairing_token
+
+    return {
+        "token": pairing_token(),
+        "backend": "http://127.0.0.1:8766",
+        "mcp_http": "http://127.0.0.1:8766/mcp" if _HAS_MCP else None,
+        "mcp_stdio": "offeru mcp",
+    }
 
 
 @app.get("/api/health")

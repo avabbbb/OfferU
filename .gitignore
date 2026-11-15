@@ -71,15 +71,23 @@ coverage/
 *playwright-cli/
 backend/.playwright-cli/
 .temp/
-# 文档默认保持本地；只版本化 PRD / DESIGN / DOGFOOD 和归档。
+# 文档默认保持本地；只版本化下面白名单里的现行文档和归档。
 docs/*
 # 内部 Alpha 的实现代码和用户协议不进公开仓库
 internal/
 !docs/README.md
 !docs/PRD.md
 !docs/DESIGN.md
+!docs/backend-ts-migration.md
+!docs/sync.md
 !docs/DOGFOOD.md
 !docs/RESEARCH_FORMAT.md
+!docs/ARCHITECTURE.md
+!docs/DEVELOPMENT.md
+!docs/DEPLOY-CLOUDFLARE.md
+!docs/KNOWN_ISSUES.md
+!docs/CONTRIBUTING.md
+!docs/sync.md
 # 状态图被 .agents/skills/statemachine-* 引用，单独版本化
 !docs/design/
 docs/design/*
@@ -164,3 +172,7 @@ backend/agent_board.json
 # Local outputs (not part of the repo)
 deliverables/
 Videos/
+
+# ---- TS backend local state ----
+backend-ts/.data/
+backend-ts/coverage/

@@ -16,6 +16,8 @@ function normalizeConfiguredApiBase(value: unknown): string | null {
 }
 
 export function resolveApiBase(): string {
+  // Web build: /api/* is answered in the page (lib/local/backend.ts), same origin.
+  if (import.meta.env.VITE_OFFERU_MODE === "local-web") return "";
   const configured = normalizeConfiguredApiBase(
     import.meta.env.VITE_API_URL || process.env.NEXT_PUBLIC_API_URL,
   );

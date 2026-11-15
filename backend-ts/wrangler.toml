@@ -1,0 +1,18 @@
+# OfferU web on Cloudflare Workers (free plan). Stateless: no D1 / KV / DO / R2.
+# Build the frontend first (npm run build:web), then `npx wrangler deploy`.
+name = "offeru"
+main = "src/worker.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[assets]
+directory = "../frontend/dist"
+binding = "ASSETS"
+# HashRouter app: unknown paths fall back to index.html.
+not_found_handling = "single-page-application"
+# /api/* and /llm-proxy reach the Worker script first; everything else is a static file.
+run_worker_first = ["/api/*", "/llm-proxy"]
+
+[vars]
+# LLM_PROXY = "off"                       # disable the model relay
+# LLM_PROXY_EXTRA_HOSTS = "llm.example.com" # allow a self-hosted gateway

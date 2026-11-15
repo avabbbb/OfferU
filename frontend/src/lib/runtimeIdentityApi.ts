@@ -1,4 +1,5 @@
 import { SHOWCASE, showcaseHandle } from "./showcase";
+import { bridgeActive, bridgeHeaders } from "./bridge";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { resolveApiBase } from "@/lib/apiBase";
 
@@ -93,11 +94,11 @@ export async function getDesktopRuntimeIdentity(timeoutMs = 1_000): Promise<Desk
 }
 
 export async function getRuntimeIdentity(): Promise<RuntimeIdentity> {
-  if (SHOWCASE) return (await showcaseHandle("/api/diagnostics/runtime-identity")) as RuntimeIdentity;
+  if (SHOWCASE && !bridgeActive()) return (await showcaseHandle("/api/diagnostics/runtime-identity")) as RuntimeIdentity;
   const response = await fetch(`${API_BASE}/api/diagnostics/runtime-identity`, {
     cache: "no-store",
     redirect: "error",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...bridgeHeaders() },
   });
   if (!response.ok) throw new Error("OfferU runtime identity is unavailable.");
   const payload = await response.json();

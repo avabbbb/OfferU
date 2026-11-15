@@ -1,0 +1,463 @@
+{
+ "processes": "/usr/bin/node /home/x/.npm/lib/node_modules/@google/gemini-cli/dist/index.js\ncodex --yolo\n/usr/bin/workbuddy.exe serve\n",
+ "steps": [
+  {
+   "name": "list_empty",
+   "ok": {
+    "agents": [
+     {
+      "id": "codex",
+      "display_name": "Codex",
+      "custom": false,
+      "hidden": false,
+      "executable_found": true,
+      "skill_status": "NOT_INSTALLED",
+      "running": true,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.codex/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://developers.openai.com/codex/quickstart/"
+     },
+     {
+      "id": "claude",
+      "display_name": "Claude Code",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.claude/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://code.claude.com/docs/en/setup"
+     },
+     {
+      "id": "opencode",
+      "display_name": "OpenCode",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.config/opencode/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://opencode.ai/docs/"
+     },
+     {
+      "id": "pi",
+      "display_name": "Pi Coding Agent",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.pi/agent/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent"
+     },
+     {
+      "id": "omp",
+      "display_name": "Oh My Pi",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.omp/agent/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://github.com/can1357/oh-my-pi"
+     },
+     {
+      "id": "gemini",
+      "display_name": "Gemini CLI",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": true,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.gemini/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://github.com/google-gemini/gemini-cli"
+     },
+     {
+      "id": "codebuddy",
+      "display_name": "CodeBuddy CLI",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": true,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.codebuddy/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://www.workbuddy.cn/docs/workbuddy/Overview"
+     },
+     {
+      "id": "dsh",
+      "display_name": "DeepSeek Harness",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.dsh/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/skills"
+     }
+    ],
+    "live_window_seconds": 600
+   }
+  },
+  {
+   "name": "add_bad_id",
+   "error": "Agent id 只能用小写字母、数字、- 和 _，最长 40 个字符"
+  },
+  {
+   "name": "add_builtin",
+   "error": "codex 是内置 Agent，已经在看板里，不需要添加"
+  },
+  {
+   "name": "add_no_name",
+   "error": "请填写 Agent 名称（60 字以内）"
+  },
+  {
+   "name": "add_bad_exe",
+   "error": "启动命令只填命令名（例如 workbuddy），不要带路径或参数"
+  },
+  {
+   "name": "add_outside_home",
+   "error": "Skill 目录要填你用户目录下的绝对路径，例如 ~/.workbuddy/skills"
+  },
+  {
+   "name": "add_relative",
+   "error": "Skill 目录要填你用户目录下的绝对路径，例如 ~/.workbuddy/skills"
+  },
+  {
+   "name": "add",
+   "ok": {
+    "id": "wb",
+    "display_name": "WorkBuddy",
+    "custom": true,
+    "hidden": false,
+    "executable_found": true,
+    "skill_status": "NOT_INSTALLED",
+    "running": true,
+    "last_call": {},
+    "connected": false,
+    "skill_path": "~/.wb/skills/offeru/SKILL.md",
+    "error": "",
+    "last_check": {},
+    "executable": "workbuddy",
+    "docs_url": ""
+   }
+  },
+  {
+   "name": "add_dup",
+   "error": "已经有一个叫 wb 的 Agent，可以用编辑修改它"
+  },
+  {
+   "name": "edit_builtin",
+   "error": "只有你自己添加的 Agent 可以编辑；内置 Agent 只能隐藏"
+  },
+  {
+   "name": "edit",
+   "ok": {
+    "id": "wb",
+    "display_name": "WorkBuddy CLI",
+    "custom": true,
+    "hidden": false,
+    "executable_found": true,
+    "skill_status": "NOT_INSTALLED",
+    "running": true,
+    "last_call": {},
+    "connected": false,
+    "skill_path": "~/.wb/skills/offeru/SKILL.md",
+    "error": "",
+    "last_check": {},
+    "executable": "workbuddy",
+    "docs_url": ""
+   }
+  },
+  {
+   "name": "connect_codex",
+   "ok": {
+    "id": "codex",
+    "display_name": "Codex",
+    "custom": false,
+    "hidden": false,
+    "executable_found": true,
+    "skill_status": "INSTALLED",
+    "running": true,
+    "last_call": {},
+    "connected": false,
+    "skill_path": "~/.codex/skills/offeru/SKILL.md",
+    "error": "",
+    "last_check": {
+     "action": "install",
+     "skill_status": "INSTALLED"
+    },
+    "executable": "",
+    "docs_url": "https://developers.openai.com/codex/quickstart/"
+   }
+  },
+  {
+   "name": "connect_bad_action",
+   "error": "连接动作只支持 install、update 或 repair"
+  },
+  {
+   "name": "connect_unknown",
+   "error": "看板里没有这个 Agent：nobody。先运行 offeru agent list 查看"
+  },
+  {
+   "name": "hide_claude",
+   "ok": {
+    "id": "claude",
+    "display_name": "Claude Code",
+    "custom": false,
+    "hidden": true,
+    "executable_found": false,
+    "skill_status": "NOT_INSTALLED",
+    "running": false,
+    "last_call": {},
+    "connected": false,
+    "skill_path": "~/.claude/skills/offeru/SKILL.md",
+    "error": "",
+    "last_check": {},
+    "executable": "",
+    "docs_url": "https://code.claude.com/docs/en/setup"
+   }
+  },
+  {
+   "name": "check_wb",
+   "ok": {
+    "id": "wb",
+    "display_name": "WorkBuddy CLI",
+    "custom": true,
+    "hidden": false,
+    "executable_found": true,
+    "skill_status": "NOT_INSTALLED",
+    "running": true,
+    "last_call": {},
+    "connected": false,
+    "skill_path": "~/.wb/skills/offeru/SKILL.md",
+    "error": "",
+    "last_check": {
+     "action": "check",
+     "skill_status": "NOT_INSTALLED",
+     "executable_found": true
+    },
+    "executable": "workbuddy",
+    "docs_url": ""
+   }
+  },
+  {
+   "name": "list_full",
+   "ok": {
+    "agents": [
+     {
+      "id": "codex",
+      "display_name": "Codex",
+      "custom": false,
+      "hidden": false,
+      "executable_found": true,
+      "skill_status": "INSTALLED",
+      "running": true,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.codex/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {
+       "action": "install",
+       "skill_status": "INSTALLED"
+      },
+      "executable": "",
+      "docs_url": "https://developers.openai.com/codex/quickstart/"
+     },
+     {
+      "id": "claude",
+      "display_name": "Claude Code",
+      "custom": false,
+      "hidden": true,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.claude/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://code.claude.com/docs/en/setup"
+     },
+     {
+      "id": "opencode",
+      "display_name": "OpenCode",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.config/opencode/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://opencode.ai/docs/"
+     },
+     {
+      "id": "pi",
+      "display_name": "Pi Coding Agent",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.pi/agent/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent"
+     },
+     {
+      "id": "omp",
+      "display_name": "Oh My Pi",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.omp/agent/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://github.com/can1357/oh-my-pi"
+     },
+     {
+      "id": "gemini",
+      "display_name": "Gemini CLI",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": true,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.gemini/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://github.com/google-gemini/gemini-cli"
+     },
+     {
+      "id": "codebuddy",
+      "display_name": "CodeBuddy CLI",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": true,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.codebuddy/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://www.workbuddy.cn/docs/workbuddy/Overview"
+     },
+     {
+      "id": "dsh",
+      "display_name": "DeepSeek Harness",
+      "custom": false,
+      "hidden": false,
+      "executable_found": false,
+      "skill_status": "NOT_INSTALLED",
+      "running": false,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.dsh/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {},
+      "executable": "",
+      "docs_url": "https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/skills"
+     },
+     {
+      "id": "wb",
+      "display_name": "WorkBuddy CLI",
+      "custom": true,
+      "hidden": false,
+      "executable_found": true,
+      "skill_status": "NOT_INSTALLED",
+      "running": true,
+      "last_call": {},
+      "connected": false,
+      "skill_path": "~/.wb/skills/offeru/SKILL.md",
+      "error": "",
+      "last_check": {
+       "action": "check",
+       "skill_status": "NOT_INSTALLED",
+       "executable_found": true
+      },
+      "executable": "workbuddy",
+      "docs_url": ""
+     }
+    ],
+    "live_window_seconds": 600
+   }
+  },
+  {
+   "name": "remove_builtin",
+   "error": "只有你自己添加的 Agent 可以删除；内置 Agent 只能隐藏"
+  },
+  {
+   "name": "remove",
+   "ok": {
+    "removed": "wb"
+   }
+  }
+ ],
+ "match_client": {
+  "codex": "codex",
+  "Claude Code": "claude",
+  "claude-code": "claude",
+  "gemini-cli-mcp-client": "gemini",
+  "workbuddy": "codebuddy",
+  "opencode": "opencode",
+  "unknown-client": "",
+  "codex-mcp-client": "codex",
+  "": ""
+ }
+}
