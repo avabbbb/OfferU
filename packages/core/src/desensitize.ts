@@ -20,23 +20,56 @@ function nonce(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** FNV-1a 32-bit → 8 hex: a per-session tag that is stable across turns and resumes. */
+function seededTag(seed: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/**
+ * Masks text with one mapping and one tag across calls: the same value always
+ * gets the same placeholder, and new values continue the numbering. The Agent
+ * loop masks each history message once, in order, so already-sent bytes never
+ * change between turns (provider prefix caches keep hitting). With a seed
+ * (the session id) the tag, and so every placeholder, is reproducible after a
+ * resume without storing the mapping.
+ */
+export class PiiMasker {
+  readonly mapping: PiiMapping = {};
+  private readonly byValue = new Map<string, string>();
+  private readonly counter: Record<string, number> = { phone: 0, email: 0, id: 0, bank: 0 };
+  private readonly tag: string;
+
+  constructor(seed?: string) {
+    this.tag = seed ? seededTag(`offeru-pii:${seed}`) : nonce();
+  }
+
+  mask(text: string): string {
+    const replace = (prefix: string) => (original: string) => {
+      const known = this.byValue.get(original);
+      if (known) return known;
+      this.counter[prefix] += 1;
+      const placeholder = `[__PII_${prefix.toUpperCase()}_${this.counter[prefix]}_${this.tag}__]`;
+      this.mapping[placeholder] = original;
+      this.byValue.set(original, placeholder);
+      return placeholder;
+    };
+    let result = text.replace(ID_CARD, replace("id"));
+    result = result.replace(EMAIL, replace("email"));
+    result = result.replace(PHONE_INTL, replace("phone"));
+    result = result.replace(PHONE_CN, replace("phone"));
+    result = result.replace(BANK_CARD, replace("bank"));
+    return result;
+  }
+}
+
 export function desensitize(text: string): { text: string; mapping: PiiMapping } {
-  const mapping: PiiMapping = {};
-  const counter: Record<string, number> = { phone: 0, email: 0, id: 0, bank: 0 };
-  const tag = nonce();
-  const replace = (prefix: string) => (original: string) => {
-    for (const [placeholder, value] of Object.entries(mapping)) if (value === original) return placeholder;
-    counter[prefix] += 1;
-    const placeholder = `[__PII_${prefix.toUpperCase()}_${counter[prefix]}_${tag}__]`;
-    mapping[placeholder] = original;
-    return placeholder;
-  };
-  let result = text.replace(ID_CARD, replace("id"));
-  result = result.replace(EMAIL, replace("email"));
-  result = result.replace(PHONE_INTL, replace("phone"));
-  result = result.replace(PHONE_CN, replace("phone"));
-  result = result.replace(BANK_CARD, replace("bank"));
-  return { text: result, mapping };
+  const masker = new PiiMasker();
+  return { text: masker.mask(text), mapping: masker.mapping };
 }
 
 export function restore(text: string, mapping: PiiMapping): string {

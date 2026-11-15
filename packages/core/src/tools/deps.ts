@@ -1,4 +1,5 @@
 import type { LlmClient } from "../llm";
+import type { FileSource } from "../resume/render";
 import type { CoreContext, CoreStore } from "../types";
 import type { HttpFetch, SearchClient } from "./net";
 
@@ -21,4 +22,8 @@ export type ToolDeps = {
   readFile?: (path: string) => Promise<{ path: string; text: string; truncated: boolean }>;
   /** Resume PDF export (resume domain): draft_email attaches it when present. */
   exportResumePdf?: (docId: number, name: string) => Promise<{ path: string }>;
+  /** Uploaded files (photo / school logo) for resume rendering in tailor_resume. */
+  files?: FileSource | null;
+  /** A4 page count of resume HTML (companion: Playwright); absent = tailor_resume reviews without a page count. */
+  measure?: ((html: string) => Promise<number | null>) | null;
 };

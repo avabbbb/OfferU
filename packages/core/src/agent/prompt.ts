@@ -72,8 +72,33 @@ export interface PromptOptions {
   memoryArm?: MemoryArm;
 }
 
-export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, options: PromptOptions = {}): Promise<string> {
-  const view = await overview(store, ctx);
+/**
+ * The prompt is split for provider prefix caches (DeepSeek, OpenAI, Kimi,
+ * Qwen, GLM cache the longest repeated request prefix; Anthropic caches up to
+ * a cache_control breakpoint):
+ *
+ *   system  = role line + RULES + step budget + confirmed preference rules
+ *             (only changes when the user confirms / edits a preference)
+ *   context = date + overview summary + memory index / full memory
+ *             (changes every day and after most writes)
+ *
+ * The host puts `system` first (after the tool specs, which providers render
+ * before everything) and `context` once at the head of the run's first user
+ * message, so it is sent once per run and never rewritten mid-run. The text
+ * of every rule is the same as Python's system_prompt(); only the order moved.
+ */
+export interface AgentPrompt {
+  system: string;
+  context: string;
+}
+
+export async function agentPromptParts(store: CoreStore, ctx: CoreContext, options: PromptOptions = {}): Promise<AgentPrompt> {
+  const arm = options.memoryArm ?? "index";
+  const [view, ruled, memoryText] = await Promise.all([
+    overview(store, ctx),
+    arm === "index" ? preferenceRules(store) : Promise.resolve(""),
+    arm === "index" ? memoryIndex(store) : arm === "full" ? memoryFull(store) : Promise.resolve(""),
+  ]);
   const summary: Record<string, unknown> = {
     stage: view.stage,
     next_step: view.next_step,
@@ -81,18 +106,26 @@ export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, opti
     todos: Object.fromEntries(Object.entries(view.todos).filter(([, items]) => items.length).map(([key, items]) => [key, items.length])),
   };
   if (view.mail) summary.mail = view.mail;
-  const arm = options.memoryArm ?? "index";
   let memory = "";
-  if (arm === "index") {
-    const ruled = await preferenceRules(store);
-    memory = `用户的记忆索引（只有标题，新的在前）：\n${await memoryIndex(store)}\n`
-      + (ruled ? `用户的口径和偏好（必须遵守，不当作事实）：\n${ruled}\n` : "");
-  } else if (arm === "full") {
-    memory = `用户的记忆（全文，新的在前；标「待确认」的还不能当事实）：\n${await memoryFull(store)}\n`;
-  }
-  return `你是 OfferU 里的求职助手。今天是 ${view.today}。\n`
-    + `用户现在的情况（overview 摘要）：${pyJson(summary)}\n`
-    + memory
+  if (arm === "index") memory = `用户的记忆索引（只有标题，新的在前）：\n${memoryText}\n`;
+  else if (arm === "full") memory = `用户的记忆（全文，新的在前；标「待确认」的还不能当事实）：\n${memoryText}\n`;
+  const system = "你是 OfferU 里的求职助手。\n"
     + RULES
-    + `- 最多调用 ${options.maxSteps || MAX_STEPS} 轮工具，先用 overview / search / get 查清楚再写。`;
+    + `- 最多调用 ${options.maxSteps || MAX_STEPS} 轮工具，先用 overview / search / get 查清楚再写。`
+    + (ruled ? `\n用户的口径和偏好（必须遵守，不当作事实）：\n${ruled}` : "");
+  const context = `今天是 ${view.today}。\n`
+    + `用户现在的情况（overview 摘要）：${pyJson(summary)}\n`
+    + memory;
+  return { system, context: context.trimEnd() };
+}
+
+/** Wraps the per-run context for the head of the run's first user message. */
+export function contextBlock(context: string): string {
+  return `<context>\n${context}\n</context>`;
+}
+
+/** The whole prompt as one string (system, then context): for callers that send a single system message. */
+export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, options: PromptOptions = {}): Promise<string> {
+  const { system, context } = await agentPromptParts(store, ctx, options);
+  return `${system}\n\n${context}`;
 }

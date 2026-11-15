@@ -18,6 +18,7 @@ import {
   restore,
   type FetchLike,
   type LlmStreamEvent,
+  usageOf,
 } from "@offeru/core";
 
 const pythonPresets = JSON.parse(readFileSync(new URL("./fixtures/llm_presets.python.json", import.meta.url), "utf8"));
@@ -104,6 +105,22 @@ describe("LlmClient (OpenAI-compatible)", () => {
     expect(calls[1].body.reasoning_effort).toBeUndefined();
     const done = events.at(-1);
     expect(done?.type === "done" && done.result.content).toBe("ok");
+  });
+
+  it("reads provider cache usage; prompt_cache_key only goes to OpenAI", async () => {
+    expect(usageOf({ prompt_tokens: 2000, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 1536 } }, "")).toMatchObject({ input_tokens: 2000, cached_input_tokens: 1536 });
+    expect(usageOf({ prompt_tokens: 2000, completion_tokens: 10, prompt_cache_hit_tokens: 1920, prompt_cache_miss_tokens: 80 }, "")).toMatchObject({ cached_input_tokens: 1920 });
+    expect(usageOf({ prompt_tokens: 2000, completion_tokens: 10, cached_tokens: 1000 }, "")).toMatchObject({ cached_input_tokens: 1000 });
+    expect(usageOf({ prompt_tokens: 2000, completion_tokens: 10 }, "").cached_input_tokens).toBeUndefined();
+    expect(usageOf({ input_tokens: 50, cache_read_input_tokens: 1800, cache_creation_input_tokens: 150, output_tokens: 9 }, "", "anthropic"))
+      .toEqual({ input_tokens: 2000, output_tokens: 9, total_tokens: 2009, estimated: false, cached_input_tokens: 1800, cache_creation_input_tokens: 150 });
+    const run = async (target: typeof endpoint) => {
+      const { fetch, calls } = fakeFetch([{ chunks: [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }] }]);
+      await collect(createLlmClient(target, { fetch }).completeStream({ messages: [{ role: "user", content: "hi" }], cacheKey: "offeru-c1" }));
+      return calls[0].body;
+    };
+    expect((await run(endpoint)).prompt_cache_key).toBeUndefined();
+    expect((await run({ ...endpoint, provider: "openai", baseUrl: "https://api.openai.com/v1" })).prompt_cache_key).toBe("offeru-c1");
   });
 
   it("ends the stream with a sanitized error instead of throwing", async () => {

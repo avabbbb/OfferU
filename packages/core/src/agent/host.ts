@@ -9,8 +9,8 @@
 import { CoreError } from "../types";
 import type { ChatContentPart, ChatMessage, LlmClient } from "../llm";
 import { sanitizeLlmError } from "../llm";
-import { runAgentLoop, type AgentTool, type LoopEvent } from "./loop";
-import { MAX_STEPS } from "./prompt";
+import { runAgentLoop, summarizeTurnStats, type AgentTool, type LoopEvent } from "./loop";
+import { MAX_STEPS, contextBlock, type AgentPrompt } from "./prompt";
 import {
   AgentConversations,
   AgentRunState,
@@ -20,6 +20,7 @@ import {
 } from "./run-state";
 import type { Json } from "../types";
 import type { RawRunEvent } from "./events";
+import { RunTrace, textVersion, type LlmObserver, type TraceSink, type TraceTerminalState } from "./trace";
 
 export const PROTOCOL_VERSION = "offeru.ts-agent.v1";
 export const RUNTIME_ID = "ts_agent";
@@ -55,14 +56,47 @@ export interface AgentHostDeps {
   state: AgentRunState;
   conversations: AgentConversations;
   resolveLlm(options: RunOptions): Promise<ResolvedLlm>;
-  /** Core tools bound to the Agent actor. */
-  tools(): AgentTool[];
-  systemPrompt(options: { maxSteps: number }): Promise<string>;
+  /** Core tools bound to the Agent actor; `onLlm` times the sub-model calls tools make (into the run trace). */
+  tools(hooks?: AgentToolHooks): AgentTool[];
+  /**
+   * The system prompt. AgentPrompt splits it for prompt caching: `system` is
+   * the stable system message, `context` (date, overview, memory) goes once at
+   * the head of a fresh run's first user message. A plain string is all system.
+   */
+  systemPrompt(options: { maxSteps: number }): Promise<string | AgentPrompt>;
   /** Read uploaded attachments; absent means attachments are unsupported here. */
   prepareAttachments?(message: string, ids: string[]): Promise<PreparedAttachments>;
   /** User decisions on queued actions the Agent has not heard about (action_gate.take_decisions_for_agent). */
   takeDecisions?(runId: string, conversationId: string): Promise<string>;
   maxConcurrentRuns?: number;
+  /** Where each run's trace JSON goes; absent = no trace. */
+  trace?: TraceSink | null;
+}
+
+export interface AgentToolHooks {
+  onLlm?: LlmObserver;
+}
+
+export const INTERRUPTED_TOOL_RESULT = "ERROR: 上次运行在这个工具执行期间被中断，结果未知：它可能已经写入，也可能没有。"
+  + "重做之前先用 get / list / changes 核对，已经存好的不要重复存。";
+
+/**
+ * A session persisted mid tool batch (the process died between tool calls)
+ * ends with an assistant tool-call message whose calls do not all have
+ * results. Close each missing one with an "interrupted, verify first" error
+ * so the model can continue without re-running writes blindly.
+ */
+export function reconcileInterruptedSession(session: ChatMessage[]): { messages: ChatMessage[]; closed: string[] } {
+  let index = session.length - 1;
+  while (index >= 0 && session[index].role === "tool") index -= 1;
+  const assistant = session[index];
+  if (!assistant || assistant.role !== "assistant" || !assistant.tool_calls?.length) return { messages: session, closed: [] };
+  const answered = new Set(session.slice(index + 1).map((message) => message.tool_call_id));
+  const missing = assistant.tool_calls.filter((call) => !answered.has(call.id));
+  return {
+    messages: [...session, ...missing.map((call): ChatMessage => ({ role: "tool", tool_call_id: call.id, name: call.function.name, content: INTERRUPTED_TOOL_RESULT }))],
+    closed: missing.map((call) => call.function.name),
+  };
 }
 
 export type StreamListener = (event: RawRunEvent) => void | Promise<void>;
@@ -108,6 +142,21 @@ export function promptWithContext(goal: string, contextMessages: Array<{ role: s
   if (!rows.length) return goal;
   return "Prior task conversation (context only; Operation results remain the source "
     + `of truth):\n${rows.join("\n").slice(0, 10_000)}\n\nCurrent user request:\n${goal}`;
+}
+
+/** One turn's latency + cache numbers for runtime.turn_completed (the run trace). */
+function turnLlmStats(event: Extract<LoopEvent, { type: "turn_end" }>): Json {
+  const usage = event.usage;
+  const cached = usage.cached_input_tokens ?? 0;
+  return {
+    ...event.timing,
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    cached_input_tokens: cached,
+    cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
+    cache_hit_rate: !usage.estimated && usage.input_tokens > 0 ? Number((cached / usage.input_tokens).toFixed(3)) : null,
+    estimated: usage.estimated,
+  };
 }
 
 function contextUsage(event: Extract<LoopEvent, { type: "turn_end" }>): Json {
@@ -273,9 +322,7 @@ export class AgentHost {
       goal = goal || String(existing.goal || "").trim();
       const stored = await state.store.getSession(existing.id);
       if (!stored) throw new CoreError("Run 没有可恢复的 Agent Session，不能确定性恢复。", "conflict");
-      const last = stored.at(-1);
-      if (last?.role === "assistant" && last.tool_calls?.length) throw new CoreError("Interrupted tool batch needs reconciliation", "conflict");
-      session = stored;
+      session = reconcileInterruptedSession(stored).messages;
       run = existing;
     } else {
       run = await state.createRun({
@@ -296,6 +343,17 @@ export class AgentHost {
     }
     const runId = run.id;
     const listener = input.listener;
+    const trace = this.deps.trace ? new RunTrace(runId, { journeyId: options.journey_id || "", codeVersion: this.deps.trace.codeVersion }) : null;
+    if (trace && input.resumeRunId) trace.update({ resumed: true });
+    const writeTrace = async (terminal: TraceTerminalState, stopReason: string, error = "") => {
+      if (!trace || trace.finished || !this.deps.trace) return;
+      try {
+        await this.deps.trace.write(trace.finish(terminal, stopReason, error));
+      } catch {
+        // A trace that cannot be written never fails the run.
+      }
+    };
+    const toolStarted = new Map<string, number>();
     const activeRun: ActiveRun = { controller: new AbortController(), steering: [], promptActive: false };
     this.active.set(runId, activeRun);
 
@@ -339,7 +397,7 @@ export class AgentHost {
     };
 
     const turnState: { inputRequest: AgentInputRequest | null } = { inputRequest: null };
-    const tools = this.deps.tools();
+    const tools = this.deps.tools(trace ? { onLlm: (call) => trace.llm(call) } : {});
     const describe = new Map(tools.map((tool) => [tool.name, tool.description]));
     const askTool: AgentTool = {
       name: "request_user_input",
@@ -377,6 +435,7 @@ export class AgentHost {
       await flushDeltas().catch(() => undefined);
       const latest = await state.loadRun(runId);
       if (latest?.status === "cancelled") {
+        await writeTrace("cancelled", "aborted");
         return { ok: false, run: latest, assistant_message: String(latest.final_result?.assistant_message || ""), pending_actions: [], errors: ["Run 已由使用者取消。"] };
       }
       await state.expirePendingInputRequests(runId, "run_failed").catch(() => 0);
@@ -389,24 +448,28 @@ export class AgentHost {
         final_result: { ...failed.final_result, terminal_state: "failed", stop_reason: "error", turn_finished: false },
       }, { type: "runtime.failed", payload: { error: message } });
       await publish("run.failed", { status: "failed", error: message });
+      await writeTrace("failed", "error", message);
       await persistAndPublish("run.turn_finished", { status: "failed" });
       const reloaded = await state.loadRun(runId) || failed;
       failed = await state.saveRun({ ...reloaded, final_result: { ...reloaded.final_result, turn_finished: true } });
       return { ok: false, run: failed, assistant_message: "", pending_actions: [], errors: [message] };
     };
 
+    // Build the prompt (overview + memory reads) while the run is set up, not after.
+    const promptReady = this.deps.systemPrompt({ maxSteps });
+    promptReady.catch(() => undefined);
     try {
       await publish("run.created", { task_id: run.task_id, skill_id: SKILL_ID, status: run.status });
       if (!input.resumeRunId) for (const seed of await state.listEvents(runId)) await publishPersisted(seed);
       const llm = await this.deps.resolveLlm(options);
       const metadata = { runtime: RUNTIME_ID, provider_id: "embedded", protocol_version: PROTOCOL_VERSION, ...llm.metadata };
+      trace?.update({ model: llm.metadata.model, provider: llm.metadata.provider });
       run = await state.saveRun(
         { ...run, status: "executing", llm_runtime: { ...run.llm_runtime, ...metadata, status: input.resumeRunId ? "resuming" : "starting", session_id: runId } },
         input.resumeRunId ? { type: "recovery.started", payload: { session_id: runId } } : undefined,
       );
       await publish(input.resumeRunId ? "runtime.resuming" : "runtime.starting", { provider: llm.metadata.provider, model: llm.metadata.model });
 
-      await state.store.putSession(runId, session);
       await persistWorkerEvent("runtime.session_started", { session_id: runId, kernel: "ts" }, "run.started");
       const allTools = [...tools, askTool];
       const current = await state.loadRun(runId) || run;
@@ -417,6 +480,11 @@ export class AgentHost {
         : input.resumeRunId ? goal : promptWithContext(goal, input.contextMessages);
       const decisions = this.deps.takeDecisions ? await this.deps.takeDecisions(runId, String(run.conversation_id || "")) : "";
       promptMessage = [decisions, promptMessage].filter(Boolean).join("\n\n");
+      const prompt = await promptReady;
+      const systemPrompt = typeof prompt === "string" ? prompt : prompt.system;
+      // Context only opens a fresh session: a resumed / continued session keeps the
+      // context it started with, so the bytes already sent stay a cacheable prefix.
+      if (typeof prompt !== "string" && prompt.context && !session.length) promptMessage = `${contextBlock(prompt.context)}\n\n${promptMessage}`;
       const userContent: string | ChatContentPart[] = input.images?.length
         ? [{ type: "text", text: promptMessage }, ...input.images.map((url) => ({ type: "image_url" as const, image_url: { url } }))]
         : promptMessage;
@@ -424,7 +492,9 @@ export class AgentHost {
       await state.store.putSession(runId, session);
 
       activeRun.promptActive = true;
-      const systemPrompt = await this.deps.systemPrompt({ maxSteps });
+      let reasoningShown = false;
+      const traceTurns: Json[] = [];
+      trace?.update({ prompt_version: await textVersion(systemPrompt), step_budget: maxSteps });
       const result = await runAgentLoop({
         client: llm.client,
         systemPrompt,
@@ -434,6 +504,8 @@ export class AgentHost {
         hardLimit: maxSteps + 1,
         signal: activeRun.controller.signal,
         reasoningEffort: options.reasoning_effort || "",
+        maskSeed: runId,
+        cacheKey: `offeru-${String(run.conversation_id || runId)}`,
         takeSteering: () => activeRun.steering.splice(0, activeRun.steering.length),
         onSavePoint: (messages) => state.store.putSession(runId, messages),
         emit: async (event) => {
@@ -448,18 +520,36 @@ export class AgentHost {
               return;
             }
             case "thinking_delta":
-              return;
+              // Tell the UI the model is already producing (reasoning models think for a while
+              // before the first text); once per turn, never stored.
+              if (reasoningShown || !event.text) return;
+              reasoningShown = true;
+              return publish("reasoning.delta", { characters: event.text.length, ...runtimeTag });
             case "agent_start":
               return persistWorkerEvent("runtime.agent_started", {}, "kernel.agent_start");
             case "turn_start":
+              reasoningShown = false;
               return persistWorkerEvent("runtime.turn_started", {}, "kernel.turn_start");
             case "turn_end":
-              return persistWorkerEvent("runtime.turn_completed", { context_usage: contextUsage(event) }, "kernel.turn_end");
+              {
+                const llmStats = turnLlmStats(event);
+                if (trace) {
+                  traceTurns.push(llmStats);
+                  trace.update({ llm_turns: traceTurns });
+                  if (event.usage && !event.usage.estimated) trace.update({ usage: { prompt: event.usage.input_tokens, completion: event.usage.output_tokens } });
+                }
+                return persistWorkerEvent("runtime.turn_completed", { context_usage: contextUsage(event), llm: llmStats }, "kernel.turn_end");
+              }
             case "agent_end":
               return persistWorkerEvent("runtime.agent_settled", {}, "kernel.agent_end");
             case "tool_execution_start":
             case "tool_execution_end": {
               const started = event.type === "tool_execution_start";
+              if (started) toolStarted.set(event.tool_call_id, Date.now());
+              else if (trace && event.type === "tool_execution_end") {
+                const begun = toolStarted.get(event.tool_call_id) ?? Date.now();
+                trace.tool(event.tool_name, event.args, (Date.now() - begun) / 1000, event.result.content.map((part) => part.text).join(""), event.is_error);
+              }
               return persistWorkerEvent(started ? "runtime.tool_started" : "runtime.tool_completed", {
                 tool_call_id: event.tool_call_id,
                 operation: event.tool_name,
@@ -504,6 +594,8 @@ export class AgentHost {
         : inputRequest || pendingActions.length || askedUser ? "waiting_user" : "completed";
 
       let latest = await state.loadRun(runId) || run;
+      // Aborted after the last model turn: the user's stop wins over a late "completed".
+      if (latest.status === "cancelled") throw new Error("aborted");
       latest = await state.saveRun({
         ...latest,
         status: "completed",
@@ -517,6 +609,7 @@ export class AgentHost {
           terminal_state: terminalState,
           stop_reason: stopReason,
           steps_used: result.turns,
+          llm_stats: summarizeTurnStats(result.turnStats) as Json,
         },
       });
       if (inputRequest) await publish("run.waiting_input", { input_request: inputRequest });
@@ -525,6 +618,8 @@ export class AgentHost {
       await persistAndPublish("run.turn_finished", { status: latest.status });
       const reloaded = await state.loadRun(runId) || latest;
       const finished = await state.saveRun({ ...reloaded, final_result: { ...reloaded.final_result, turn_finished: true } });
+      trace?.update({ steps_used: result.turns });
+      await writeTrace(terminalState as TraceTerminalState, stopReason);
       return { ok: true, run: finished, assistant_message: assistant, pending_actions: pendingActions, input_request: inputRequest };
     } catch (cause) {
       activeRun.promptActive = false;
@@ -562,7 +657,7 @@ export class AgentHost {
     }
     await state.expirePendingInputRequests(runId, "run_cancelled").catch(() => 0);
     run = await state.loadRun(runId) || run;
-    run = await state.saveRun({ ...run, status: "cancelled", failure_reason: "cancelled_by_user", final_result: { ...run.final_result, turn_finished: false } });
+    run = await state.saveRun({ ...run, status: "cancelled", failure_reason: "cancelled_by_user", final_result: { ...run.final_result, terminal_state: "cancelled", stop_reason: "aborted", turn_finished: false } });
     await state.appendEvent(runId, "run.turn_finished", { status: "cancelled" });
     run = await state.loadRun(runId) || run;
     run = await state.saveRun({ ...run, final_result: { ...run.final_result, turn_finished: true } });

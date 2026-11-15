@@ -6,3 +6,4 @@ export * from "./host";
 export * from "./tools";
 export * from "./tool-specs";
 export * from "./runtime";
+export * from "./trace";

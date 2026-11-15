@@ -25,10 +25,11 @@ import {
 import { CoreError, type CoreContext, type CoreStore, type Json } from "../types";
 import { AgentHost, type PreparedAttachments, type ResolvedLlm, type RunOptions } from "./host";
 import type { AgentTool } from "./loop";
-import { AGENT_ACTOR, agentSystemPrompt, type MemoryArm } from "./prompt";
+import { AGENT_ACTOR, agentPromptParts, type MemoryArm } from "./prompt";
 import { AgentConversations, AgentRunState, type AgentRunStore } from "./run-state";
 import { CORE_TOOL_SPECS, coreToolSpecs } from "./tool-specs";
 import { bindAgentTools } from "./tools";
+import { observeLlm, type TraceSink } from "./trace";
 
 /** Record tools every runtime has (core/tools.py TOOLS that need no network / files / model). */
 export const AGENT_RECORD_TOOLS = ["overview", "search", "list", "get", "save", "delete", "undo", "changes"] as const;
@@ -65,6 +66,8 @@ export interface AgentRuntimeDeps {
   prepareAttachments?: (message: string, ids: string[]) => Promise<PreparedAttachments>;
   maxConcurrentRuns?: number;
   memoryArm?: MemoryArm;
+  /** Where each run's trace JSON goes (companion: OFFERU_TRACE_DIR); absent = no trace. */
+  trace?: TraceSink | null;
   now?: () => string;
 }
 
@@ -89,19 +92,21 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
       if (isResolved(picked)) return picked;
       return { client: picked, metadata: { provider: picked.provider || "custom", model: picked.model || "", source: "active_config" } };
     },
-    tools() {
-      const record = bindAgentTools(registrySpecs, (name, args) => {
+    tools(hooks = {}) {
+      const record = bindAgentTools(registrySpecs, (name, args, context) => {
         const ctx = agentContext();
         const runtime = deps.toolDeps?.(ctx) ?? { store: deps.store };
-        return callCoreTool(name, args, { ...runtime, ctx }, handlers);
+        const llm = runtime.llm && hooks.onLlm ? observeLlm(runtime.llm, hooks.onLlm) : runtime.llm;
+        return callCoreTool(name, args, { ...runtime, llm, ctx, signal: context?.signal }, handlers);
       });
       const extra = deps.extraTools?.() ?? [];
       const names = new Set(record.map((tool) => tool.name));
       return [...record, ...extra.filter((tool) => !names.has(tool.name))];
     },
-    systemPrompt: ({ maxSteps }) => agentSystemPrompt(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm }),
+    systemPrompt: ({ maxSteps }) => agentPromptParts(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm }),
     prepareAttachments: deps.prepareAttachments,
     maxConcurrentRuns: deps.maxConcurrentRuns,
+    trace: deps.trace ?? null,
   });
 }
 

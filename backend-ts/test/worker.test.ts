@@ -36,6 +36,26 @@ describe("worker", () => {
     expect(sent.get("cookie")).toBeNull();
   });
 
+  it("streams the upstream body through without buffering (first SSE chunk before upstream ends)", async () => {
+    let finish: () => void = () => undefined;
+    const upstreamDone = new Promise<void>((resolve) => { finish = resolve; });
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(new TextEncoder().encode("data: {\"first\":1}\n\n"));
+        await upstreamDone;
+        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { headers: { "content-type": "text/event-stream" } })));
+    const res = await relay("https://api.deepseek.com/chat/completions", { body: "{}" });
+    const reader = res.body!.getReader();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain("first");
+    finish();
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain("[DONE]");
+  });
+
   it("GET only for model lists", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{\"data\":[]}")));
     expect((await relay("https://api.deepseek.com/models", { method: "GET" })).status).toBe(200);

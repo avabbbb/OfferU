@@ -81,6 +81,8 @@ export function createLocalBackend(baseFetch: Fetch = globalThis.fetch.bind(glob
     schoolLogos: staticSchoolLogos(logoBase, (url) => baseFetch(url)),
     renderer: null,
     agentRuns: new IndexedDbAgentRunStore(),
+    // Agent run traces are written to disk by the companion only (OFFERU_TRACE_DIR); the page keeps none.
+    agentTrace: null,
   };
   const app = createApp(deps);
   void ready.then(() => agentHost(deps).state.recoverInterrupted()).catch(() => undefined);
