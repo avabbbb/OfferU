@@ -4,6 +4,7 @@ import { isCoreError, type CoreErrorCode, type CoreStore, type HttpFetch, type L
 import { registerRoutes } from "./routes";
 import type { AgentBoardService } from "./routes/agent-board";
 import type { BossLoginService } from "./routes/companion/boss-login";
+import type { ConfigRuntime } from "./routes/config";
 import { TOOL_NAMES, type ToolRuntime } from "./tools";
 
 /**
@@ -16,8 +17,9 @@ export interface AppDeps {
   store: CoreStore;
   /** Local pairing secret; undefined on runtimes with no pairing (stateless Worker proxy). */
   pairingToken?: () => string;
-  runtime: "node" | "worker";
-  storage: "sqlite" | "none";
+  /** node = desktop companion, worker = Cloudflare Worker (stateless), browser = the in-page backend of the web build. */
+  runtime: "node" | "worker" | "browser";
+  storage: "sqlite" | "none" | "indexeddb";
   /** The user's configured model (BYOK); called per request so a changed key applies at once. Absent/null = no model. */
   llm?: () => LlmClient | null;
   /** Web search (Bocha / Tavily / Serper) built from the user's keys; absent/null = not configured. */
@@ -42,6 +44,10 @@ export interface AppDeps {
   agentBoard?: AgentBoardService | null;
   /** Named data backups (companion: <data>/backups). Absent = backup list/create/restore answer 501; export/import still work. */
   backups?: BackupFiles | null;
+  /** The user's model settings (/api/config); absent = 501. */
+  config?: ConfigRuntime | null;
+  /** fetch for model endpoints (the web build routes CORS-less providers through the Worker relay); default = fetch. */
+  llmFetch?: HttpFetch;
   /** Agent run rows (SQLite on the companion, IndexedDB in the browser); absent = in-memory. */
   agentRuns?: AgentRunStore;
 }

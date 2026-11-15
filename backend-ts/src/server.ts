@@ -1,7 +1,7 @@
 import type { Server } from "node:http";
 
 import { createAdaptorServer } from "@hono/node-server";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { pairingToken } from "./pairing";
@@ -16,18 +16,24 @@ import { NodeAgentBoard } from "./routes/companion/agent-board";
 import { nodeBackupFiles } from "./routes/companion/backups";
 import { nodeBossLogin } from "./routes/companion/boss-cli";
 import { filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
+import { ConfigRuntime } from "./routes/config";
+import { nodeConfigFile } from "./routes/companion/config-file";
+import { llmFromEnv } from "./llm-env";
 import { openStore } from "./store";
 import type { SqliteCoreStore } from "./store";
 
 export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDeps> = {}): Server {
-  const { llm, search, fetch, companion } = nodeToolRuntime(store);
+  const { search, fetch, companion } = nodeToolRuntime(store);
+  const config = new ConfigRuntime(nodeConfigFile(join(dirname(dbPath()), "offeru-ts-config.json")), (input, init) => globalThis.fetch(input, init), (name) => process.env[name]);
+  void config.get().catch(() => undefined);
   const deps: AppDeps = {
     store,
     pairingToken,
     runtime: "node",
     storage: "sqlite",
-    // The model comes from the user's config (AppDeps.llm, owned by the config domain); env vars are a dev fallback only.
-    llm,
+    // The model comes from the user's saved settings (/api/config); OFFERU_LLM_* env vars are a dev fallback only.
+    llm: () => config.llm() ?? llmFromEnv(),
+    config,
     search,
     fetch,
     companion,
