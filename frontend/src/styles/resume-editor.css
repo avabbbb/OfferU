@@ -17,7 +17,9 @@
 
 .re-grid {
   display: grid; flex: 1; min-height: 0; gap: var(--ou-space-4);
-  grid-template-columns: minmax(11.5rem, 13.5rem) minmax(0, 1fr) minmax(21rem, 26rem);
+  /* 弹性三栏：两侧栏随编辑器宽度（cqi）伸缩、有上下限，A4 预览吃剩下的宽度并按「适应」缩放。
+     27 寸宽屏两侧到上限；16 寸笔记本开着侧栏时两侧收窄，预览仍留在中间，不再被挤到下面。 */
+  grid-template-columns: clamp(9.5rem, 15cqi, 13.5rem) minmax(0, 1fr) clamp(18rem, 31cqi, 26rem);
   grid-template-areas: "rail preview editor";
 }
 .re-rail, .re-editor {
@@ -69,7 +71,15 @@ input.re-module-title:focus { background: var(--ou-bg-field); }
 .re-rich, .re-bullets, .re-contacts { display: flex; flex-direction: column; gap: var(--ou-space-1); min-width: 0; }
 .re-rich > .ou-field-label, .re-bullets > .ou-field-label, .re-contacts > .ou-field-label { color: var(--ou-text-secondary); }
 /* 要点的「+ / ⋮⋮」把手在左侧留白里：给它留出位置。 */
-.re-bullets .rf-blocks { padding-left: var(--ou-space-8); }
+/* 要点框：和「描述」同一种实白编辑框（描边 + 轻投影），聚焦时整框出焦点环；左侧留白给把手。 */
+.re-bullets .rf-blocks {
+  gap: 0.25rem; padding: var(--ou-space-3) var(--ou-space-3) var(--ou-space-2) 3.25rem;
+  border-radius: var(--ou-radius-control); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-field-edge);
+  transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.re-bullets .rf-blocks:hover { box-shadow: var(--ou-field-edge-hover); }
+.re-bullets .rf-blocks:focus-within { box-shadow: var(--ou-ring-focus); }
+.re-bullets .rf-add-line { margin-top: var(--ou-space-1); }
 .re-bullets .rf-bullet { font-size: var(--ou-type-body); }
 .re-item-foot { display: flex; justify-content: flex-end; }
 .re-polish svg { color: var(--ou-tone-purple-dot); }
@@ -79,7 +89,8 @@ input.re-module-title:focus { background: var(--ou-bg-field); }
 .re-chips .ou-chip { gap: var(--ou-space-1); padding: 0 var(--ou-space-3); background: var(--ou-bg-control); }
 
 /* 富文本：一张实白框，顶上常驻格式条（B I U · 列表 · 链接），正文 14px。 */
-.resume-shell .rt.rt-boxed { border-radius: var(--ou-radius-control); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-capsule-shadow); }
+.resume-shell .rt.rt-boxed { border-radius: var(--ou-radius-control); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-field-edge); transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard); }
+.resume-shell .rt.rt-boxed:hover { box-shadow: var(--ou-field-edge-hover); }
 .resume-shell .rt.rt-boxed:focus-within { box-shadow: var(--ou-ring-focus); }
 .rt-fixedbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.125rem; padding: var(--ou-space-1); color: var(--ou-text-secondary); border-bottom: 1px solid var(--ou-line-separator); }
 .rt-fixedbar-sep { width: 1px; height: 1rem; margin: 0 var(--ou-space-1); background: var(--ou-line-separator); }
@@ -133,9 +144,16 @@ input.re-module-title:focus { background: var(--ou-bg-field); }
 .rm-add:hover { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
 
 /* ── 窄窗口（按编辑器自己的宽度，不按视口：开着侧栏 / Agent 栏时也对）──
-   ≥ 66rem 三栏；40–66rem 模块 + 编辑并排、预览放到下面；< 40rem 一列。后两档整页滚，三栏不再各自滚。 */
+   ≥ 52rem 弹性三栏（≤ 64rem 时收紧间距和内边距）；40–52rem 模块 + 编辑并排、预览放到下面；< 40rem 一列。后两档整页滚。 */
 .resume-shell.re-shell { container-type: inline-size; container-name: re; }
-@container re (max-width: 66rem) {
+@container re (max-width: 64rem) {
+  .re-grid { gap: var(--ou-space-3); }
+  .re-rail { padding: var(--ou-space-3) var(--ou-space-2); }
+  .re-module { padding-inline: var(--ou-space-4); }
+  .re-fields { gap: var(--ou-space-3); }
+  .re-tabs { margin-inline: var(--ou-space-3); }
+}
+@container re (max-width: 52rem) {
   .re-grid { flex: none; grid-template-columns: minmax(10.5rem, 12rem) minmax(0, 1fr); grid-template-areas: "rail editor" "preview preview"; }
   .re-rail, .re-editor, .re-tabpanel { overflow: visible; align-self: start; }
   .re-preview { height: 85dvh; }
@@ -188,3 +206,11 @@ input.re-module-title:focus { background: var(--ou-bg-field); }
 .re-template-name { display: inline-flex; align-items: center; gap: var(--ou-space-1); color: var(--ou-text-primary); font-size: var(--ou-type-body); font-weight: 600; }
 .re-template-note { color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
 .re-bullets .rt .rt-edit { font-size: var(--ou-type-body); line-height: 1.6; }
+
+/* 浮在预览上的两枚胶囊（按岗位改写 / 缩放）：浓一点的玻璃 + 发丝描边 + 顶部高光，不再像一层没边的雾。 */
+.resume-shell .rp-toolbar { padding-top: var(--ou-space-1); }
+.resume-shell .rp-toolbar > div, .resume-shell .rp-zoom {
+  background: var(--ou-glass-strong);
+  box-shadow: var(--ou-glass-highlight), inset 0 0 0 1px var(--ou-line-control), var(--ou-elev-2);
+}
+.resume-shell .rp-toolbar > div { padding: 0.375rem 1rem; }
