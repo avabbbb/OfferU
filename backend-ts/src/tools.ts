@@ -10,6 +10,7 @@ import {
   type SearchClient,
   type ToolDeps,
   type ToolHandler,
+  type FileSource,
 } from "@offeru/core";
 
 /**
@@ -29,7 +30,13 @@ export type ToolRuntime = {
   companion?: {
     handlers: Record<string, ToolHandler>;
     readFile?: ToolDeps["readFile"];
+    /** export_resume_pdf / draft_email attachments: print into <data>/exports (Playwright). */
+    exportResumePdf?: ToolDeps["exportResumePdf"];
   };
+  /** Uploaded photo / logo files for resume rendering (tailor_resume). */
+  files?: FileSource | null;
+  /** A4 page count of resume HTML (tailor_resume review); absent = not measured. */
+  measure?: ToolDeps["measure"];
 };
 
 /** GET /api/tools — same shape as Python: {name, description, input: JSON schema}. */
@@ -46,6 +53,9 @@ export function toolDeps(runtime: ToolRuntime, actor: string, signal?: AbortSign
     search: runtime.search?.() ?? null,
     fetch: runtime.fetch,
     readFile: runtime.companion?.readFile,
+    exportResumePdf: runtime.companion?.exportResumePdf,
+    files: runtime.files ?? null,
+    measure: runtime.measure ?? null,
     signal,
   };
 }

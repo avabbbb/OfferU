@@ -321,6 +321,10 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
       return timing;
     };
 
+    // Persist the tool-call message before running the batch, and after each result, so a process
+    // that dies mid-batch leaves a session the host can reconcile on resume instead of replaying writes.
+    if (toolCalls.length) await options.onSavePoint?.(session);
+
     if (lastFinish === "error" || lastFinish === "aborted") {
       await emit({ type: "turn_end", usage: lastUsage ?? ZERO_USAGE, messages: session, timing: turnEnd() });
       return finish(lastFinish, error);
@@ -351,6 +355,7 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
         }
         await emit({ type: "tool_execution_end", tool_call_id: call.id, tool_name: call.name, args: call.args, result: resultView(call.id, call.name, result), is_error: result.isError });
         session.push(toolMessage(call.id, call.name, result));
+        await options.onSavePoint?.(session);
         if (result.terminate) terminate = true;
         if (options.signal?.aborted && !terminate) break;
       }
