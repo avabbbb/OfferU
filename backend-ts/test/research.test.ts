@@ -15,8 +15,8 @@ import {
   saveRecord,
   sourceFact,
   todayIso,
-  type ChatMessage,
-  type ChatOptions,
+  type LlmMessage,
+  type LlmChatOptions,
   type EvaluateEvent,
   type LlmClient,
 } from "@offeru/core";
@@ -30,12 +30,12 @@ const parity = JSON.parse(readFileSync(new URL("./fixtures/job-eval-parity.json"
   memories: Array<Record<string, unknown>>;
   profile_text: string;
   empty_profile_text: string;
-  cases: Array<{ job: Record<string, unknown>; raw: string; messages?: ChatMessage[]; options: Record<string, unknown>; result: unknown }>;
-  empty_case: { job: Record<string, unknown>; raw: string; messages: ChatMessage[]; result: unknown };
+  cases: Array<{ job: Record<string, unknown>; raw: string; messages?: LlmMessage[]; options: Record<string, unknown>; result: unknown }>;
+  empty_case: { job: Record<string, unknown>; raw: string; messages: LlmMessage[]; result: unknown };
   source_facts: Array<{ job: Record<string, unknown>; fact: [string, string] }>;
 };
 
-function scripted(raws: Array<string | null>, seen: Array<{ messages: ChatMessage[]; options?: ChatOptions }> = []): LlmClient {
+function scripted(raws: Array<string | null>, seen: Array<{ messages: LlmMessage[]; options?: LlmChatOptions }> = []): LlmClient {
   let call = 0;
   return {
     async chat(messages, options) {
@@ -65,7 +65,7 @@ describe("job evaluation matches Python job_eval", () => {
 
   it("sends the same prompt and normalizes the same way", async () => {
     for (const item of [...parity.cases, { ...parity.empty_case, options: {}, empty: true }] as Array<(typeof parity.cases)[number] & { empty?: boolean }>) {
-      const seen: Array<{ messages: ChatMessage[]; options?: ChatOptions }> = [];
+      const seen: Array<{ messages: LlmMessage[]; options?: LlmChatOptions }> = [];
       const profileText = item.empty ? parity.empty_profile_text : parity.profile_text;
       const result = await evaluateJob(scripted([item.raw || null], seen), profileText, item.job);
       expect(result, item.raw).toEqual(item.result);
@@ -77,7 +77,7 @@ describe("job evaluation matches Python job_eval", () => {
 
   it("extracts JSON like Python extract_json", () => {
     expect(extractJson("x {\"a\": \"}{\"} y {\"b\": 1}")).toEqual({ a: "}{" });
-    // Python returns the list; every caller only uses dicts, so core returns null for non-objects.
+    // core-tools extractJson only returns objects; Python returns the list but job_eval treats non-dicts as no result.
     expect(extractJson("[1]")).toBeNull();
     expect(extractJson("{bad} {\"ok\": true}")).toEqual({ ok: true });
     expect(extractJson("")).toBeNull();
@@ -221,5 +221,15 @@ else if (cmd === "login-qr") {
     expect(cancelled).toEqual({ installed: true, status: "idle", message: "", qr: null, logged_in: true, capabilities: { sync: true, search: false } });
     const loggedOut = await app.request("/api/applications/boss-login/logout", { method: "POST" });
     expect(loggedOut.status).toBe(200);
+  });
+});
+
+describe("llmFromEnv (dev fallback over core createOpenAiLlm)", () => {
+  it("returns null without base url/model and a core client otherwise", async () => {
+    const { llmFromEnv } = await import("../src/llm-env");
+    expect(llmFromEnv({})).toBeNull();
+    const llm = llmFromEnv({ OFFERU_LLM_BASE_URL: "http://127.0.0.1:11434/v1", OFFERU_LLM_MODEL: "m" });
+    expect(llm).not.toBeNull();
+    expect(llm!.local).toBe(true);
   });
 });
