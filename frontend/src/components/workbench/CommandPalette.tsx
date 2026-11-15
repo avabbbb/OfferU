@@ -9,6 +9,7 @@
 // 视觉守 docs/DESIGN.md §10/§11：黑白灰、层级靠字号字重颜色、一个浮起容器。
 // =============================================
 
+import { ActivePill } from "@/components/ui";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -212,7 +213,8 @@ export function CommandPalette() {
                 aria-autocomplete="list"
                 spellCheck={false}
               />
-              <div className="offeru-command-segment" role="tablist" aria-label="模式">
+              <div className="offeru-command-segment ou-pill-host" role="tablist" aria-label="模式">
+                <ActivePill />
                 {(["search", "ask"] as const).map((value) => (
                   <button
                     key={value}

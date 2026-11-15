@@ -224,6 +224,7 @@ Lucide 线性图标，15–16px，描边 1.75–2，颜色跟文字走（多数�
 动效只回答三件事：**从哪来、到哪去、现在在干嘛**。
 
 - 页面切换：上浮 6px + 淡入（`.ou-page-enter`）
+- 导航 / 分段选中（`ActivePill`，参考 Inspora · Rolando「Bleep App」）：组里只有一颗白胶囊，点击后从旧项平移到新项，`--ou-motion-glide`（300ms）+ `--ou-ease-glide`，不拉伸、无回弹，跨多行略慢（≤ 1.45 倍）；图标和文字不动、只变深。减少动效时瞬时到位
 - 列表进场：逐项错开 28ms，最多 8 项（`.ou-enter` + `--i`）
 - Agent 换阶段（`.ou-orb-pill`）：旧胶囊模糊 + 右滑 12px + 淡出，新胶囊淡入，都是 `--ou-motion-slow`（参考 Inspora 5-8 · Jakub Antalik「Thinking orbs」）；动效只在点阵球里，文字是静的。减少动效时球停在代表帧、旧胶囊直接隐藏
 - 浮层：从触发点缩放 0.97 → 1；弹窗：0.96 → 1 + 遮罩淡入

@@ -9,6 +9,7 @@ export { Popover } from "./Popover";
 export { Floating } from "./Floating";
 export { Dialog } from "./Dialog";
 export { PanelHeader, PanelSection } from "./Panel";
+export { ActivePill } from "./ActivePill";
 export { Pill, toneOf, TONES, type Tone } from "./Pill";
 export { ContextUsageRing } from "./agent/ContextUsageRing";
 export { LabelPicker, Tag, BrailleLoader, type LabelOption, type LabelCreateState } from "./LabelPicker";

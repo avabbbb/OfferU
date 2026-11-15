@@ -1,5 +1,6 @@
 "use client";
 
+import { ActivePill } from "@/components/ui";
 import { AlignJustify, ArrowUpDown, Layers, ListFilter, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
@@ -41,7 +42,8 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
   return (
     <div className="space-y-2 pb-1">
     <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
-      <div role="tablist" aria-label="视图" className="ou-segment">
+      <div role="tablist" aria-label="视图" className="ou-segment ou-pill-host">
+        <ActivePill />
         {VIEW_KINDS.map((k) => (
           <button key={k} type="button" role="tab" aria-selected={state.active === k} onClick={() => setActive(k)}
             className="ou-segment-item">

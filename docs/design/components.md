@@ -84,6 +84,15 @@ L4 磨砂（20px 圆角）+ 带 6px 模糊的遮罩。宽 min(32rem, 视口 − 
 - 分节直接铺在面板底色上，节与节之间靠留白分开（v3 不画分隔线）；**不在灰底里再套白卡**。
 - 示例（Agent 模型配置）：标题「OfferU Agent · 未配置模型」→ 预设（Select，带 Provider 图标）→ API Key（Input + 显示 / 隐藏）→ 「高级」折叠里放 Base URL 和模型名（选了预设自动填）→ 一行安全提示 +「了解更多」→ 主按钮「保存并开始」。
 
+## ActivePill（共享滑动选中胶囊，`components/ui/ActivePill.tsx`，参考 Inspora · Rolando「Bleep App」）
+
+一组导航 / 分段里只有**一颗**白胶囊（`--ou-capsule-bg` + `--ou-capsule-shadow`），点击切换时从旧项平移到新项，图标与文字留在原地、只变深。
+
+- 用法：宿主加 `.ou-pill-host`，`<ActivePill />` 放在宿主第一个子节点；宿主里带 `aria-current="page"` / `aria-selected="true"` / `aria-checked="true"` 的那一项就是胶囊的目标。路由变化（点击、前进后退、⌘K）、键盘切换都会跟上；宿主尺寸变化（窗口缩放、侧栏变宽）直接对齐、不播动画。
+- 动效：`--ou-motion-glide`（300ms）+ `--ou-ease-glide`，只平移不拉伸、无回弹；跨多行时按行数略放慢，最多 1.45 倍。减少动效时时长为 0，切换瞬时。
+- 脚本接管后（`data-pill-ready`），`.ou-capsule-row` / `.ou-segment-item` / `.offeru-command-segment-item` 自己的选中白底让给胶囊；脚本没跑时退回逐项白胶囊，不会丢选中态。没有选中项或宿主被隐藏时胶囊淡出。
+- 已接入：侧栏主导航（`Sidebar`）、二级分段（`SectionTabs`）、岗位视图条（`jobs/ViewBar`）、`PageHeader` 的 `ViewSwitch`、简历页标签、⌘K 命令面板分段。新的分段 / 导航组直接复用，不另写滑块。
+
 ## Pill（状态 / 标签胶囊）
 
 浅底 + 深字 + 同色极淡 1px 内描边 + 6px 圆点，12.5px / 500，全圆角。`<Pill tone={toneOf(text)}>`；状态用 `STATUS_TONE`。胶囊里的字必须能单独说明含义。

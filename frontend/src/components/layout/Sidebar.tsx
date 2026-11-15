@@ -12,6 +12,7 @@ import { Search } from "lucide-react";
 import { useWorkbenchOptional } from "@/lib/workbench";
 import { modifierLabel } from "@/lib/commandPalette";
 import { AgentConnectionStatus } from "@/components/workbench/AgentConnectionPanel";
+import { ActivePill } from "@/components/ui";
 import { PRIMARY_NAV, activePrimary, type PrimaryNavItem } from "./navModel";
 
 type NavItem = PrimaryNavItem;
@@ -41,7 +42,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       aria-current={active ? "page" : undefined}
       className="offeru-nav-link ou-capsule-row group relative"
     >
-      {/* v3：图标放进磨砂小方块；悬停 / 当前页是一颗白胶囊，不加描边。 */}
+      {/* v3：图标放进磨砂小方块；悬停是半透明白底，当前页的白胶囊由 ActivePill 共享并滑动过来。 */}
       <span className="ou-tile" aria-hidden><Icon size={15} strokeWidth={1.75} /></span>
       <span className={`truncate text-[length:var(--ou-type-body)] ${active ? "font-semibold" : "font-medium"}`}>{item.label}</span>
     </Link>
@@ -82,8 +83,10 @@ export function Sidebar() {
           variants={navContainer}
           initial="hidden"
           animate="show"
-          className="offeru-sidebar-nav relative z-10 flex-1 space-y-0.5 overflow-y-auto px-3 py-3"
+          className="offeru-sidebar-nav ou-pill-host relative z-[var(--ou-layer-sticky)] flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3"
         >
+          {/* 当前页的白胶囊只有一颗：切换时从旧行滑到新行（Bleep）。 */}
+          <ActivePill />
           {PRIMARY_NAV.map((item) => (
             <motion.div key={item.href} variants={navItemVariant}>
               <NavLink item={item} active={current?.href === item.href} />

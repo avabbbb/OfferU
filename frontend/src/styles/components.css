@@ -366,6 +366,37 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 .ou-segment-item:hover { color: var(--ou-text-primary); }
 .ou-segment-item[aria-current="page"], .ou-segment-item[aria-checked="true"], .ou-segment-item[aria-selected="true"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
 
+/* 共享选中胶囊（ActivePill，Bleep 侧栏）：宿主里只有一颗白胶囊，选中项变化时平移过去（不拉伸、无回弹），
+   跨行越多略慢一点（--ou-pill-span ≤ 1.45）。脚本接管后（data-pill-ready）各项自己的选中底色让给胶囊；脚本没跑时仍是逐项白胶囊。 */
+.ou-pill-host { position: relative; isolation: isolate; }
+.ou-pill-host > :not(.ou-active-pill) { position: relative; }
+.ou-active-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--ou-pill-w, 0);
+  height: var(--ou-pill-h, 0);
+  border-radius: var(--ou-pill-r, var(--ou-radius-control));
+  background: var(--ou-capsule-bg);
+  box-shadow: var(--ou-capsule-shadow);
+  pointer-events: none;
+  transform: translate3d(var(--ou-pill-x, 0), var(--ou-pill-y, 0), 0);
+  --ou-pill-duration: calc(var(--ou-motion-glide) * var(--ou-pill-span, 1));
+  transition:
+    transform var(--ou-pill-duration) var(--ou-ease-glide),
+    width var(--ou-pill-duration) var(--ou-ease-glide),
+    height var(--ou-pill-duration) var(--ou-ease-glide),
+    opacity var(--ou-motion-base) var(--ou-ease-standard);
+}
+.ou-active-pill[data-state="hidden"] { opacity: 0; }
+.ou-active-pill[data-instant] { transition: none; }
+.ou-pill-host[data-pill-ready] :is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]):is(.ou-capsule-row, .ou-segment-item, .offeru-command-segment-item),
+.ou-pill-host[data-pill-ready] :is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]):is(.ou-capsule-row, .ou-segment-item, .offeru-command-segment-item):hover { background: transparent; box-shadow: none; }
+/* 文字和图标随胶囊一起变深（约 200ms）；图标方块本身不变。 */
+.ou-pill-host .ou-capsule-row, .ou-pill-host .ou-segment-item { transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-base) var(--ou-ease-standard); }
+.ou-pill-host .ou-capsule-row .ou-tile { transition: color var(--ou-motion-base) var(--ou-ease-standard); }
+.ou-pill-host .ou-capsule-row[aria-current="page"] .ou-tile { color: var(--ou-text-primary); }
+
 /* 筛选 chip：前面一颗空心圆，选中时填实打勾（Bleep 的 Charts / Typography）。 */
 .ou-chip { display: inline-flex; min-height: 2rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-3) 0 var(--ou-space-2); border-radius: var(--ou-radius-pill); color: var(--ou-text-secondary); font-size: var(--ou-type-sm); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard); }
 .ou-chip:hover { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }

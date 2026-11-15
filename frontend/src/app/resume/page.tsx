@@ -15,7 +15,7 @@ import { ResumeActions } from "@/components/resume/ResumeActions";
 import { StyleTab } from "@/components/resume/StyleTab";
 import { TailorBar } from "@/components/resume/TailorBar";
 import { TemplateTab } from "@/components/resume/TemplateTab";
-import { Button } from "@/components/ui";
+import { ActivePill, Button } from "@/components/ui";
 import { type Doc, type Job, type Memory, type Profile, tool, useTool, write } from "@/lib/core";
 import { resumeFromProfile } from "@/lib/resumeDraft";
 import { emptyResume, locatePath, normalizeResume, type Resume } from "@/lib/resumeModel";
@@ -170,7 +170,8 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
             }} />
         </div>
         <section className="re-editor" aria-label="编辑与排版">
-          <div className="re-tabs ou-segment" role="tablist" aria-label="右栏">
+          <div className="re-tabs ou-segment ou-pill-host" role="tablist" aria-label="右栏">
+            <ActivePill />
             {TABS.map(([id, label]) => (
               <button key={id} type="button" role="tab" id={"re-tab-" + id} aria-selected={tab === id} aria-controls="re-tabpanel"
                 className="ou-segment-item" onClick={() => setTab(id)}>

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ActivePill } from "@/components/ui";
 
 /**
  * 一级页面的页头：标题 + 一句话 + 右侧最多一个主操作。
@@ -19,7 +20,8 @@ export function PageHeader({ title, description, actions }: { title: string; des
 /** 页头右侧的视图切换（看板 / 表格 之类），比两个按钮更安静。 */
 export function ViewSwitch<T extends string>({ value, options, onChange }: { value: T; options: Array<{ id: T; label: string; icon?: ReactNode }>; onChange: (id: T) => void }) {
   return (
-    <div role="radiogroup" className="ou-segment">
+    <div role="radiogroup" className="ou-segment ou-pill-host">
+      <ActivePill />
       {options.map((option) => {
         return (
           <button key={option.id} type="button" role="radio" aria-checked={option.id === value} onClick={() => onChange(option.id)} className="ou-segment-item">
