@@ -4,6 +4,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { createMcpServer } from "../src/mcp";
 import { SqliteCoreStore } from "../src/store";
+import { TOOL_SPECS } from "@offeru/core";
+
 import { callTool } from "../src/tools";
 
 let store: SqliteCoreStore | null = null;
@@ -24,9 +26,8 @@ describe("TS MCP surface", () => {
     await client.connect(clientTransport);
     try {
       const listed = await client.listTools();
-      expect(listed.tools.map((tool) => tool.name)).toEqual([
-        "overview", "list", "get", "save", "delete", "undo", "changes", "search",
-      ]);
+      expect(listed.tools.map((tool) => tool.name)).toEqual(TOOL_SPECS.map((spec) => spec.name));
+      expect(listed.tools).toHaveLength(21);
       const result = await client.callTool({ name: "overview", arguments: {} }) as { content: Array<{ type: string; text?: string }> };
       const text = result.content[0];
       expect(text.type).toBe("text");

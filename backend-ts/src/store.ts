@@ -204,6 +204,12 @@ export class SqliteCoreStore implements CoreStore {
     return run;
   }
 
+  async changeStats(actor: string, since: string): Promise<{ count: number; last: string | null }> {
+    const row = this.db.prepare("SELECT COUNT(id) AS n, MAX(at) AS last FROM changes WHERE actor = ? AND at >= ?")
+      .get(actor, since) as { n: number; last: string | null };
+    return { count: Number(row.n), last: row.last };
+  }
+
   close(): void {
     this.db.close();
   }
