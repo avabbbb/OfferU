@@ -573,6 +573,19 @@ export const TOOL_SPECS: ToolSpec[] = [
           "description": "岗位详情页链接、整段 JD 文本，或只写「公司 岗位」（会联网找官方岗位页）",
           "title": "Text",
           "type": "string"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "贴 JD 文字时这段 JD 的来源链接（小红书笔记、BOSS 岗位页、分享文案都行）：只记录、不抓取，小红书链接只留笔记编号和 xsec_token",
+          "title": "Source Url"
         }
       },
       "required": [

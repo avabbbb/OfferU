@@ -10,6 +10,7 @@ import { API_COMPANIES, findViaApi, hostOf, splitName, type OfficialPosting } fr
 import { fetchPage, hostIn, NO_SEARCH, PASTE_ONLY_DOMAINS, RESTRICTED_DOMAINS, type FetchPageResult, type SearchResult } from "./net";
 import { guard as runGuard, guardCounts, guardWarning, type GuardCounts } from "./posting-guard";
 import type { ToolDeps } from "./deps";
+import { normalizeShareUrl, sourceOfUrl } from "./share-links";
 
 const truthy = (value: unknown) => value !== null && value !== undefined && value !== "" && value !== false && value !== 0
   && !(Array.isArray(value) && !value.length)
@@ -95,7 +96,11 @@ async function findOfficialPosting(deps: ToolDeps, name: string): Promise<[strin
 }
 
 /** 贴链接、JD 或只写「公司 岗位」建岗位。 */
-export async function addJob(deps: ToolDeps, rawText: string): Promise<Json> {
+/**
+ * sourceUrl: where a pasted JD came from (a 小红书 note, a BOSS page...). Only recorded on the job
+ * (normalized, never fetched) so the evaluation can say where the JD was seen; ignored when text is itself a link.
+ */
+export async function addJob(deps: ToolDeps, rawText: string, sourceUrl?: string | null): Promise<Json> {
   const { store, ctx } = deps;
   const text = rawText.trim();
   if (!text) throw new CoreError("要给岗位链接或 JD 文本");
@@ -128,15 +133,16 @@ export async function addJob(deps: ToolDeps, rawText: string): Promise<Json> {
   delete fields.deadline;
   const how = fields.apply as string | undefined;
   delete fields.apply;
+  const recorded = !url && sourceUrl ? normalizeShareUrl(sourceUrl) : "";
   const data: Json = {
     ...fields,
     jd: fields.jd || source,
-    url,
-    source: url ? hostOf(url) || null : null,
+    url: url || recorded || null,
+    source: url ? hostOf(url) || null : recorded ? sourceOfUrl(recorded) || null : null,
     notes: [warn, how ? `投递方式：${how}` : null].filter(Boolean).join("\n") || null,
   };
   if (!data.company && !data.title) data.title = guessIntake(source).title;
-  Object.assign(data, mergeAutoTags(url ? await findJobByUrl(store, url) : null, auto));
+  Object.assign(data, mergeAutoTags(data.url ? await findJobByUrl(store, data.url) : null, auto));
   const saved = await saveRecord(store, { type: "job", data: compact(data) }, ctx);
   const out: Json = {
     record: saved.record,

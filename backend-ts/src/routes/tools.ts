@@ -5,7 +5,10 @@ import { callTool, TOOL_LIST, type ToolRuntime } from "../tools";
 
 /** The runtime pieces of AppDeps the shared tools use. */
 export function toolRuntime(deps: AppDeps): ToolRuntime {
-  return { store: deps.store, llm: deps.llm, search: deps.search, fetch: deps.fetch, companion: deps.companion };
+  return {
+    store: deps.store, llm: deps.llm, search: deps.search, fetch: deps.fetch, companion: deps.companion,
+    files: deps.files ?? null, measure: deps.renderer ? (html) => deps.renderer!.pageCount(html) : null,
+  };
 }
 
 /**

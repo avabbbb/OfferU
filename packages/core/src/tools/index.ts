@@ -13,7 +13,7 @@ import {
   searchRecords,
   undoChange,
 } from "../operations";
-import { CoreError } from "../types";
+import { CoreError, type Json } from "../types";
 import { applyAnswer, draftEmail, reconcileMemory, splitResume } from "./apply";
 import type { ToolDeps } from "./deps";
 import { evaluateJobs } from "../research/evaluate";
@@ -21,6 +21,7 @@ import { addJob, enrichJobs } from "./jobs";
 import { fetchPage, webSearch } from "./net";
 import { exportData, importData } from "../data";
 import { nowIso } from "../labels";
+import { runTailor } from "../resume/tailor";
 import { validateArgs, type ToolSpec } from "./schema";
 import { TOOL_SPECS } from "./specs";
 
@@ -67,6 +68,7 @@ export type { FetchPageResult, HttpFetch, SearchClient, SearchKeys, SearchResult
 export { autoTags, extractIntake, guessIntake, hireFromUrl, normalizeIntake, postingOf } from "./job-intake";
 export { findViaApi, parseWant, splitName } from "./job-sources";
 export { addJob, enrichJobs } from "./jobs";
+export { normalizeShareUrl, shareLinkUrl, sourceOfUrl } from "./share-links";
 export { APPLY_PROMPT, applyAnswer, attachmentName, draftEmail, mailSubject, reconcileMemory, splitResume } from "./apply";
 export { reconcileScan } from "./reconcile";
 export type { Finding } from "./reconcile";
@@ -97,12 +99,13 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
   web_search: (a, d) => webSearch(d.search, String(a.query), num(a.limit) ?? 8),
   fetch_page: (a, d) => fetchPage(d.fetch, String(a.url)),
   split_resume: (a, d) => splitResume(d, a.text as string | null | undefined, a.path as string | null | undefined),
-  add_job: (a, d) => addJob(d, String(a.text)),
+  add_job: (a, d) => addJob(d, String(a.text), a.source_url as string | null | undefined),
   evaluate_jobs: (a, d) => evaluateJobs(d.store, d.llm, a, {
     signal: d.signal,
     enrich: (bare) => enrichChanges(d, bare),
     context: () => d.ctx,
   }),
+  tailor_resume: (a, d) => tailorResume(d, a.id as number, a.job_id as number | null | undefined, Boolean(a.review_only)),
   apply_answer: (a, d) => applyAnswer(d, a.job_id as number, String(a.question)),
   draft_email: (a, d) => draftEmail(d, a.job_id as number, a.resume_id as number | null | undefined),
   reconcile_memory: (_, d) => reconcileMemory(d),
@@ -110,12 +113,32 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
   import_data: (a, d) => importData(d.store, a.snapshot, d.ctx),
 };
 
+/** tools.py tailor_resume: run the tailor pipeline to its end; anything but "done" is an error and the resume is untouched. */
+export async function tailorResume(deps: ToolDeps, id: number, jobId?: number | null, reviewOnly = false): Promise<Json> {
+  let last: { type: string; [key: string]: unknown } = { type: "error", message: "改写没完成，简历没动" };
+  for await (const event of runTailor({
+    store: deps.store,
+    llm: deps.llm ?? null,
+    files: deps.files ?? null,
+    measure: deps.measure ?? null,
+    actor: deps.ctx.actor || "Agent",
+    signal: deps.signal,
+    context: () => deps.ctx,
+  }, id, jobId ?? null, { reviewOnly })) {
+    if (event.type === "done" || event.type === "error") last = event;
+  }
+  if (deps.signal?.aborted && last.type !== "done") throw new CoreError("已取消，简历没动", "conflict");
+  if (last.type !== "done") throw new CoreError(String(last.message || "改写没完成，简历没动"));
+  const out: Json = { doc_id: last.doc_id, change_id: last.change_id, body: last.body };
+  for (const key of ["pages", "rounds", "notes", "grounding", "asks"]) out[key] = last[key] ?? null;
+  return out;
+}
+
 /** Who owns the tools core does not implement, for the "unsupported" message. */
 const OWNER: Record<string, string> = {
   read_file: "本机伴侣（读本机文件）",
   find_files: "本机伴侣（读本机文件）",
-  export_resume_pdf: "简历模块（PDF 导出）",
-  tailor_resume: "简历模块（按岗位改写）",
+  export_resume_pdf: "本机伴侣（简历 PDF 导出）",
   email_sync: "邮箱模块",
 };
 

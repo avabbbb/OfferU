@@ -890,9 +890,42 @@ def _find_official_posting(name: str) -> tuple[str, dict[str, Any]]:
 
 class AddJobIn(_In):
     text: str = Field(description="岗位详情页链接、整段 JD 文本，或只写「公司 岗位」（会联网找官方岗位页）")
+    source_url: Optional[str] = Field(None, description="贴 JD 文字时这段 JD 的来源链接（小红书笔记、BOSS 岗位页、分享文案都行）：只记录、不抓取，小红书链接只留笔记编号和 xsec_token")
 
 
-def add_job(text: str, *, actor: str) -> dict[str, Any]:
+def _share_url(text: str) -> str:
+    """分享文案里的第一个链接；小红书笔记只留 /explore/<笔记编号> 和 xsec_token，xhslink 短链去掉参数。只记录，不抓取。
+    与 packages/core/src/tools/share-links.ts normalizeShareUrl 同规则。"""
+    from urllib.parse import urlparse
+
+    match = re.search(r"https?://[^\s\"'<>，。；！？、（）【】《》「」]+", text or "", re.I)
+    url = re.sub(r"[.,;!?)\]]+$", "", match.group(0)) if match else ""
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    if host == "xiaohongshu.com" or host.endswith(".xiaohongshu.com"):
+        note = re.search(r"/(?:explore|discovery/item|item)/([0-9a-zA-Z]+)", parsed.path)
+        if note:
+            token = re.search(r"[?&]xsec_token=([^&#]*)", url)
+            return f"https://www.xiaohongshu.com/explore/{note.group(1)}" + (f"?xsec_token={token.group(1)}" if token else "")
+    if host == "xhslink.com" or host.endswith(".xhslink.com"):
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    return url
+
+
+def _source_of_url(url: str) -> str:
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    if re.search(r"(^|\.)(xiaohongshu\.com|xhslink\.com)$", host):
+        return "xhs"
+    if re.search(r"(^|\.)zhipin\.com$", host):
+        return "boss"
+    return host
+
+
+def add_job(text: str, source_url: Optional[str] = None, *, actor: str) -> dict[str, Any]:
     """贴链接、JD 或只写「公司 岗位」建岗位：只有名字时先联网找官方岗位页；链接抓正文（抓不到就报错，不存空壳），再由模型拆出公司、岗位、城市、截止、投递方式。"""
     from urllib.parse import urlparse
 
@@ -923,12 +956,13 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
     fields.pop("tags", None)
     deadline = fields.pop("deadline", None)
     how = fields.pop("apply", None)
-    data = {**fields, "jd": fields.get("jd") or source, "url": url,
-            "source": urlparse(url).hostname if url else None,
+    recorded = _share_url(source_url) if source_url and not url else ""
+    data = {**fields, "jd": fields.get("jd") or source, "url": url or recorded or None,
+            "source": urlparse(url).hostname if url else (_source_of_url(recorded) or None) if recorded else None,
             "notes": "\n".join(filter(None, [warn, f"投递方式：{how}" if how else None])) or None}
     if not (data.get("company") or data.get("title")):
         data["title"] = job_intake.guess(source)["title"]
-    data.update(merge_auto_tags(find_job_by_url(url) if url else None, auto))
+    data.update(merge_auto_tags(find_job_by_url(data["url"]) if data["url"] else None, auto))
     saved = save("job", {k: v for k, v in data.items() if v}, actor=actor)
     out = {"record": saved["record"], "change_ids": [c for c in [saved["change_id"]] if c], "existed": saved.get("existed", False),
            "guard": guard}
