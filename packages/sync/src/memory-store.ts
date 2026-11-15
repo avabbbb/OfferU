@@ -2,7 +2,7 @@
 // adapters (merge-on-put, null drops a field, ids shared across types and the
 // change log). Used by tests and as a stand-in "browser" store.
 
-import type { ChangeRow, CoreStore, Json, PutOptions, RecordType, StoredRecord } from "@offeru/core";
+import type { ChangeRow, CoreStore, Json, PutOptions, RecordType, StoredRecord } from "../../core/src/index";
 
 const META = ["id", "type", "job_id", "created_at", "updated_at"];
 

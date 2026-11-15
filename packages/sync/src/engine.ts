@@ -12,7 +12,7 @@
 //      write the index, CAS refs/latest (If-Match). Lost the race -> back to 2
 //   5. release the lock, save state (new base = merged snapshot)
 
-import { type CoreStore, type Json, type RecordType, type StoredRecord, TYPE_LABEL, label, plain } from "@offeru/core";
+import { type CoreStore, type Json, type RecordType, type StoredRecord, TYPE_LABEL, label, plain } from "../../core/src/index";
 
 import { canonicalJson, fromUtf8, randomId, utf8 } from "./bytes";
 import type { BlobStore } from "./blobstore";

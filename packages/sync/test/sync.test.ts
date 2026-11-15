@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { undoChange } from "@offeru/core";
+import { undoChange } from "../../core/src/index";
 
 import { CONFIG_KEY, LATEST_KEY, MAGIC, MemoryS3, RemoteRepo, SyncEngine, MemoryStateStore, MemoryCoreStore } from "../src";
 import { Clock, PASS, blobsFor, device, snapshot } from "./helpers";

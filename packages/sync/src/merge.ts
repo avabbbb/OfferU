@@ -10,7 +10,7 @@
 // losing version is returned so the caller can keep it as a conflict copy.
 // An edit always beats a concurrent delete (nothing is silently lost).
 
-import type { Json, RecordType } from "@offeru/core";
+import type { Json, RecordType } from "../../core/src/index";
 
 import { canonicalJson } from "./bytes";
 

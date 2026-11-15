@@ -99,7 +99,7 @@ export class S3BlobStore implements BlobStore {
       },
     });
     try {
-      return await this.fetchImpl(url.toString(), { method, headers, body: body as BodyInit | undefined });
+      return await this.fetchImpl(url.toString(), { method, headers, body: body as RequestInit["body"] });
     } catch (cause) {
       throw new SyncError(
         "network",

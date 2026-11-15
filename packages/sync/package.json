@@ -14,9 +14,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@offeru/core": "file:../core"
-  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0",

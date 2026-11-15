@@ -1,4 +1,4 @@
-import { saveRecord, deleteRecord, type CoreStore, type StoredRecord } from "@offeru/core";
+import { saveRecord, deleteRecord, type CoreStore, type StoredRecord } from "../../core/src/index";
 
 import {
   canonicalJson,

@@ -18,9 +18,12 @@ const COMPRESS_MIN = 512;
 
 export type KdfParams = { alg: "PBKDF2-SHA256"; iterations: number; salt: string };
 
+// Spelled this way so the file typechecks with either DOM or Node globals.
+type Key = Awaited<ReturnType<typeof crypto.subtle.importKey>>;
+
 export interface SyncKeys {
-  enc: CryptoKey;
-  mac: CryptoKey;
+  enc: Key;
+  mac: Key;
 }
 
 export function newKdfParams(iterations = DEFAULT_KDF_ITERATIONS): KdfParams {
