@@ -83,3 +83,34 @@ describe("model fetch from the page", () => {
     expect(base).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("in-page sync (web build)", () => {
+  it("/api/sync works in the browser runtime against the user's bucket; session-only secrets are gone after reload", async () => {
+    const { MemoryS3 } = await import("@offeru/sync");
+    const s3 = new MemoryS3();
+    const bucket = { provider: "minio", endpoint: "https://s3.mock.local", bucket: s3.bucket, region: "us-east-1", accessKeyId: s3.accessKeyId, secretAccessKey: "s3cret", prefix: "web-test", pathStyle: true };
+    const call = async (backend: ReturnType<typeof createLocalBackend>, path: string, body?: unknown) => {
+      const response = await backend.fetch(new Request(`http://localhost${path}`, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+      return { status: response.status, json: await json(response) };
+    };
+    const backend = createLocalBackend(s3.fetch as never);
+
+    const tested = await call(backend, "/api/sync/test", bucket);
+    expect(tested.json.ok).toBe(true);
+    expect(tested.json.checks.map((check: { id: string }) => check.id)).toContain("cors");
+
+    const configured = await call(backend, "/api/sync/configure", { ...bucket, passphrase: "web passphrase", remember: false });
+    expect(configured.json).toMatchObject({ configured: true, secrets: "session", needs_secret: false, config: { provider: "minio" } });
+    await call(backend, "/api/tools/save", { type: "job", data: { company: "网页版", title: "同步" } });
+    const synced = await call(backend, "/api/sync/now", {});
+    expect(synced.status).toBe(200);
+    expect(synced.json.result.pushed).toBeGreaterThanOrEqual(1);
+    expect(s3.keys("web-test/").length).toBeGreaterThan(2);
+
+    // "Reload": a fresh in-page backend over the same IndexedDB. Settings survive, secrets do not.
+    const reloaded = createLocalBackend(s3.fetch as never);
+    const status = await call(reloaded, "/api/sync/status");
+    expect(status.json).toMatchObject({ configured: true, needs_secret: true, secrets: "missing" });
+    expect((await call(reloaded, "/api/sync/now", {})).json.code).toBe("sync_config");
+  }, 30_000);
+});
