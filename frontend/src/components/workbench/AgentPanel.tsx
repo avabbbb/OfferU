@@ -64,7 +64,7 @@ import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";
 import { AgentComposerControls, useComposerOptions } from "./AgentComposerControls";
-import { AgentOrb, ComposerGrip, useComposerWidth } from "./AgentComposerChrome";
+import { AgentOrb, AnimatedPlaceholder, ComposerGrip, useComposerWidth } from "./AgentComposerChrome";
 import { AgentAttachmentTray, AgentMessageAttachments, type SentAttachment } from "./AgentAttachmentTray";
 import { useComposerAttachments, type ComposerAttachment } from "./useComposerAttachments";
 import { AGENT_ATTACHMENT_ACCEPT, ATTACHMENT_ONLY_MESSAGE, hasDraggedFiles } from "@/lib/agentAttachments";
@@ -1306,6 +1306,9 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
           className={dragActive ? "agent-composer is-drag-active" : "agent-composer"}
           style={composerWidth.width === null ? undefined : { width: composerWidth.width }}
           data-testid="agent-composer"
+          data-mode={composerOptions.approvalMode}
+          data-working={working || undefined}
+          data-has-input={input ? "" : undefined}
           data-sent={sentPulse || undefined}
           onDragEnter={(event) => {
             if (!hasDraggedFiles(event.dataTransfer.types)) return;
@@ -1339,6 +1342,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
             onKeyDown={(event) => composerWidth.onGripKey("right", event)} />
           <div className="agent-composer-main">
           <AgentOrb working={working} />
+          {!input && !runNeedsUser && <AnimatedPlaceholder />}
           <Textarea
             value={input}
             onValueChange={setInput}
@@ -1347,8 +1351,9 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
             placeholder={
               runNeedsUser
                 ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
-                : "问 OfferU..."
+                : ""
             }
+            aria-label="问 OfferU"
             variant="flat"
             className="w-full"
             classNames={agentComposerFieldClassNames}
@@ -1390,6 +1395,9 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
               className="agent-composer-attach"
             >
               <Plus size={16} strokeWidth={2} />
+              {composerAttachments.items.length > 0 && (
+                <span key={composerAttachments.items.length} className="agent-composer-badge">{composerAttachments.items.length}</span>
+              )}
             </button>
             <AgentComposerControls options={composerOptions} onChange={setComposerOptions} />
             {contextUsage && (
