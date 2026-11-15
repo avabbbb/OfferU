@@ -19,8 +19,42 @@ import type { ToolDeps } from "./deps";
 import { evaluateJobs } from "../research/evaluate";
 import { addJob, enrichJobs } from "./jobs";
 import { fetchPage, webSearch } from "./net";
+import { exportData, importData } from "../data";
+import { nowIso } from "../labels";
 import { validateArgs, type ToolSpec } from "./schema";
 import { TOOL_SPECS } from "./specs";
+
+/**
+ * TS-only tools (no Python TOOLS counterpart): whole-store backup / restore.
+ * `agent: false` keeps a tool off the Agent and MCP lists (restore replaces
+ * every record, so only the user runs it, from settings / CLI / HTTP).
+ */
+export type ExtraToolSpec = ToolSpec & { agent: boolean };
+export const TS_TOOL_SPECS: ExtraToolSpec[] = [
+  {
+    name: "export_data",
+    description: "导出全部数据（档案、职业记忆、岗位、事项、文档和改动记录）为一个 JSON 备份，可用 import_data 原样恢复。",
+    inputSchema: { additionalProperties: false, properties: {}, title: "ExportDataIn", type: "object" },
+    agent: true,
+  },
+  {
+    name: "import_data",
+    description: "用 export_data 的备份替换全部数据（记录和改动 id 原样保留）。只能由用户本人操作。",
+    inputSchema: {
+      additionalProperties: false,
+      properties: { snapshot: { description: "export_data 的完整输出", title: "Snapshot", type: "object" } },
+      required: ["snapshot"],
+      title: "ImportDataIn",
+      type: "object",
+    },
+    agent: false,
+  },
+];
+
+/** Python's 21 tools, then the TS-only ones: what HTTP /api/tools and the CLI list. */
+export const ALL_TOOL_SPECS: ToolSpec[] = [...TOOL_SPECS, ...TS_TOOL_SPECS.map(({ agent: _agent, ...spec }) => spec)];
+/** What agents (built-in Agent, MCP clients) see. */
+export const AGENT_TOOL_SPECS: ToolSpec[] = [...TOOL_SPECS, ...TS_TOOL_SPECS.filter((spec) => spec.agent).map(({ agent: _agent, ...spec }) => spec)];
 
 export type { ToolDeps } from "./deps";
 export type { JsonSchema, ToolSpec } from "./schema";
@@ -72,6 +106,8 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
   apply_answer: (a, d) => applyAnswer(d, a.job_id as number, String(a.question)),
   draft_email: (a, d) => draftEmail(d, a.job_id as number, a.resume_id as number | null | undefined),
   reconcile_memory: (_, d) => reconcileMemory(d),
+  export_data: (_, d) => exportData(d.store, nowIso()),
+  import_data: (a, d) => importData(d.store, a.snapshot, d.ctx),
 };
 
 /** Who owns the tools core does not implement, for the "unsupported" message. */
@@ -83,10 +119,10 @@ const OWNER: Record<string, string> = {
   email_sync: "邮箱模块",
 };
 
-export const TOOL_NAMES = TOOL_SPECS.map((spec) => spec.name);
+export const TOOL_NAMES = ALL_TOOL_SPECS.map((spec) => spec.name);
 
 export function toolSpec(name: string): ToolSpec | undefined {
-  return TOOL_SPECS.find((spec) => spec.name === name);
+  return ALL_TOOL_SPECS.find((spec) => spec.name === name);
 }
 
 /**

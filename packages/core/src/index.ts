@@ -12,3 +12,7 @@ export * from "./resume";
 export * from "./llm-presets";
 export * from "./llm-config";
 export * from "./agent";
+export * from "./attachments";
+export * from "./data";
+export * from "./data-backups";
+export * from "./agent-board";

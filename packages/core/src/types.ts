@@ -85,6 +85,10 @@ export interface CoreStore {
    * scanned through `changes()`.
    */
   changeStats?(actor: string, since: string): Promise<{ count: number; last: string | null }>;
+  /** Optional: every row of both tables, ids ascending (data.ts dumpRows scans through all() / changes() otherwise). */
+  dumpAll?(): Promise<import("./data").DataRows>;
+  /** Optional: delete every record and change, then insert these rows as-is (ids kept). Called inside transaction(). Needed for restore. */
+  replaceAll?(rows: import("./data").DataRows): Promise<void>;
 }
 
 /**

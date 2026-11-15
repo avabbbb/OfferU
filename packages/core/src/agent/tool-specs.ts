@@ -4,9 +4,9 @@
 // the Agent list the same names, descriptions and JSON schemas.
 
 import type { LlmToolSpec } from "../llm";
-import { TOOL_SPECS } from "../tools/specs";
+import { AGENT_TOOL_SPECS } from "../tools";
 
-export const CORE_TOOL_SPECS: LlmToolSpec[] = TOOL_SPECS.map((spec) => ({
+export const CORE_TOOL_SPECS: LlmToolSpec[] = AGENT_TOOL_SPECS.map((spec) => ({
   name: spec.name,
   description: spec.description,
   parameters: spec.inputSchema as Record<string, unknown>,
