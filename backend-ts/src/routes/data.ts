@@ -32,6 +32,7 @@ const ctxOf = (actor: string) => ({ actor, now: nowIso(), today: todayIso() });
  *
  * GET  /api/data/export                    → offeru-data v1 snapshot (download)
  * POST /api/data/import  {snapshot}        → replace everything (user only), pre-import backup when backups exist
+ * GET  /api/agent/data/export              → offeru-data v1 snapshot + legacy settings-page fields
  * GET  /api/agent/data/backups             → {items, invalid}       (Python data_safety shape)
  * POST /api/agent/data/backups             → new backup item
  * POST /api/agent/data/restore {backup_id} → restored now (pending_restart false)
@@ -59,6 +60,21 @@ export function registerData(app: Hono<AppEnv>): void {
     const pre = deps.backups ? await createBackup(deps.store, deps.backups, "pre_restore", ctx.now) : null;
     const result = await importData(deps.store, snapshot, ctx);
     return c.json({ ...result, pre_restore_backup_id: pre?.backup_id ?? null });
+  });
+
+  // Settings page「导出数据」still calls the Python route; serve it from the same snapshot so the
+  // web build and the TS companion do not 404. The body is an offeru-data v1 snapshot (importable
+  // as-is via /api/data/import) plus the legacy fields the page reads; counts are records only.
+  app.get("/api/agent/data/export", async (c) => {
+    const snapshot = await exportData(c.get("deps").store, nowIso());
+    const { changes: _changes, ...recordCounts } = snapshot.counts;
+    return c.json({
+      ...snapshot,
+      schema_version: "offeru.internal-beta.export.v1",
+      scope: "local_core_career_state",
+      redactions: ["provider and connection credentials", "sync credentials and passphrase"],
+      counts: recordCounts,
+    });
   });
 
   app.get("/api/agent/data/backups", async (c) => c.json(await listBackups(backups(c.get("deps")))));

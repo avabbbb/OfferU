@@ -9,7 +9,7 @@
 | [部署到 Cloudflare](./DEPLOY-CLOUDFLARE.md) | wrangler 部署网页版，零成本的前提 |
 | [迁移进度](./backend-ts-migration.md) | Python → TS 各阶段状态、还没迁的 |
 | [已知问题](./KNOWN_ISSUES.md) | 当前缺口 |
-| 同步（`sync.md`） | 多设备同步设计，随 `ts/sync` 分支合入 |
+| 同步（`sync.md`） | 多设备同步：用户自带 S3/R2，端到端加密、增量快照、按记录合并 |
 | [视觉系统](./design/visual-system.md) | 新 UI 的视觉与交互 |
 | [DOGFOOD](./DOGFOOD.md) | 真实使用中的卡点和偏好 |
 

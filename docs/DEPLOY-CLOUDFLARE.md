@@ -46,5 +46,5 @@ npx wrangler deploy        # 上传；或 npm run deploy（构建 + 部署）
 
 ## 不要做的
 
-- 不要给 Worker 加数据库或存储绑定来“方便同步”：同步方案见 `docs/sync.md`（随 `ts/sync` 分支合入）。
+- 不要给 Worker 加数据库或存储绑定来“方便同步”：同步走用户自己的 S3 / R2，见 [sync.md](./sync.md)。
 - 不要把 `/llm-proxy` 改成通用代理（抓网页、任意主机）：那会变成开放代理，也会让 Worker 承担用户流量。

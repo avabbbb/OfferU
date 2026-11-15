@@ -21,6 +21,7 @@ src/worker.ts         Cloudflare Worker
 src/cli.ts, mcp.ts    offeru-ts CLI 和 stdio MCP
 src/store.ts          SQLite CoreStore（node:sqlite）
 test/                 vitest；fixtures/ 里是 Python 生成的契约期望
+src/sync.ts           伴侣端 S3/R2 端到端加密同步（引擎在 packages/sync，见 docs/sync.md）
 ```
 
 `src/app.ts` 和 `src/routes/*.ts`（不含 `companion/`）不能 import `node:*`：它们会被打进浏览器包和 Worker。前端的 `npm run build:web` 会检查。

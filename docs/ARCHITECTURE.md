@@ -8,7 +8,7 @@
 - **core 管规则，adapter 管 IO**：校验、枚举、overview、撤销、简历渲染、Agent 循环都在 `packages/core`，纯 TypeScript，不 import React / DOM / `node:*`。存储、文件、网络、渲染器由各运行形态注入。
 - **同一个 HTTP 形状**：`backend-ts/src/app.ts` 的 `createApp(deps)` 是唯一的 Hono 应用，路由和 Python 后端同路径同形状，前端不用分支。
 - **缺能力就 501**：某个运行形态没有的能力（本机文件、Playwright PDF、BOSS 登录……）路由回 `501 {code: "unsupported"}`，不假装成功。
-- **同步是另一件事**：多设备同步（WebDAV 等）的设计在 `docs/sync.md`，随 `ts/sync` 分支合入（`test` 上暂时还没有这份文件）。
+- **同步是另一件事**：多设备同步用用户自带的 S3 / R2 存储桶，端到端加密、增量快照、按记录合并，引擎在 `packages/sync`，设计见 [sync.md](./sync.md)。
 
 ## 2. 代码在哪
 

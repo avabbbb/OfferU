@@ -133,4 +133,17 @@ describe("data routes", () => {
     ].join("\n")], { env: { ...process.env, OFFERU_DATA_DIR: dir }, encoding: "utf8" });
     expect(JSON.parse(out)).toEqual(python.views.list);
   });
+
+  it("legacy /api/agent/data/export answers the settings page and stays importable", async () => {
+    const store = open();
+    await importData(store, python.snapshot, USER);
+    const app = createApp({ store, runtime: "worker", storage: "none" });
+    const res = await app.request("/api/agent/data/export");
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, any>;
+    expect(body.schema_version).toBe("offeru.internal-beta.export.v1");
+    expect(body.counts.changes).toBeUndefined();
+    expect(() => parseSnapshot(body)).not.toThrow();
+  });
 });
+

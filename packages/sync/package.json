@@ -1,0 +1,22 @@
+{
+  "name": "@offeru/sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "User-owned, end-to-end encrypted S3/R2 sync for OfferU records (runtime-agnostic: fetch + WebCrypto).",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.5"
+  }
+}
