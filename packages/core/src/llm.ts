@@ -420,13 +420,27 @@ export interface ChatRequest {
   json?: boolean;
   reasoningEffort?: "" | "low" | "medium" | "high";
   signal?: AbortSignal;
+  /**
+   * Opt in to provider prompt caching for a multi-turn session (the Agent
+   * loop sets it; one-shot tool calls do not). Anthropic: cache_control
+   * breakpoints on the last tool, the static system block and the last
+   * message. OpenAI: sent as prompt_cache_key (routes the session to the same
+   * cache). Others (DeepSeek, Kimi, Qwen, GLM ...) cache prefixes
+   * automatically and need nothing but a byte-stable prefix.
+   */
+  cacheKey?: string;
 }
 
 export interface LlmUsage {
+  /** Whole prompt, cached part included (Anthropic's input + cache read + cache write). */
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;
   estimated: boolean;
+  /** Prompt tokens served from the provider's prompt cache. */
+  cached_input_tokens?: number;
+  /** Prompt tokens written to the cache this call (Anthropic). */
+  cache_creation_input_tokens?: number;
 }
 
 export interface ParsedToolCall {
@@ -539,11 +553,45 @@ function estimatedUsage(text: string): LlmUsage {
   return { input_tokens: 0, output_tokens: out, total_tokens: out, estimated: true };
 }
 
-function usageOf(raw: Record<string, unknown> | undefined, text: string): LlmUsage {
+const count = (value: unknown): number => Number(value ?? 0) || 0;
+
+/**
+ * Provider usage → LlmUsage, cache fields included:
+ *   OpenAI / Qwen / GLM / Groq / Gemini compat: prompt_tokens_details.cached_tokens
+ *   DeepSeek: prompt_cache_hit_tokens (+ prompt_cache_miss_tokens)
+ *   Kimi: cached_tokens
+ *   Anthropic: cache_read_input_tokens / cache_creation_input_tokens, and
+ *   input_tokens counts only the uncached rest, so the prompt is their sum.
+ */
+export function usageOf(raw: Record<string, unknown> | undefined, text: string, format: LlmApiFormat = "openai"): LlmUsage {
   if (!raw || !Object.keys(raw).length) return estimatedUsage(text);
-  const input = Number(raw.prompt_tokens ?? raw.input_tokens ?? 0) || 0;
-  const output = Number(raw.completion_tokens ?? raw.output_tokens ?? 0) || 0;
-  return { input_tokens: input, output_tokens: output, total_tokens: Number(raw.total_tokens ?? input + output) || input + output, estimated: false };
+  const output = count(raw.completion_tokens ?? raw.output_tokens);
+  if (format === "anthropic") {
+    const read = count(raw.cache_read_input_tokens);
+    const written = count(raw.cache_creation_input_tokens);
+    const input = count(raw.input_tokens) + read + written;
+    return {
+      input_tokens: input, output_tokens: output, total_tokens: input + output, estimated: false,
+      ...(read || written ? { cached_input_tokens: read, cache_creation_input_tokens: written } : {}),
+    };
+  }
+  const input = count(raw.prompt_tokens ?? raw.input_tokens);
+  const details = (raw.prompt_tokens_details && typeof raw.prompt_tokens_details === "object" ? raw.prompt_tokens_details : {}) as Record<string, unknown>;
+  const cachedRaw = details.cached_tokens ?? raw.prompt_cache_hit_tokens ?? raw.cached_tokens;
+  return {
+    input_tokens: input, output_tokens: output, total_tokens: count(raw.total_tokens) || input + output, estimated: false,
+    ...(cachedRaw !== undefined && cachedRaw !== null ? { cached_input_tokens: count(cachedRaw) } : {}),
+  };
+}
+
+/** prompt_cache_key is an OpenAI parameter; other compatible endpoints may reject unknown fields. */
+function sendsPromptCacheKey(endpoint: LlmEndpoint): boolean {
+  if (endpoint.provider === "openai") return true;
+  try {
+    return new URL(endpoint.baseUrl).hostname === "api.openai.com";
+  } catch {
+    return false;
+  }
 }
 
 type Slot = { id: string; name: string; arguments: string };
@@ -620,6 +668,7 @@ function openAiBody(endpoint: LlmEndpoint, request: ChatRequest, stream: boolean
   if (full) {
     if (stream) body.stream_options = { include_usage: true };
     if (request.reasoningEffort) body.reasoning_effort = request.reasoningEffort;
+    if (request.cacheKey && sendsPromptCacheKey(endpoint)) body.prompt_cache_key = request.cacheKey.slice(0, 64);
   }
   return body;
 }
@@ -657,14 +706,19 @@ async function postWithRetry(
 
 // ---- Anthropic Messages ----
 
+const EPHEMERAL = { type: "ephemeral" } as const;
+
 function anthropicBody(endpoint: LlmEndpoint, request: ChatRequest, stream: boolean): Record<string, unknown> {
   let system = "";
+  const systemBlocks: Array<Record<string, unknown>> = [];
   const native: Array<{ role: "user" | "assistant"; content: Array<Record<string, unknown>> }> = [];
   for (const message of request.messages) {
     let role: "user" | "assistant";
     let blocks: Array<Record<string, unknown>>;
     if (message.role === "system") {
-      system += (system ? "\n" : "") + (typeof message.content === "string" ? message.content : "");
+      const text = typeof message.content === "string" ? message.content : "";
+      system += (system ? "\n" : "") + text;
+      if (text) systemBlocks.push({ type: "text", text });
       continue;
     }
     if (message.role === "tool") {
@@ -701,6 +755,19 @@ function anthropicBody(endpoint: LlmEndpoint, request: ChatRequest, stream: bool
   };
   if (request.temperature !== undefined) body.temperature = request.temperature;
   if (request.tools?.length) body.tools = request.tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters }));
+  if (request.cacheKey) {
+    // Cache order is tools → system → messages; three of the four allowed breakpoints:
+    // the last tool, the first (static) system block, and the end of the history so the
+    // next turn of this append-only session reads everything before its new messages.
+    const tools = body.tools as Array<Record<string, unknown>> | undefined;
+    if (tools?.length) tools[tools.length - 1] = { ...tools[tools.length - 1], cache_control: EPHEMERAL };
+    if (systemBlocks.length) {
+      systemBlocks[0] = { ...systemBlocks[0], cache_control: EPHEMERAL };
+      body.system = systemBlocks;
+    }
+    const last = native[native.length - 1];
+    if (last?.content.length) last.content[last.content.length - 1] = { ...last.content[last.content.length - 1], cache_control: EPHEMERAL };
+  }
   if (stream) body.stream = true;
   return body;
 }
@@ -817,16 +884,13 @@ function toolCallingMethods(endpoint: LlmEndpoint, fetchFn: FetchLike): Required
         finish = "error";
       }
     }
-    if (usageRaw && format === "anthropic") {
-      usageRaw = { input_tokens: usageRaw.input_tokens, output_tokens: usageRaw.output_tokens };
-    }
     yield {
       type: "done",
       result: {
         provider, model, content: text, reasoning,
         toolCalls: finalToolCalls(slots),
         finishReason: finish,
-        usage: usageOf(usageRaw, text),
+        usage: usageOf(usageRaw, text, format),
         ...(error ? { error } : {}),
         ...(errorStatus ? { errorStatus } : {}),
       },
@@ -849,7 +913,7 @@ function toolCallingMethods(endpoint: LlmEndpoint, fetchFn: FetchLike): Required
       const toolCalls = blocks.filter((block) => block.type === "tool_use").map((block) => ({
         id: String(block.id), name: String(block.name), arguments: JSON.stringify(block.input || {}), args: parseToolArguments(block.input),
       }));
-      return { provider, model, content, reasoning: "", toolCalls, finishReason: ANTHROPIC_STOP[body.stop_reason || ""] || body.stop_reason || "stop", usage: usageOf(body.usage, content) };
+      return { provider, model, content, reasoning: "", toolCalls, finishReason: ANTHROPIC_STOP[body.stop_reason || ""] || body.stop_reason || "stop", usage: usageOf(body.usage, content, "anthropic") };
     }
     const response = await postWithRetry(fetchFn, joinUrl(endpoint.baseUrl, "/chat/completions"), endpoint, (full) => openAiBody(endpoint, request, false, full), request.signal);
     if (!response.ok) {
