@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ModelPicker } from "@/components/settings/ModelPicker";
 import { FreshResetPanel } from "@/components/settings/FreshResetPanel";
+import { SyncSettingsPanel } from "@/components/settings/SyncSettingsPanel";
 import BuildIdentityPanel from "@/components/settings/BuildIdentityPanel";
 import { motion } from "framer-motion";
 import {
@@ -1305,7 +1306,7 @@ export default function SettingsPage() {
         <SettingsRow rowKey="models" title="模型服务" status={modelStatus} onOpen={() => setOpenSection("models")} />
         <SettingsRow rowKey="accounts" title="账号与来源" status="登录与求职来源" onOpen={() => setOpenSection("accounts")} />
         {!SHOWCASE && <SettingsRow rowKey="collect" title="登录态采集" status="BOSS / 小红书 · 风险说明与同意" onOpen={() => setOpenSection("collect")} />}
-        <SettingsRow rowKey="data" title="数据" status="备份、恢复与导出" onOpen={() => setOpenSection("data")} />
+        <SettingsRow rowKey="data" title="数据" status="云同步、备份、恢复与导出" onOpen={() => setOpenSection("data")} />
         <SettingsRow rowKey="about" title="关于" status="版本与运行信息" onOpen={() => setOpenSection("about")} />
         <SettingsRow rowKey="feedback" title="报告问题" onOpen={() => setOpenSection("feedback")} />
       </div>
@@ -1377,6 +1378,7 @@ export default function SettingsPage() {
       </SettingsDialog>
 
       <SettingsDialog isOpen={openSection === "data"} onClose={closeSection} title="数据">
+        <SyncSettingsPanel />
         <LocalDataSafetyCard />
         <details className="ou-sheet p-4">
           <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground-muted)]">危险操作</summary>
