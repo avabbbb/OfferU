@@ -88,6 +88,8 @@ internal/
 !docs/KNOWN_ISSUES.md
 !docs/CONTRIBUTING.md
 !docs/sync.md
+# 性能定位记录（面试素材 + 优化说明）
+!docs/perf/
 # 状态图被 .agents/skills/statemachine-* 引用，单独版本化
 !docs/design/
 docs/design/*
