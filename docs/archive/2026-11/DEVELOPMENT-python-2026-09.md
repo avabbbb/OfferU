@@ -1,3 +1,5 @@
+> 已归档（2026-11-15）：Python 后端时期的文档，只作考古。当前文档见 [docs/README.md](../../README.md)。
+
 # OfferU Development Guide
 
 本文件只面向源码开发与隔离测试，不是 Public Release 用户安装说明。陌生用户发布路径必须由 installer 完成，不得要求 Python、Node、repo 或终端。

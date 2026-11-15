@@ -4,6 +4,10 @@
 
 > 状态：**归档索引**。这里的内容只用于考古，不覆盖 `docs/` 下的当前文档。当前入口：[docs/README.md](../README.md)。演进脉络见 [发展历史](./development-history.md)。
 
+## 2026-11-15 第六次归档
+
+TS 后端成为主线（网页版跑在浏览器 + Cloudflare Worker，桌面版用伴侣），Python 时期的开发指南、发布清单、已知问题和一份迭代报告移到 [2026-11/](./2026-11/README.md)，`DESIGN.md` 改写前的全文也存了一份。
+
 ## 2026-11-02 第五次归档
 
 - `docs/plans/resume-editor-refactor.md`（简历编辑器重构计划，已随 PR #178 落地）移到 [2026-11/resume-editor-refactor.md](./2026-11/resume-editor-refactor.md)。
