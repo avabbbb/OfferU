@@ -206,18 +206,17 @@ describe("chain", () => {
     "https://api.keenable.ai/v1/search/public": fail,
   };
 
-  it("auto: keyed providers first (python ones, then new keyed), then keyless parallel → exa → firecrawl → keenable", async () => {
+  it("auto: keyed providers first (python ones, then new keyed), then keyless parallel → exa → keenable (keyless firecrawl explicit-only)", async () => {
     const fake = fakeFetch({ ...every, "https://api.tavily.com/search": fail, "https://api.exa.ai/search": fail, "https://search.parallel.ai/mcp": fail });
     const out = await createSearchClient({ tavilyApiKey: "t", exaApiKey: "e" }, fake.fetcher as never).searchDetailed!(Q, 5);
     expect(fake.calls.map((c) => c.url)).toEqual([
       "https://api.tavily.com/search",
       "https://api.exa.ai/search",
       "https://search.parallel.ai/mcp",
-      "https://api.firecrawl.dev/v2/search",
       "https://api.keenable.ai/v1/search/public",
     ]);
     // exa has a key, so its keyless MCP is not tried again
-    expect(out.errors.map((e) => e.split(":")[0])).toEqual(["tavily", "exa", "parallel(免 Key)", "firecrawl(免 Key)", "keenable(免 Key)"]);
+    expect(out.errors.map((e) => e.split(":")[0])).toEqual(["tavily", "exa", "parallel(免 Key)", "keenable(免 Key)"]);
   });
 
   it("auto: first non-empty wins; no keys at all still searches keyless", async () => {

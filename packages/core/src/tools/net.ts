@@ -177,7 +177,8 @@ function cleanResult(title: unknown, url: unknown, snippet: unknown, engine: str
 /**
  * Search fallback chain (Python services/web_search.web_search, extended):
  * auto = providers the user gave a key for first (bocha → tavily → serper → parallel → exa →
- * firecrawl → keenable), then the keyless public endpoints parallel → exa → firecrawl → keenable.
+ * firecrawl → keenable), then the keyless public endpoints parallel → exa → keenable. Keyless
+ * firecrawl is explicit-only: in live tests (2026-11-15) it was 1.3–4.4 s per query with no dates.
  * An explicit provider runs only that one (with its key if set, else keyless where it has a
  * keyless path). First non-empty result wins; provider errors fall through. ddgs (a Python-only
  * optional package) is not ported.
@@ -248,6 +249,7 @@ export function createSearchClient(keys: SearchKeys, fetcher: HttpFetch): Search
   if (keyless) {
     for (const name of KEYLESS_SEARCH_PROVIDERS) {
       const { key, search } = PORTED[name];
+      if (provider === "auto" && name === "firecrawl") continue; // explicit-only when keyless
       if (wants(name) && !key) chain.push(ported(name, (f, q, n) => search(f, q, n)));
     }
   }

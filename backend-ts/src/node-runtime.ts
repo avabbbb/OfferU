@@ -11,7 +11,7 @@ import type { ToolRuntime } from "./tools";
  * Web search keys until the config domain injects the user's saved keys: the same env names
  * Python Settings read (SEARCH_PROVIDER, BOCHA_API_KEY / TAVILY_API_KEY / SERPER_API_KEY) plus
  * PARALLEL_API_KEY / EXA_API_KEY / FIRECRAWL_API_KEY / KEENABLE_API_KEY. With no key at all the
- * keyless public endpoints (parallel → exa → firecrawl → keenable) still work;
+ * keyless public endpoints (parallel → exa → keenable; firecrawl only when chosen) still work;
  * OFFERU_SEARCH_KEYLESS=0 turns them off. Read per call.
  */
 export function searchFromEnv(env: NodeJS.ProcessEnv = process.env): SearchClient | null {
