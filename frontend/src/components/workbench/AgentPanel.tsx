@@ -62,6 +62,7 @@ import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";
 import { AgentComposerControls, useComposerOptions } from "./AgentComposerControls";
+import { AgentOrb, ComposerGrip, useComposerWidth } from "./AgentComposerChrome";
 import { AgentAttachmentTray, AgentMessageAttachments, type SentAttachment } from "./AgentAttachmentTray";
 import { useComposerAttachments, type ComposerAttachment } from "./useComposerAttachments";
 import { AGENT_ATTACHMENT_ACCEPT, ATTACHMENT_ONLY_MESSAGE, hasDraggedFiles } from "@/lib/agentAttachments";
@@ -276,6 +277,7 @@ export function AgentPanel({ onClose }: { onClose?: () => void } = {}) {
   const [hostedRefreshKey, setHostedRefreshKey] = useState(0);
   // 输入框附件：拖入、粘贴或点 + 号添加，选中即上传
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const composerWidth = useComposerWidth();
   const dragDepthRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
   const composerAttachments = useComposerAttachments(agentRuntimeApi.uploadAttachment);
@@ -1293,7 +1295,9 @@ export function AgentPanel({ onClose }: { onClose?: () => void } = {}) {
       {/* 输入区 */}
       <footer className="agent-foot">
         <div
+          ref={composerWidth.ref}
           className={dragActive ? "agent-composer is-drag-active" : "agent-composer"}
+          style={composerWidth.width === null ? undefined : { width: composerWidth.width }}
           data-testid="agent-composer"
           data-sent={sentPulse || undefined}
           onDragEnter={(event) => {
@@ -1320,6 +1324,14 @@ export function AgentPanel({ onClose }: { onClose?: () => void } = {}) {
             composerAttachments.addFiles(event.dataTransfer.files);
           }}
         >
+          <ComposerGrip side="left" width={composerWidth.width} onReset={composerWidth.reset}
+            onPointerDown={(event) => composerWidth.startDrag("left", event)}
+            onKeyDown={(event) => composerWidth.onGripKey("left", event)} />
+          <ComposerGrip side="right" width={composerWidth.width} onReset={composerWidth.reset}
+            onPointerDown={(event) => composerWidth.startDrag("right", event)}
+            onKeyDown={(event) => composerWidth.onGripKey("right", event)} />
+          <div className="agent-composer-main">
+          <AgentOrb working={working} />
           <Textarea
             value={input}
             onValueChange={setInput}
@@ -1346,6 +1358,7 @@ export function AgentPanel({ onClose }: { onClose?: () => void } = {}) {
               }
             }}
           />
+          </div>
           <AgentAttachmentTray items={composerAttachments.items} onRemove={composerAttachments.remove} />
           {dragActive && <span className="agent-drop-hint" aria-hidden>松开即可添加图片、PDF 或 PPT</span>}
           <div className="agent-composer-controls">
@@ -1388,7 +1401,7 @@ export function AgentPanel({ onClose }: { onClose?: () => void } = {}) {
                 <PixelLoader />
               ) : (
                 <>
-                  <span>发送</span>
+                  <span className="agent-composer-send-label">发送</span>
                   <ArrowUp size={15} strokeWidth={2.2} aria-hidden />
                 </>
               )}
