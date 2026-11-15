@@ -4,6 +4,8 @@ name = "offeru"
 main = "src/worker.ts"
 compatibility_date = "2026-11-01"
 workers_dev = true
+# Custom domain is bound to this Worker; keep it declared so CI deploys never drop it.
+routes = [{ pattern = "offeru.avabbbb.com", custom_domain = true }]
 
 [assets]
 directory = "../frontend/dist"
