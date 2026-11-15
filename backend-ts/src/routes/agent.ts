@@ -56,7 +56,11 @@ export function agentHost(deps: AppDeps): AgentHost {
         search: deps.search?.() ?? null,
         fetch: deps.fetch,
         readFile: deps.companion?.readFile,
+        exportResumePdf: deps.companion?.exportResumePdf,
+        files: deps.files ?? null,
+        measure: deps.renderer ? (html) => deps.renderer!.pageCount(html) : null,
       }),
+      trace: deps.agentTrace ?? null,
       handlers: deps.companion?.handlers,
       prepareAttachments: deps.attachmentFiles
         ? (message, ids) => prepareAttachmentMessage(attachmentDeps(deps), message, ids)

@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type SearchClient, type FileStore, type AgentRunStore, type BackupFiles, type PageRenderer } from "@offeru/core";
+import { isCoreError, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type SearchClient, type FileStore, type AgentRunStore, type BackupFiles, type PageRenderer, type TraceSink } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
 import type { AgentBoardService } from "./routes/agent-board";
@@ -51,6 +51,8 @@ export interface AppDeps {
   llmFetch?: HttpFetch;
   /** Agent run rows (SQLite on the companion, IndexedDB in the browser); absent = in-memory. */
   agentRuns?: AgentRunStore;
+  /** Where each Agent run's trace JSON goes (companion: <OFFERU_TRACE_DIR>/<journey>/<run>.json); absent = no trace. */
+  agentTrace?: TraceSink | null;
   /** S3/R2 sync (companion: config + state next to the SQLite file). Absent = /api/sync answers 501. */
   sync?: SyncController;
 }
