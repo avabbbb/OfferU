@@ -49,3 +49,26 @@ Adaptation details are recorded in `backend/app/agent/UPSTREAM.md`.
 - **仓耳今楷 TsangerJinKai02 W04/W05**：Kami 使用的中文字体。**仅限个人非商业使用**，商用需向仓耳字库购买授权。默认不使用；只有用户在「排版 → 字体」里主动选择今楷后，才从 jsDelivr / GitHub 下载到本机数据目录。默认字体是随应用附带的思源宋体（见下）。
 - **Noto Serif SC / 思源宋体**（SIL Open Font License 1.1）：随应用附带，`frontend/src/assets/fonts/`，从 Noto Serif CJK 裁剪到 GB2312 字符集并转为 woff2，Regular / Medium 各约 3.4 MB。https://github.com/notofonts/noto-cjk
 - **xioajiumi/Chinese_Universities**（MIT）：校徽来源。约 800 所学校的校徽缩到 160px、64 色 PNG 后随应用附带（`backend/app/assets/school_logos/`，约 5.7 MB），匹配时不联网。校徽本身的权利归各高校所有，仅用于用户自己的简历。
+
+## 免 Key 网页搜索 provider（oh-my-pi）
+
+`packages/core/src/tools/search/`（`shared.ts`、`parallel.ts`、`exa.ts`、`firecrawl.ts`、`keenable.ts`）的请求格式、端点、请求头与结果解析移植自
+[can1357/oh-my-pi](https://github.com/can1357/oh-my-pi)，commit `4193d01`，MIT License：
+
+- `packages/coding-agent/src/web/search/providers/parallel.ts`、`exa.ts`、`firecrawl.ts`、`keenable.ts`
+- `packages/coding-agent/src/web/parallel.ts`、`packages/coding-agent/src/web/firecrawl.ts`
+- `packages/coding-agent/src/mcp/json-rpc.ts`、`packages/coding-agent/src/exa/mcp-client.ts`
+
+Copyright (c) 2025 Mario Zechner；Copyright (c) 2025-2026 Can Bölük；Copyright (c) 2026 Stencil Labs, Inc.
+改编：去掉 omp 的 auth storage / 设置 / 日志 / 查询指令解析等专有依赖，网络只走注入的 `fetch`；
+来源标识（Exa `x-exa-source`、Keenable `X-Keenable-Title`）改为 `offeru`。每个文件头部注明了对应出处。
+
+上述免 Key 端点由 Parallel、Exa、Firecrawl、Keenable 各自提供，受其服务条款与限流约束；它们不是 OfferU 自有能力。
+
+MIT License 原文（oh-my-pi）：
+
+> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
