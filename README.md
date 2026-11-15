@@ -291,43 +291,42 @@ Runtime diagnostics, experimental providers and provider health are advanced / d
 
 ## Architecture
 
-OfferU is split into three authorities on purpose:
+One set of rules, three places it runs:
 
 ```mermaid
 flowchart LR
-    U[User] --> UI[OfferU]
-    UI --> A[Agent Runtime]
-    A --> O[Operation Registry]
-    O --> C[Career Runtime]
-    O --> P[Proposal / Approval]
-    P --> U
-    C --> D[(Local Career Data)]
+    UI[React UI] -->|fetch /api/*| APP[Hono app<br/>backend-ts createApp]
+    EXT[Browser extension] --> APP
+    AG[Codex / Claude Code] -->|MCP stdio / CLI| APP
+    APP --> CORE[packages/core<br/>tools, rules, undo, Agent loop]
+    CORE --> IDB[(IndexedDB<br/>web version)]
+    CORE --> SQL[(SQLite<br/>desktop companion)]
 ```
 
-- **Reasoning authority** — replaceable agent runtimes plan, reason and choose capabilities.
-- **Execution authority** — the Operation Registry validates schema, permissions, side effects, dry runs,
-  proposals and audit.
-- **Truth authority** — the Python Career Runtime owns Profile, Jobs, Applications, Resumes, Interviews,
-  Memory and other persisted career state.
+- **`packages/core`** — pure TypeScript domain rules: the tool registry, validation, overview, change log
+  and undo, resume rendering, the built-in Agent loop. No React, DOM or Node APIs.
+- **`backend-ts`** — one runtime-agnostic Hono app plus adapters. It runs **inside the page** for the web
+  version (data in IndexedDB), as the **Node desktop companion** (SQLite, local files, PDF, BOSS login),
+  and its **Cloudflare Worker** entry serves the static site and relays model calls. The Worker stores
+  nothing: no D1, KV, Durable Objects or R2.
+- **`backend/`** — the previous Python (FastAPI) backend, kept as a rollback path and for the domains not
+  migrated yet (mail sync, interviews).
 
-This is why the underlying agent harness can evolve without moving career truth into a model or an
-external runtime. Every surface — GUI, CLI, TUI, skills and agent integrations — goes through the same
-Operation Registry; none of them writes business state on its own.
-
-See [System design](./docs/DESIGN.md) for the full boundaries and [its glossary](./docs/DESIGN.md) for
-domain language and invariants.
+Capabilities per runtime, where code lives and how to add a tool: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
+Data model and tool semantics: [docs/DESIGN.md](./docs/DESIGN.md).
 
 ---
 
 ## Current technology
 
 ```text
-React / TypeScript   → product UI
-Python / FastAPI     → career domain runtime, Operation Registry,
-                       automation, persistence
-Tauri / Rust         → desktop shell, process lifecycle, OS integration
-Agent runtimes       → replaceable reasoning engines
-SQLite               → local career data
+React / TypeScript   → product UI (Vite)
+TypeScript + Hono    → backend: packages/core rules, backend-ts adapters
+IndexedDB            → web version data (in the user's browser)
+SQLite (node:sqlite) → desktop companion data
+Cloudflare Workers   → static hosting + stateless model relay (free plan)
+Tauri / Rust         → desktop shell
+Python / FastAPI     → legacy backend, rollback path
 ```
 
 OfferU intentionally does not duplicate business logic across UI, CLI, plugins and agent integrations.
@@ -342,9 +341,10 @@ OfferU intentionally does not duplicate business logic across UI, CLI, plugins a
 - Browser automation may assist with forms but must not silently submit applications.
 - Career evidence preserves provenance; behaviour signals and model inferences enter a review inbox first.
 - Provider failures must be visible rather than silently returning fake success.
-- API keys live in the OS keyring (Windows Credential Manager / macOS Keychain / Linux Secret Service);
-  the config file keeps only a `credential_ref`. If the keyring is unavailable, saving fails loudly
-  instead of falling back to plaintext.
+- Your data stays with you: in your browser (web version) or on your machine (desktop). The Cloudflare
+  Worker only serves static files and relays model calls; it keeps no user data and no logs of them.
+- In the web version API keys are encrypted with a non-extractable per-browser key before they are
+  stored in IndexedDB. The legacy Python backend keeps them in the OS keyring.
 - Credentials should stay out of model context, logs and version control.
 
 See [SECURITY.md](./SECURITY.md) for the current security status.
@@ -353,50 +353,35 @@ See [SECURITY.md](./SECURITY.md) for the current security status.
 
 ## Getting started
 
-OfferU is not yet published as a signed consumer installer. For source development and internal testing:
+OfferU is not yet published as a signed consumer installer.
 
-- [DEVELOPMENT.md](./docs/DEVELOPMENT.md) — environment and dev setup
+**Web version (data stays in your browser)**
 
-The intended public user path is:
-
-```text
-Download
-→ Install
-→ Auto-detect your local AI
-→ Project/register OfferU Skill where supported
-→ Resume + optional authorized AI memory → Profile
-→ Save your first Job from the browser
-→ Open the canonical Job Workspace
-→ Optionally connect a job-search inbox
-→ Today tells you what matters next
+```bash
+npm --prefix backend-ts install && npm --prefix frontend install
+cd backend-ts
+npm run build:web        # frontend in local-web mode
+npx wrangler deploy      # free Cloudflare Workers plan; or `npm run worker:dev` locally
 ```
 
-> If you find an `OfferU.exe` in the repository root, it is a legacy `0.1.0` binary, not the current
-> release candidate. Do not run it. The web entrypoint is always `http://127.0.0.1:7410`;
-> `8080` is only an optional local llama.cpp model endpoint.
+Open the site, add your model API key under Settings → Model, and start. See
+[docs/DEPLOY-CLOUDFLARE.md](./docs/DEPLOY-CLOUDFLARE.md).
+
+**Source development** — [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) (npm commands, tests, contract tests).
 
 ---
 
 ## Release status
 
-OfferU uses evidence-backed release gates rather than treating a successful build as production readiness.
-Current status, validation evidence, known issues and quality scores live in:
+- Migration from the Python backend: [docs/backend-ts-migration.md](./docs/backend-ts-migration.md)
+- Known gaps: [docs/KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
 
-- [RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md)
-- [KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
-
-Suggested developer checks:
-
-```powershell
-Set-Location backend
-.\.venv312\Scripts\python.exe -m pytest tests -q
-
-Set-Location ..\frontend
-npm run typecheck
-npm run build
+```bash
+cd backend-ts && npm test && npm run typecheck
+cd frontend && npm test && npm run typecheck && npm run build:web
 ```
 
-These commands only validate their own scope; they do not mean "ready for beta" or "ready to release".
+These commands only validate their own scope; they do not mean "ready to release".
 
 ---
 
@@ -418,6 +403,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 - [PRD](./docs/PRD.md) — users, scope and acceptance
 - [System design](./docs/DESIGN.md) — data, tools, agents and undo
+- [Architecture](./docs/ARCHITECTURE.md) — core, adapters, runtimes
 - [DEVELOPMENT.md](./docs/DEVELOPMENT.md) — development setup
 
 1. Fork the repository
