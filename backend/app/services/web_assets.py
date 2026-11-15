@@ -20,7 +20,9 @@ import httpx
 
 from app.runtime_paths import runtime_uploads_dir
 
-LOGO_DIR = Path(__file__).resolve().parents[1] / "assets" / "school_logos"
+# 校徽随 TS 后端放在 backend-ts/assets/school_logos；打包的 sidecar 仍拷进 app/assets/school_logos。
+_PACKAGED_LOGO_DIR = Path(__file__).resolve().parents[1] / "assets" / "school_logos"
+LOGO_DIR = _PACKAGED_LOGO_DIR if _PACKAGED_LOGO_DIR.is_dir() else Path(__file__).resolve().parents[3] / "backend-ts" / "assets" / "school_logos"
 LOGO_URL_PREFIX = "/api/resume/assets/school-logos/"
 FONT_URLS = {
     name: (

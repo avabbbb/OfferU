@@ -5,14 +5,33 @@ import { pathToFileURL } from "node:url";
 
 import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
-import { createApp } from "./app";
+import { createApp, type AppDeps } from "./app";
 import { nodeToolRuntime } from "./node-runtime";
+import { registerCompanionRoutes } from "./routes/companion";
+import { nodeBossLogin } from "./routes/companion/boss-cli";
+import { filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
 import { openStore } from "./store";
 import type { SqliteCoreStore } from "./store";
 
-export function createAppServer(store: SqliteCoreStore): Server {
+export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDeps> = {}): Server {
   const { llm, search, fetch, companion } = nodeToolRuntime(store);
-  const app = createApp({ store, pairingToken, runtime: "node", storage: "sqlite", llm, search, fetch, companion });
+  const app = createApp({
+    store,
+    pairingToken,
+    runtime: "node",
+    storage: "sqlite",
+    // The model comes from the user's config (AppDeps.llm, owned by the config domain); env vars are a dev fallback only.
+    llm,
+    search,
+    fetch,
+    companion,
+    files: "files" in overrides ? overrides.files : nodeFileStore(filesDirFor(dbPath())),
+    renderer: "renderer" in overrides ? overrides.renderer : playwrightRenderer(),
+    schoolLogos: "schoolLogos" in overrides ? overrides.schoolLogos : nodeSchoolLogos(),
+    bossLogin: nodeBossLogin(),
+    ...overrides,
+  });
+  registerCompanionRoutes(app);
   return createAdaptorServer({ fetch: app.fetch }) as Server;
 }
 

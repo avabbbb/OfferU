@@ -164,3 +164,7 @@ export class BossLogin {
     return this.view();
   }
 }
+
+let shared: BossLogin | null = null;
+/** AppDeps.bossLogin for the Node companion: one BossLogin per process. */
+export const nodeBossLogin = (): (() => Promise<BossLogin>) => async () => (shared ??= new BossLogin());

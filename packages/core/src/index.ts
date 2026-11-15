@@ -8,3 +8,4 @@ export * from "./llm";
 export * from "./desensitize";
 export * from "./research";
 export * from "./tools";
+export * from "./resume";

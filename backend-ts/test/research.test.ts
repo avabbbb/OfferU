@@ -187,7 +187,8 @@ describe("/api/applications/boss-login", () => {
 
   it("drives the boss CLI's QR login on the Node companion", async () => {
     store = new SqliteCoreStore(":memory:");
-    const app = createApp({ store, runtime: "node", storage: "sqlite" });
+    const { nodeBossLogin } = await import("../src/routes/companion/boss-cli");
+    const app = createApp({ store, runtime: "node", storage: "sqlite", bossLogin: nodeBossLogin() });
     const missing = await (await app.request("/api/applications/boss-login")).json();
     expect(missing).toEqual({ installed: false, status: "idle", message: "", qr: null, logged_in: null, capabilities: { sync: false, search: false } });
     expect((await app.request("/api/applications/boss-login/start", { method: "POST" })).status).toBe(400);

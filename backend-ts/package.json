@@ -14,12 +14,17 @@
     "@hono/node-server": "^1.19.19",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@offeru/core": "file:../packages/core",
-    "hono": "^4.13.18"
+    "fast-png": "^8.0.0",
+    "hono": "^4.13.18",
+    "jpeg-js": "^0.4.4"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vitest": "^5.0.5"
+  },
+  "optionalDependencies": {
+    "playwright-core": "^1.65.0"
   }
 }

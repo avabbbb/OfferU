@@ -105,9 +105,12 @@ describe("list / search / overview", () => {
     const listed = await tool("list", { type: "doc" });
     expect(listed.items[0].resume).toBeUndefined();
     expect(listed.items[0].messages).toBeUndefined();
-    expect(listed.items[0].body).toHaveLength(161);
+    // A doc with resume derives body from it (Python _with_resume); brief cuts a long body to 160 + "…".
+    await tool("save", { type: "doc", data: { kind: "note", title: "long", body: "b".repeat(200) } });
+    const long = (await tool("list", { type: "doc" })).items.find((d: { title: string }) => d.title === "long");
+    expect(long.body).toHaveLength(161);
     const full = await tool("list", { type: "doc", full: true });
-    expect(full.items[0].resume).toEqual({ x: 1 });
+    expect(full.items.find((d: { title: string }) => d.title === "n").resume).toBeTruthy();
   });
 
   it("search with types=[] searches everything; blank query returns nothing", async () => {

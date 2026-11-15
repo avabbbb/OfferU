@@ -26,6 +26,8 @@ import type {
   StoredRecord,
 } from "./types";
 import { CoreError } from "./types";
+import { checkAsks, normalizeResumeDoc } from "./resume/doc";
+import { checkStyle, LEGACY_TEMPLATE } from "./resume/style";
 
 type Args = Record<string, unknown>;
 
@@ -52,67 +54,14 @@ const oneOf = (value: unknown, allowed: Record<string, string>, name: string): v
 
 const stringValue = (value: unknown): string => (typeof value === "string" ? value : "");
 
-export const RESUME_TEMPLATE: Record<string, string> = { classic: "经典", clear: "清晰", kami: "留白", compact: "紧凑" };
-export const RESUME_FONT: Record<string, string> = { sans: "黑体", serif: "宋体", kai: "楷体" };
-/** Old docs carry doc.template; still accepted on save until the editor writes style. */
-export const LEGACY_TEMPLATE: Record<string, Json> = {
-  single: { template: "clear" },
-  compact: { template: "compact" },
-  photo: { template: "clear", photo: true },
-};
-export const STYLE_RANGE: Record<string, [number, number]> = {
-  bodySize: [8, 14], lineHeight: [1.0, 2.0], sectionGap: [0, 30], itemGap: [0, 20],
-};
-export const MARGIN_RANGE: [number, number] = [3, 30];
-export const STYLE_KEYS = ["template", "font", ...Object.keys(STYLE_RANGE), "margin", "accent", "photo", "logo"];
 /** 经历性质：简历上全职和实习分节写、全日制和非全日制要写明。 */
 export const MEMORY_MODE: Record<string, string[]> = { experience: ["全职", "实习", "兼职"], education: ["全日制", "非全日制"] };
 export const MEMORY_SOURCE: Record<string, string> = { user: "用户说的", resume: "用户简历原文", agent: "Agent 推断" };
 export const USER_ACTOR = "你";
 export const MAIL_ACTOR = "邮箱";
 export const REVIEW_QUESTION_KEYS = ["question", "answer", "reflection", "reaction"];
-export const ASK_FIELDS = ["old", "why", "question"];
 
 const isPlainObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
-const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const fmt = (value: number) => (Number.isInteger(value) ? value.toFixed(1) : String(value));
-
-/** doc.style: unknown keys and out-of-range values are errors, never clamped. Mirrors Python check_style. */
-export function checkStyle(style: unknown): void {
-  if (!isPlainObject(style)) throw new CoreError("doc.style 要是对象");
-  const unknown = Object.keys(style).filter((key) => !STYLE_KEYS.includes(key)).sort();
-  if (unknown.length) throw new CoreError(`doc.style 没有 ${unknown.join(", ")}；可用：${STYLE_KEYS.join(", ")}`);
-  const number = (key: string, value: unknown, low: number, high: number) => {
-    if (!isNumber(value) || value < low || value > high) {
-      // Python formats float bounds (1.0–2.0) and int bounds (8–14) differently.
-      const show = (bound: number) => (key === "lineHeight" ? fmt(bound) : String(bound));
-      throw new CoreError(`doc.style.${key} 要在 ${show(low)}–${show(high)} 之间`);
-    }
-  };
-  for (const [key, value] of Object.entries(style)) {
-    if (value === null || value === undefined) continue;
-    if (key === "template" && !(typeof value === "string" && value in RESUME_TEMPLATE)) {
-      throw new CoreError(`doc.style.template 只能是 ${Object.keys(RESUME_TEMPLATE).join(", ")}`);
-    }
-    if (key === "font" && !(typeof value === "string" && value in RESUME_FONT)) {
-      throw new CoreError(`doc.style.font 只能是 ${Object.keys(RESUME_FONT).join(", ")}`);
-    }
-    if (key in STYLE_RANGE) number(key, value, ...STYLE_RANGE[key]);
-    if (key === "margin") {
-      if (!isPlainObject(value) || Object.keys(value).some((side) => !["top", "right", "bottom", "left"].includes(side))) {
-        throw new CoreError("doc.style.margin 是 {top, right, bottom, left}，单位 mm");
-      }
-      for (const [side, mm] of Object.entries(value)) number(`margin.${side}`, mm, ...MARGIN_RANGE);
-    }
-    if (key === "accent" && !(typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value))) {
-      throw new CoreError("doc.style.accent 要是 #RRGGBB");
-    }
-    if (key === "photo" && typeof value !== "boolean") throw new CoreError("doc.style.photo 是 true / false");
-    if (key === "logo" && !(typeof value === "string" && value && !/[\\/]/.test(value) && value !== "." && value !== "..")) {
-      throw new CoreError("doc.style.logo 是上传（POST /api/files）返回的文件名");
-    }
-  }
-}
 
 /** doc.questions（面试复盘的题）：数组，每项 {question, answer, reflection, reaction} 都是字符串。 */
 export function checkQuestions(questions: unknown): void {
@@ -138,17 +87,6 @@ export function checkTags(value: unknown, field = "job.tags"): void {
     }
   }
   if (new Set(value).size !== value.length) throw new CoreError("job.tags 有重复标签");
-}
-
-/** doc.pending_asks（改写时追问成果、还没回答的句子）：最多 3 项，每项 {old, why, question} 都是字符串。 */
-export function checkAsks(asks: unknown): void {
-  if (!Array.isArray(asks) || asks.length > 3) throw new CoreError("doc.pending_asks 要是数组，最多 3 项");
-  asks.forEach((item, index) => {
-    if (!isPlainObject(item) || Object.keys(item).some((key) => !ASK_FIELDS.includes(key))
-      || !Object.values(item).every((value) => typeof value === "string")) {
-      throw new CoreError(`doc.pending_asks[${index}] 只能有 ${ASK_FIELDS.join(", ")}，值是字符串`);
-    }
-  });
 }
 
 /**
@@ -343,18 +281,6 @@ export type SaveOptions = {
   fromResume?: boolean;
 };
 
-/**
- * Resume docs keep doc.resume as the source of truth and derive body from it
- * (Python `_with_resume`). The resume model lives in the resume domain; it
- * registers itself here so save stays the single write path. Until it does,
- * resume docs are stored as given.
- */
-export type ResumeDocNormalizer = (data: Json, existingKind: string | undefined) => Json;
-let resumeDocNormalizer: ResumeDocNormalizer | null = null;
-export function setResumeDocNormalizer(fn: ResumeDocNormalizer | null): void {
-  resumeDocNormalizer = fn;
-}
-
 /** All-or-nothing: the record write and its change-log row commit together. */
 export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext, options: SaveOptions = {}): Promise<SaveResult> {
   return store.transaction(() => saveRecordUnsafe(store, args, ctx, options));
@@ -382,7 +308,6 @@ async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext, 
   }
 
   await checkRecord(type, data, id === undefined, store);
-
   if (type === "memory" && options.fromResume) {
     data = { ...data, source: "resume", confirmed: true };
   } else if (type === "memory") {
@@ -396,9 +321,8 @@ async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext, 
   }
 
   const existing = id !== undefined ? (await store.get(type, id)) : null;
-  if (type === "doc" && resumeDocNormalizer) {
-    data = resumeDocNormalizer(data, typeof existing?.kind === "string" ? existing.kind : undefined);
-  }
+  // Resume docs keep doc.resume as the source of truth and derive body from it (Python _with_resume).
+  if (type === "doc") data = normalizeResumeDoc(data, typeof existing?.kind === "string" ? existing.kind : undefined);
   const verb = type === "event" && data.done === true && id !== undefined ? "完成" : id === undefined ? "新建" : "更新";
   const statusNote = type === "job" && id !== undefined && typeof data.status === "string"
     ? `：${JOB_STATUS[data.status as JobStatus]}`

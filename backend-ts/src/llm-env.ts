@@ -18,3 +18,6 @@ export function llmFromEnv(env: NodeJS.ProcessEnv = process.env): LlmClient | nu
     fetch: globalThis.fetch.bind(globalThis) as unknown as FetchLike,
   });
 }
+
+/** Alias kept for the resume routes' tests. */
+export const devLlmFromEnv = llmFromEnv;
