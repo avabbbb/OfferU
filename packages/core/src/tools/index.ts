@@ -68,6 +68,7 @@ export type { FetchPageResult, HttpFetch, SearchClient, SearchKeys, SearchResult
 export { autoTags, extractIntake, guessIntake, hireFromUrl, normalizeIntake, postingOf } from "./job-intake";
 export { findViaApi, parseWant, splitName } from "./job-sources";
 export { addJob, enrichJobs } from "./jobs";
+export { normalizeShareUrl, shareLinkUrl, sourceOfUrl } from "./share-links";
 export { APPLY_PROMPT, applyAnswer, attachmentName, draftEmail, mailSubject, reconcileMemory, splitResume } from "./apply";
 export { reconcileScan } from "./reconcile";
 export type { Finding } from "./reconcile";
@@ -98,7 +99,7 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
   web_search: (a, d) => webSearch(d.search, String(a.query), num(a.limit) ?? 8),
   fetch_page: (a, d) => fetchPage(d.fetch, String(a.url)),
   split_resume: (a, d) => splitResume(d, a.text as string | null | undefined, a.path as string | null | undefined),
-  add_job: (a, d) => addJob(d, String(a.text)),
+  add_job: (a, d) => addJob(d, String(a.text), a.source_url as string | null | undefined),
   evaluate_jobs: (a, d) => evaluateJobs(d.store, d.llm, a, {
     signal: d.signal,
     enrich: (bare) => enrichChanges(d, bare),
