@@ -118,3 +118,47 @@ export function AgentOrb({ working }: { working: boolean }) {
     </span>
   );
 }
+
+export const COMPOSER_SUGGESTIONS = [
+  "问 OfferU 任何事…",
+  "把我的简历改成适合这个岗位",
+  "今天该投哪几个岗位？",
+  "陪我模拟一轮产品经理面试",
+  "给 HR 写一封跟进邮件",
+  "帮我对比这两个 offer",
+];
+
+/**
+ * 会「呼吸」的占位文字：输入框空着时，一句句轮换示例问题，
+ * 每个字依次从模糊浮现，换句前整句模糊淡出（学 inspora AI prompt bar 的打字节奏）。
+ */
+export function AnimatedPlaceholder({ items = COMPOSER_SUGGESTIONS, interval = 3600 }: { items?: string[]; interval?: number }) {
+  const [index, setIndex] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    if (items.length < 2) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    let swap: ReturnType<typeof setTimeout> | undefined;
+    const tick = setInterval(() => {
+      setLeaving(true);
+      swap = setTimeout(() => {
+        setIndex((value) => (value + 1) % items.length);
+        setLeaving(false);
+      }, 360);
+    }, interval);
+    return () => {
+      clearInterval(tick);
+      if (swap) clearTimeout(swap);
+    };
+  }, [items.length, interval]);
+
+  const text = items[index] ?? "";
+  return (
+    <span className="agent-placeholder" data-leaving={leaving ? "" : undefined} aria-hidden>
+      {Array.from(text).map((char, i) => (
+        <span key={`${index}-${i}`} style={{ animationDelay: `${i * 28}ms` }}>{char}</span>
+      ))}
+    </span>
+  );
+}
