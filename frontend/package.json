@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite --port 7410 --strictPort",
     "build": "vite build",
+    "build:web": "vite build --mode local-web && node scripts/check-browser-bundle.mjs",
     "build:sidecar": "node ../backend/scripts/build_sidecar.mjs",
     "start": "vite preview --port 7410 --strictPort",
     "typecheck": "tsc --noEmit",
@@ -35,6 +36,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@tauri-apps/api": "^2.11.1",
     "framer-motion": "^11.0.0",
+    "hono": "^4.13.18",
     "localforage": "^1.10.0",
     "lucide-react": "^0.400.0",
     "react": "^18.3.0",

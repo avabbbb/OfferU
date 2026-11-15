@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, searchForWorkspaceRoot } from "vite";
 
 const REACTION_CATALOG_ID = "virtual:offeru-interview-reactions";
 const RESOLVED_REACTION_CATALOG_ID = `\0${REACTION_CATALOG_ID}`;
@@ -86,10 +86,14 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "src"),
+        // The web build runs backend-ts's runtime-agnostic Hono app in the page (src/lib/local).
+        "@offeru/backend": path.resolve(__dirname, "../backend-ts/src"),
         "next/link": path.resolve(__dirname, "src/compat/next-link.tsx"),
         "next/navigation": path.resolve(__dirname, "src/compat/next-navigation.ts"),
         "next/dynamic": path.resolve(__dirname, "src/compat/next-dynamic.tsx"),
       },
+      // One copy of hono / core for the page and the backend-ts sources it imports.
+      dedupe: ["hono", "@offeru/core"],
     },
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(APP_VERSION),
@@ -115,6 +119,9 @@ export default defineConfig(({ mode }) => {
         : undefined,
       watch: {
         ignored: ["**/src-tauri/**"],
+      },
+      fs: {
+        allow: [searchForWorkspaceRoot(process.cwd()), path.resolve(__dirname, "../packages"), path.resolve(__dirname, "../backend-ts")],
       },
     },
     build: {

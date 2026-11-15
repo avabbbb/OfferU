@@ -8,7 +8,11 @@
     "start": "tsx src/server.ts",
     "cli": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:web": "npm --prefix ../frontend run build:web",
+    "worker:dev": "wrangler dev",
+    "worker:dry-run": "wrangler deploy --dry-run",
+    "deploy": "npm run build:web && wrangler deploy"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.19",

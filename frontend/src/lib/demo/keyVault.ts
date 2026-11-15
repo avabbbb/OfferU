@@ -12,7 +12,7 @@ export type AgentConfig = {
 };
 
 type StoredConfig = Omit<AgentConfig, "apiKey"> & { secret?: EncryptedSecret };
-type EncryptedSecret = { v: 1; iv: string; data: string };
+export type EncryptedSecret = { v: 1; iv: string; data: string };
 
 const configStore = localforage.createInstance({ name: "offeru-demo-agent", storeName: "config" });
 const CONFIG_KEY = "provider:v1";
@@ -80,7 +80,8 @@ async function deviceKey(): Promise<CryptoKey> {
   return key;
 }
 
-async function encrypt(apiKey: string): Promise<EncryptedSecret> {
+/** AES-GCM with this browser's non-extractable device key (shared with the web app's model settings). */
+export async function encryptSecret(apiKey: string): Promise<EncryptedSecret> {
   if (!apiKey) return { v: 1, iv: "", data: "" };
   const key = await deviceKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -88,7 +89,7 @@ async function encrypt(apiKey: string): Promise<EncryptedSecret> {
   return { v: 1, iv: bytesToBase64(iv), data: bytesToBase64(new Uint8Array(ciphertext)) };
 }
 
-async function decrypt(secret: EncryptedSecret | undefined): Promise<string> {
+export async function decryptSecret(secret: EncryptedSecret | undefined): Promise<string> {
   if (!secret?.iv || !secret.data) return "";
   const key = await deviceKey();
   try {
@@ -106,7 +107,7 @@ async function decrypt(secret: EncryptedSecret | undefined): Promise<string> {
 export async function loadAgentConfig(): Promise<AgentConfig | null> {
   const stored = await configStore.getItem<StoredConfig>(CONFIG_KEY);
   if (!stored) return null;
-  const apiKey = stored.remember ? await decrypt(stored.secret) : memoryKey;
+  const apiKey = stored.remember ? await decryptSecret(stored.secret) : memoryKey;
   return { baseUrl: stored.baseUrl, model: stored.model, remember: stored.remember, apiKey };
 }
 
@@ -125,7 +126,7 @@ export async function saveAgentConfig(config: AgentConfig): Promise<AgentConfig>
     baseUrl: normalized.baseUrl,
     model: normalized.model,
     remember: normalized.remember,
-    ...(normalized.remember ? { secret: await encrypt(normalized.apiKey) } : {}),
+    ...(normalized.remember ? { secret: await encryptSecret(normalized.apiKey) } : {}),
   };
   await configStore.setItem(CONFIG_KEY, stored);
   memoryKey = normalized.remember ? "" : normalized.apiKey;

@@ -9,6 +9,12 @@ import { OfferURoutes } from "@/vite/OfferURoutes";
 
 const PairPage = lazy(() => import("@/vite/PairPage"));
 
+// Web build (VITE_OFFERU_MODE=local-web): serve /api/* from the in-page backend before anything fetches.
+if (import.meta.env.VITE_OFFERU_MODE === "local-web") {
+  const { installLocalBackend } = await import("@/lib/local/backend");
+  installLocalBackend();
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("OfferU root element was not found");
 

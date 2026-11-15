@@ -1,10 +1,10 @@
 import localforage from "localforage";
 
 import { buildDemoState, type DemoState } from "./seed";
-import type { ChangeRow, CoreStore, Json, PutOptions, RecordType, StoredRecord } from "@offeru/core";
+import { recordRow } from "@offeru/core";
+import type { ChangeRow, CoreStore, DataRows, Json, PutOptions, RecordType, StoredRecord } from "@offeru/core";
 
 const STATE_KEY = "offeru-demo-state:v1";
-const storage = localforage.createInstance({ name: "offeru-demo", storeName: "records" });
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -15,7 +15,15 @@ export class BrowserDemoStore implements CoreStore {
   private txQueue: Promise<unknown> = Promise.resolve();
   private inTx = false;
 
-  constructor(private readonly initialState: () => DemoState = buildDemoState) {}
+  private readonly storage: LocalForage;
+
+  /**
+   * `database` names the IndexedDB database: "offeru-demo" for the showcase
+   * demo (fictional seed), "offeru-local" for the real web app (empty start).
+   */
+  constructor(private readonly initialState: () => DemoState = buildDemoState, database = "offeru-demo") {
+    this.storage = localforage.createInstance({ name: database, storeName: "records" });
+  }
 
   async ready(): Promise<Promise<void>> {
     this.loading ??= this.load();
@@ -23,13 +31,13 @@ export class BrowserDemoStore implements CoreStore {
   }
 
   private async load(): Promise<void> {
-    const saved = await storage.getItem<DemoState>(STATE_KEY);
+    const saved = await this.storage.getItem<DemoState>(STATE_KEY);
     if (saved && saved.version === 1 && Array.isArray(saved.records) && Array.isArray(saved.changes)) {
       this.state = saved;
       return;
     }
     this.state = this.initialState();
-    await storage.setItem(STATE_KEY, this.state);
+    await this.storage.setItem(STATE_KEY, this.state);
   }
 
   private current(): DemoState {
@@ -158,22 +166,41 @@ export class BrowserDemoStore implements CoreStore {
   flush(): Promise<void> {
     const snapshot = this.state ? clone(this.state) : null;
     this.writes = this.writes.then(async () => {
-      if (snapshot) await storage.setItem(STATE_KEY, snapshot);
+      if (snapshot) await this.storage.setItem(STATE_KEY, snapshot);
     });
     return this.writes;
+  }
+
+  /** export_data: both "tables", ids ascending. */
+  async dumpAll(): Promise<DataRows> {
+    const state = this.current();
+    return {
+      records: [...state.records].sort((a, b) => a.id - b.id).map((record) => recordRow(clone(record))),
+      changes: clone([...state.changes].sort((a, b) => a.id - b.id)),
+    };
+  }
+
+  /** import_data (inside transaction()): replace both tables, ids kept; counters continue after the highest id. */
+  async replaceAll(rows: DataRows): Promise<void> {
+    const state = this.current();
+    state.records = rows.records.map((row) => ({ ...clone(row.data), id: row.id, type: row.type, job_id: row.job_id, created_at: row.created_at, updated_at: row.updated_at }));
+    state.changes = clone(rows.changes);
+    const top = Math.max(0, ...rows.records.map((row) => row.id), ...rows.changes.map((row) => row.record_id));
+    state.nextRecordId = top + 1;
+    state.nextChangeId = Math.max(0, ...rows.changes.map((row) => row.id)) + 1;
   }
 
   /** Replace the entire demo state, e.g. after importing a portable data package. */
   async replace(next: DemoState): Promise<Promise<void>> {
     await this.writes;
     this.state = clone(next);
-    await storage.setItem(STATE_KEY, this.state);
+    await this.storage.setItem(STATE_KEY, this.state);
   }
 
   async reset(): Promise<Promise<void>> {
     await this.writes;
     this.state = this.initialState();
-    await storage.setItem(STATE_KEY, this.state);
+    await this.storage.setItem(STATE_KEY, this.state);
   }
 
   /** Test/debug helper: a copy that cannot mutate the live store. */
