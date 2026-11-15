@@ -16,22 +16,48 @@
     <div id="root">
       <!-- 内联 splash：Vite 打包 JS 加载完成前即渲染，React mount 时自动替换。奶蛙托腮思考 + 思考气泡。 -->
       <style>
-        .offeru-splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #f6f8f9; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-        .naiwa-think { position: relative; width: 96px; height: 96px; }
-        .naiwa-think__face { width: 100%; height: 100%; transform-origin: 50% 90%; animation: naiwa-ponder 2.8s ease-in-out infinite; user-select: none; -webkit-user-drag: none; }
-        .naiwa-think__bubble { position: absolute; top: -10px; right: -26px; display: flex; gap: 4px; padding: 6px 8px; border-radius: 999px; background: #fff; box-shadow: 0 2px 8px rgba(17, 24, 39, 0.1); }
-        .naiwa-think__bubble::after { content: ""; position: absolute; left: 2px; bottom: -6px; width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(17, 24, 39, 0.08); }
-        .naiwa-think__bubble i { width: 6px; height: 6px; border-radius: 50%; background: #5b3a1e; opacity: 0.25; animation: naiwa-dot 1.2s ease-in-out infinite; }
+        .offeru-splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #f6f8f9; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+        .offeru-splash__text { color: #5f6f76; font-size: 14px; letter-spacing: 0.02em; }
+        .naiwa-think { position: relative; display: inline-block; width: var(--naiwa-size, 72px); height: var(--naiwa-size, 72px); flex-shrink: 0; }
+        .naiwa-think__svg { display: block; width: 100%; height: 100%; overflow: visible; }
+        .naiwa-think .nw-head { transform-box: view-box; transform-origin: 512px 900px; animation: nw-sway 3.6s ease-in-out infinite; }
+        .naiwa-think .nw-pupil { fill: #1a1b1b; transform-box: fill-box; transform-origin: center; animation: nw-look 3.6s ease-in-out infinite; }
+        .naiwa-think .nw-lid rect { fill: #b7c87f; }
+        .naiwa-think .nw-lid line { stroke: #1a1b1b; stroke-width: 26; stroke-linecap: round; }
+        .naiwa-think .nw-lid { animation: nw-lid 3.6s ease-in-out infinite; }
+        .naiwa-think .nw-mouth { stroke: #1a1b1b; stroke-width: 30; stroke-linecap: round; transform-box: view-box; transform-origin: 495px 553px; animation: nw-hmm 3.6s ease-in-out infinite; }
+        .naiwa-think__bubble { position: absolute; top: -12%; right: -30%; display: flex; gap: 4px; padding: 5px 7px; border-radius: 999px; background: #fff; box-shadow: 0 2px 8px rgba(17, 24, 39, 0.1); }
+        .naiwa-think__bubble::after { content: ""; position: absolute; left: 2px; bottom: -6px; width: 7px; height: 7px; border-radius: 50%; background: #fff; }
+        .naiwa-think__bubble i { width: 5px; height: 5px; border-radius: 50%; background: #5b3a1e; opacity: 0.25; animation: nw-dot 1.2s ease-in-out infinite; }
         .naiwa-think__bubble i:nth-child(2) { animation-delay: 0.2s; }
         .naiwa-think__bubble i:nth-child(3) { animation-delay: 0.4s; }
-        .offeru-splash__text { color: #5f6f76; font-size: 14px; letter-spacing: 0.02em; }
-        @keyframes naiwa-ponder { 0%, 100% { transform: rotate(-4deg) translateY(0); } 50% { transform: rotate(4deg) translateY(-2px); } }
-        @keyframes naiwa-dot { 0%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
-        @media (prefers-reduced-motion: reduce) { .naiwa-think__face, .naiwa-think__bubble i { animation: none; opacity: 1; } }
+        @keyframes nw-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+        @keyframes nw-look { 0%, 8% { transform: translate(0, 0); } 18%, 44% { transform: translate(18px, -24px); } 47% { transform: translate(18px, -24px) scaleY(0.06); } 50% { transform: translate(18px, -24px); } 56%, 76% { transform: translate(-16px, -22px); } 88%, 100% { transform: translate(0, 0); } }
+        @keyframes nw-lid { 0%, 8% { transform: translateY(0); } 18% { transform: translateY(70px); } 44% { transform: translateY(70px); } 47% { transform: translateY(142px); } 50% { transform: translateY(70px); } 76% { transform: translateY(70px); } 88%, 100% { transform: translateY(0); } }
+        @keyframes nw-hmm { 0%, 8% { transform: rotate(0deg); } 18%, 44% { transform: rotate(-7deg) translateX(-6px); } 56%, 76% { transform: rotate(5deg) translateX(8px); } 88%, 100% { transform: rotate(0deg); } }
+        @keyframes nw-dot { 0%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+        @media (prefers-reduced-motion: reduce) { .naiwa-think .nw-head, .naiwa-think .nw-pupil, .naiwa-think .nw-lid, .naiwa-think .nw-mouth, .naiwa-think__bubble i { animation: none; } .naiwa-think__bubble i { opacity: 1; } }
       </style>
       <div class="offeru-splash" role="status" aria-label="OfferU 正在加载">
-        <div class="naiwa-think">
-          <img class="naiwa-think__face" src="/mascot/naiwa-thinking.webp" alt="" width="96" height="96" />
+        <div class="naiwa-think" style="--naiwa-size: 96px">
+          <svg class="naiwa-think__svg" viewBox="0 0 1024 1024" aria-hidden="true">
+            <defs>
+              <clipPath id="nw-eye-l"><circle cx="222" cy="328" r="126" /></clipPath>
+              <clipPath id="nw-eye-r"><circle cx="800" cy="386" r="126" /></clipPath>
+            </defs>
+            <g class="nw-head">
+              <image href="/mascot/naiwa-think-base.webp" width="1024" height="1024" />
+              <g clip-path="url(#nw-eye-l)">
+                <circle class="nw-pupil" cx="222" cy="330" r="78" />
+                <g class="nw-lid"><rect x="80" y="-80" width="290" height="268" /><line x1="80" y1="188" x2="370" y2="188" /></g>
+              </g>
+              <g clip-path="url(#nw-eye-r)">
+                <circle class="nw-pupil" cx="800" cy="387" r="79" />
+                <g class="nw-lid"><rect x="660" y="-22" width="290" height="268" /><line x1="660" y1="246" x2="950" y2="246" /></g>
+              </g>
+              <line class="nw-mouth" x1="380" y1="537" x2="610" y2="570" />
+            </g>
+          </svg>
           <span class="naiwa-think__bubble" aria-hidden="true"><i></i><i></i><i></i></span>
         </div>
         <div class="offeru-splash__text">奶蛙正在打开你的求职工作台…</div>
