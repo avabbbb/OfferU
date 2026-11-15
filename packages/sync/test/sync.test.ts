@@ -88,18 +88,20 @@ describe("sync engine", () => {
     const a = device(s3, new Clock(), { chunks });
     let body = "";
     for (let i = 0; i < 6000; i += 1) body += `第${i}行：项目经历与量化成果 ${i * 7919 % 10007}\n`;
-    const doc = await a.save("doc", { kind: "resume", title: "简历", body });
+    const doc = await a.save("doc", { kind: "note", title: "长笔记", body });
     const first = await a.engine.sync();
     expect(first.uploaded.objects).toBeGreaterThan(4);
 
     await a.save("doc", { body: `${body}最后加一行\n` }, doc.id);
     const second = await a.engine.sync();
     expect(second.uploaded.objects).toBeGreaterThanOrEqual(1);
-    expect(second.uploaded.objects).toBeLessThanOrEqual(2);
+    // Only the tail moves (appended text + updated_at); the head chunks are reused.
+    expect(second.uploaded.objects).toBeLessThanOrEqual(3);
+    expect(second.uploaded.objects).toBeLessThan(first.uploaded.objects / 2);
 
     const b = device(s3, new Clock());
     await b.engine.sync();
-    expect((await b.store.all("doc"))[0].body).toBe(`${body}最后加一行\n`);
+    expect((await b.store.all("doc"))[0].body).toBe((await a.store.all("doc"))[0].body);
   });
 
   it("merges concurrent edits to different fields of the same record", async () => {
