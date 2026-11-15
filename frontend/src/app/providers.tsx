@@ -137,10 +137,10 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
           {startupError ? (
             <span className="mt-1 h-5 w-5 shrink-0 rounded-full bg-[var(--primary-red)]" aria-hidden="true" />
           ) : (
-            <span
-              className="mt-0.5 h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--primary-red)]"
-              aria-hidden="true"
-            />
+            <span className="naiwa-think mt-1" style={{ ["--naiwa-size" as string]: "44px" }} aria-hidden="true">
+              <img className="naiwa-think__face" src="/mascot/naiwa-thinking.webp" alt="" width={44} height={44} />
+              <span className="naiwa-think__bubble"><i /><i /><i /></span>
+            </span>
           )}
           <div className="min-w-0">
             <p className="bauhaus-label text-[var(--foreground-muted)]">OfferU</p>
