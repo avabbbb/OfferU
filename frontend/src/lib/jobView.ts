@@ -175,6 +175,10 @@ export type ViewConfig = {
   order: FieldKey[];
   widths: Partial<Record<FieldKey, number>>;
   rowHeight: RowHeight;
+  /** 看板：折叠的列（「字段=值」）。 */
+  collapsed: string[];
+  /** 看板：卡片上是否显示字段名称。 */
+  showNames: boolean;
 };
 export type ViewState = { active: ViewKind; views: Record<ViewKind, ViewConfig> };
 
@@ -188,10 +192,12 @@ export function defaultView(kind: ViewKind): ViewConfig {
     filter: { mode: "and", conditions: [] },
     group: [],
     sort: [{ field: "score", desc: true }],
-    hidden: kind === "table" ? ["created_at"] : [],
+    hidden: kind === "table" ? ["created_at"] : kind === "board" ? ["city", "hire_type", "created_at"] : [],
     order: [...FIELD_KEYS],
     widths: {},
     rowHeight: "low",
+    collapsed: kind === "board" ? ["status=rejected", "status=closed"] : [],
+    showNames: true,
   };
 }
 
@@ -234,6 +240,8 @@ export function sanitizeView(raw: unknown, kind: ViewKind): ViewConfig {
     order: [PRIMARY, ...new Set([...fieldList(raw.order), ...FIELD_KEYS])].filter((k, i) => i === 0 || k !== PRIMARY),
     widths,
     rowHeight: raw.rowHeight === "medium" || raw.rowHeight === "high" ? raw.rowHeight : "low",
+    collapsed: Array.isArray(raw.collapsed) ? [...new Set(raw.collapsed.filter((k): k is string => typeof k === "string"))] : d.collapsed,
+    showNames: typeof raw.showNames === "boolean" ? raw.showNames : d.showNames,
   };
 }
 

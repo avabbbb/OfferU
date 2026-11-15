@@ -40,7 +40,7 @@ function OptionPill({ text }: { text: string }) {
   return <span className={PILL + optionTone(text)} title={text}><span className="truncate">{text}</span></span>;
 }
 
-const TYPE_ICON: Record<FieldType, typeof AlignLeft> = {
+export const TYPE_ICON: Record<FieldType, typeof AlignLeft> = {
   text: AlignLeft, select: CircleChevronDown, tags: List, number: Hash, date: Calendar,
 };
 

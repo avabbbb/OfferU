@@ -431,80 +431,186 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 .ou-page-wide { max-width: calc(var(--ou-width-wide) + 2 * var(--ou-gutter)); }
 .ou-reading { max-width: var(--ou-width-reading); }
 
-/* ── 看板：L0 画布上的列分区 + L2 卡片 ── */
-.ou-kanban-track {
+/* ── 看板（金山文档多维表格式）：固定宽的组色浅底列 + 白纸卡片 ──
+   列底 = 组色（.ou-tone-* 提供 --ou-pill-*）和透明混出来的浅色；卡片 = 实心纸面 + 1px 细边 + 极淡阴影；
+   悬停：细边变深 + elev-2（不放大不位移）；在详情面板里打开的那张：强调色焦点环。 */
+.ou-board { font-size: var(--ou-type-sm); }
+.ou-board-top { display: flex; align-items: center; gap: var(--ou-space-3); }
+.ou-board-heading { font-size: var(--ou-type-sm); font-weight: 500; color: var(--ou-text-secondary); }
+.ou-board-empty { margin-top: var(--ou-space-2); color: var(--ou-text-secondary); }
+.ou-board-faint { color: var(--ou-text-placeholder); }
+.ou-board-track {
   display: flex;
   align-items: flex-start;
   gap: var(--ou-space-3);
   margin-top: var(--ou-space-3);
   margin-inline: calc(-1 * var(--ou-gutter));
-  padding: var(--ou-space-2) var(--ou-gutter) var(--ou-space-6);
+  padding: var(--ou-space-1) var(--ou-gutter) var(--ou-space-6);
   overflow-x: auto;
-  scroll-snap-type: x proximity;
   scroll-padding-inline: var(--ou-gutter);
   overscroll-behavior-x: contain;
-  /* 放不下时（开着 Agent 栏、窄窗口）两侧渐隐见下方 .ou-scroll-fade-x。 */
 }
-.ou-kanban-column {
+.ou-board-column {
   display: flex;
-  min-width: var(--ou-kanban-column-min);
-  max-width: var(--ou-kanban-column);
-  flex: 1 0 0;
+  width: var(--ou-board-column);
+  flex: none;
   flex-direction: column;
   padding: var(--ou-space-2);
-  border-radius: var(--ou-radius-panel);
-  background: var(--ou-glass-subtle);
-  scroll-snap-align: start;
-  transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+  border-radius: var(--ou-radius-card);
+  background: color-mix(in oklab, var(--ou-pill-bg) 70%, transparent);
+  transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard), background-color var(--ou-motion-fast) var(--ou-ease-standard);
 }
-.ou-kanban-column[data-over] { box-shadow: var(--ou-ring-focus); }
-.ou-kanban-head { display: flex; min-height: 1.75rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-1); font-size: var(--ou-type-sm); font-weight: 400; }
-.ou-kanban-column > ul { gap: var(--ou-space-3); padding: var(--ou-space-1) 0; }
-/* 看板卡 = 色块：按状态取色，文字用该色相的深色；元数据、标签降一档透明度。 */
-.ou-kanban-card { min-height: 2.5rem; padding: var(--ou-space-3) var(--ou-space-3) calc(var(--ou-space-3) + var(--ou-swatch-edge)); }
-.ou-kanban-card .ou-kanban-subtitle { color: var(--ou-pill-text); }
-.ou-kanban-card .ou-kanban-meta { color: var(--ou-pill-text); }
-.ou-kanban-card .ou-kanban-meta > span { opacity: var(--ou-alpha-soft); }
-.ou-kanban-card .ou-tag { background: var(--ou-capsule-hover); color: var(--ou-pill-text); }
-.ou-kanban-card button.ou-tag:hover { background: var(--ou-capsule-bg); }
-.ou-swatch.ou-enter { animation-fill-mode: backwards; }
-.ou-kanban-card { --ou-swatch-mix: 70%; }
-.ou-swatch.ou-tone-gray { --ou-swatch-mix: 88%; }
-.ou-kanban-ended {
-  display: inline-flex; min-height: 2rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-3);
-  border-radius: var(--ou-radius-pill); background: var(--ou-glass-subtle); font-size: var(--ou-type-sm);
-  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+.ou-board-column[data-over] { box-shadow: var(--ou-ring-focus); background: var(--ou-pill-bg); }
+.ou-board-head { display: flex; min-height: 2rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-1) var(--ou-space-1); }
+.ou-board-head > .ou-pill { max-width: 70%; }
+.ou-board-count { color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
+.ou-board-head .ou-board-count { margin-left: auto; }
+.ou-board-more {
+  display: inline-flex; width: 1.75rem; height: 1.75rem; flex: none; align-items: center; justify-content: center;
+  border-radius: var(--ou-radius-control); color: var(--ou-text-tertiary);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
 }
-.ou-kanban-filters { min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-.ou-kanban-filters:not(:hover) { -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--ou-space-4)), transparent); mask-image: linear-gradient(to right, black calc(100% - var(--ou-space-4)), transparent); }
-.ou-kanban-filters::-webkit-scrollbar { display: none; }
-.ou-kanban-filters > .ou-kanban-filter { flex: none; }
-.ou-kanban-filter { display: inline-flex; min-height: 1.75rem; align-items: center; gap: 0.3125rem; padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); color: var(--ou-text-secondary); font-size: var(--ou-type-sm); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
-.ou-kanban-filter > span { color: var(--ou-text-placeholder); font-size: var(--ou-type-xs); }
-.ou-kanban-filter:hover { color: var(--ou-text-primary); }
-.ou-kanban-filter[aria-pressed="true"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
-.ou-kanban-ended:hover, .ou-kanban-ended[data-over] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
-.ou-kanban-title { font-size: var(--ou-type-body); font-weight: 600; line-height: 1.4; color: var(--ou-text-primary); }
-.ou-kanban-subtitle { font-size: var(--ou-type-sm); line-height: 1.45; color: var(--ou-text-secondary); }
-.ou-kanban-meta { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
-.ou-kanban-tag { padding: 0 var(--ou-space-2); border-radius: var(--ou-radius-pill); background: var(--ou-bg-control); line-height: 1.5; }
-.ou-kanban-tag:hover { color: var(--ou-text-primary); background: var(--ou-bg-hover); }
-.ou-kanban-add {
+.ou-board-more:hover, .ou-board-more[data-state="open"] { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
+.ou-board-list { display: flex; list-style: none; flex-direction: column; gap: var(--ou-space-2); margin: 0; padding: var(--ou-space-1) 0; }
+.ou-board-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ou-space-2);
+  padding: var(--ou-space-3) var(--ou-space-4);
+  border: 1px solid var(--ou-line-separator);
+  border-radius: var(--ou-radius-card);
+  background: var(--ou-bg-surface-solid);
+  box-shadow: var(--ou-elev-1);
+  color: var(--ou-text-primary);
+  cursor: pointer;
+  transition: border-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-base) var(--ou-ease-standard), opacity var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-board-card:hover { border-color: var(--ou-line-strong); box-shadow: var(--ou-elev-2); }
+.ou-board-card:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.ou-board-card[data-selected] { border-color: var(--ou-action-primary); box-shadow: var(--ou-ring-focus); }
+.ou-board-card[data-dragging] { opacity: var(--ou-alpha-faint); }
+.ou-board-card[data-lifted] { border-color: var(--ou-line-strong); box-shadow: var(--ou-elev-2-hover); }
+.ou-board-card-title { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 3; -webkit-box-orient: vertical; font-size: var(--ou-type-body); font-weight: 600; line-height: 1.45; word-break: break-word; }
+.ou-board-card-sub { font-weight: 500; color: var(--ou-text-secondary); }
+.ou-board-card-event { display: flex; min-width: 0; align-items: center; gap: var(--ou-space-1); font-size: var(--ou-type-xs); color: var(--ou-text-secondary); }
+.ou-board-card-event > svg { flex: none; color: var(--ou-text-tertiary); }
+.ou-board-field { display: flex; min-width: 0; flex-direction: column; gap: var(--ou-space-1); }
+.ou-board-field-name { display: flex; align-items: center; gap: var(--ou-space-1); font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-board-field-value { display: flex; min-width: 0; color: var(--ou-text-primary); line-height: 1.45; }
+.ou-board-tags { display: flex; min-width: 0; flex-wrap: wrap; gap: var(--ou-space-1); }
+.ou-board-placeholder { height: 4.5rem; border: 1px dashed var(--ou-line-strong); border-radius: var(--ou-radius-card); background: var(--ou-capsule-hover); }
+.ou-board-add {
   display: flex;
   min-height: 2.25rem;
   align-items: center;
-  gap: var(--ou-space-2);
-  margin-top: var(--ou-space-2);
-  padding: 0 var(--ou-space-2);
-  border-radius: var(--ou-radius-card);
+  justify-content: center;
+  gap: var(--ou-space-1);
+  margin-top: var(--ou-space-1);
+  border-radius: var(--ou-radius-control);
   font-size: var(--ou-type-sm);
-  color: var(--ou-text-tertiary);
-  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+  color: var(--ou-text-secondary);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
 }
-.ou-kanban-add:hover { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+.ou-board-add-sticky { position: sticky; bottom: var(--ou-space-2); z-index: var(--ou-layer-sticky); background: color-mix(in oklab, var(--ou-pill-bg) 70%, var(--ou-pill-border)); }
+.ou-board-add:hover { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+.ou-board-add:focus-visible, .ou-board-strip:focus-visible, .ou-board-more:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+/* 折叠的列：竖窄条，组名竖排 + 数量，点一下展开；拖过来照样能放。 */
+.ou-board-column-collapsed { width: var(--ou-board-column-collapsed); padding: var(--ou-space-1); }
+.ou-board-strip {
+  display: flex; width: 100%; min-height: 11rem; flex-direction: column; align-items: center; gap: var(--ou-space-2);
+  padding: var(--ou-space-2) 0; border-radius: var(--ou-radius-control); color: var(--ou-pill-text);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-board-strip:hover { background: var(--ou-capsule-hover); }
+.ou-board-strip > svg { flex: none; color: var(--ou-text-tertiary); }
+.ou-board-strip-name { writing-mode: vertical-rl; font-size: var(--ou-type-sm); font-weight: 500; letter-spacing: 0.08em; }
+/* 看板工具栏：⊕ 添加记录（强调色文字）、卡片管理、分组依据、筛选、排序、查找；生效的那几个是带计数的浅底胶囊。 */
+.ou-board-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-1); }
+.ou-board-tool {
+  display: inline-flex; min-height: 1.875rem; align-items: center; gap: 0.3125rem; padding: 0 var(--ou-space-2);
+  border-radius: var(--ou-radius-pill); font-size: var(--ou-type-sm); color: var(--ou-text-secondary); white-space: nowrap;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-board-tool:hover, .ou-board-tool[data-state="open"] { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
+.ou-board-tool[data-active] { background: var(--ou-bg-selected); color: var(--ou-text-primary); }
+.ou-board-tool:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.ou-board-tool-accent { color: var(--ou-action-primary); font-weight: 600; }
+.ou-board-tool-sep { width: 1px; height: 1rem; margin: 0 var(--ou-space-1); background: var(--ou-line-separator); }
+.ou-board-search { width: 12rem; min-height: 1.875rem; border-radius: var(--ou-radius-pill); font-size: var(--ou-type-sm); }
+/* 卡片管理浮层 */
+.ou-card-panel { display: flex; flex-direction: column; gap: var(--ou-space-2); }
+.ou-card-panel-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ou-space-2); padding: var(--ou-space-1) var(--ou-space-2); font-size: var(--ou-type-sm); }
+.ou-card-panel-caption { padding: var(--ou-space-1) var(--ou-space-2) 0; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-card-panel-list { display: flex; max-height: 20rem; list-style: none; flex-direction: column; margin: 0; padding: 0; overflow-y: auto; }
+.ou-card-field {
+  display: flex; min-height: 2.25rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-1) 0 var(--ou-space-2);
+  border-radius: var(--ou-radius-control); font-size: var(--ou-type-sm); color: var(--ou-text-primary);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-card-field:hover, .ou-card-field:focus-within { background: var(--ou-capsule-hover); }
+.ou-card-field[data-over] { background: var(--ou-bg-selected); }
+.ou-card-field[data-off] > .ou-card-field-name { color: var(--ou-text-tertiary); }
+.ou-card-field-grip { flex: none; cursor: grab; color: var(--ou-text-placeholder); }
+.ou-card-field-icon { flex: none; color: var(--ou-text-tertiary); }
+.ou-card-field-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ou-card-field-eye { display: inline-flex; width: 1.75rem; height: 1.75rem; flex: none; align-items: center; justify-content: center; border-radius: var(--ou-radius-control); color: var(--ou-text-tertiary); }
+.ou-card-field-eye:hover { background: var(--ou-capsule-bg); color: var(--ou-text-primary); }
+.ou-card-field-eye:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+/* 右侧记录详情（金山文档「展开记录」式）：L3 实心纸面，从右侧滑入；标题 + 图标按钮；「详情 / 动态」tab 下划线用强调色（墨黑）。 */
+.ou-record {
+  position: fixed; inset-block: 0; right: 0; z-index: var(--ou-layer-drawer);
+  display: flex; width: min(30rem, 100vw); flex-direction: column;
+  border-top-left-radius: var(--ou-radius-panel); border-bottom-left-radius: var(--ou-radius-panel);
+  background: var(--ou-bg-surface-solid); box-shadow: var(--ou-elev-3); color: var(--ou-text-primary); font-size: var(--ou-type-sm);
+  animation: ou-record-in var(--ou-motion-base) var(--ou-ease-standard);
+}
+@keyframes ou-record-in { from { opacity: 0; transform: translateX(var(--ou-space-6)); } to { opacity: 1; transform: none; } }
+.ou-record-head { display: flex; align-items: center; gap: var(--ou-space-1); padding: var(--ou-space-4) var(--ou-space-4) var(--ou-space-2) var(--ou-space-6); }
+.ou-record-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ou-type-section); font-weight: 600; }
+.ou-record-index { margin-right: var(--ou-space-1); font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-record-icon {
+  display: inline-flex; width: 2rem; height: 2rem; flex: none; align-items: center; justify-content: center;
+  border-radius: var(--ou-radius-control); color: var(--ou-text-secondary);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-record-icon:hover:not(:disabled) { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
+.ou-record-icon:disabled { opacity: var(--ou-alpha-faint); }
+.ou-record-icon:focus-visible, .ou-record-tab:focus-visible, .ou-record-hidden-toggle:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.ou-record-tabs { display: flex; gap: var(--ou-space-6); padding: 0 var(--ou-space-6); border-bottom: 1px solid var(--ou-line-separator); }
+.ou-record-tab { position: relative; padding: var(--ou-space-2) 0; color: var(--ou-text-tertiary); font-size: var(--ou-type-sm); transition: color var(--ou-motion-fast) var(--ou-ease-standard); }
+.ou-record-tab:hover { color: var(--ou-text-primary); }
+.ou-record-tab[aria-selected="true"] { color: var(--ou-text-primary); font-weight: 600; }
+.ou-record-tab[aria-selected="true"]::after { content: ""; position: absolute; inset-inline: 0; bottom: -1px; height: 2px; border-radius: var(--ou-radius-pill); background: var(--ou-action-primary); }
+.ou-record-body { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: var(--ou-space-4); overflow-y: auto; padding: var(--ou-space-4) var(--ou-space-6) var(--ou-space-8); }
+.ou-record-essence { font-size: var(--ou-type-xs); line-height: 1.6; color: var(--ou-text-secondary); }
+.ou-record-essence > span { margin-left: var(--ou-space-1); opacity: var(--ou-alpha-soft); }
+.ou-record-field { display: flex; flex-direction: column; gap: var(--ou-space-2); }
+.ou-record-label { display: flex; align-items: center; gap: var(--ou-space-1); font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-record-box { display: flex; min-height: 2.25rem; flex-wrap: wrap; align-items: center; gap: var(--ou-space-1); padding: var(--ou-space-1) var(--ou-space-3); border-radius: var(--ou-radius-control); background: var(--ou-bg-control); }
+.ou-record-score { flex-direction: column; align-items: flex-start; justify-content: center; }
+.ou-record-score ul { margin: 0; padding-left: var(--ou-space-4); list-style: disc; font-size: var(--ou-type-xs); line-height: 1.6; color: var(--ou-text-secondary); }
+.ou-record-tags { flex-wrap: wrap; justify-content: flex-start; gap: var(--ou-space-1); padding-block: var(--ou-space-1); text-align: left; cursor: pointer; }
+.ou-record-notes { display: block; min-height: 6rem; padding: var(--ou-space-2) var(--ou-space-3); line-height: 1.6; resize: vertical; }
+.ou-record-empty { color: var(--ou-text-placeholder); }
+.ou-record-hidden { display: flex; flex-direction: column; gap: var(--ou-space-4); }
+.ou-record-hidden-toggle { display: inline-flex; align-self: flex-start; align-items: center; gap: var(--ou-space-1); padding: var(--ou-space-1) var(--ou-space-1); border-radius: var(--ou-radius-control); font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-record-hidden-toggle:hover { color: var(--ou-text-primary); }
+.ou-record-hidden-toggle > svg { transition: transform var(--ou-motion-fast) var(--ou-ease-standard); }
+.ou-record-hidden-toggle > svg[data-open] { transform: rotate(90deg); }
+.ou-record-activity { display: flex; list-style: none; flex-direction: column; margin: 0; padding: 0; }
+.ou-record-activity > li { display: flex; gap: var(--ou-space-3); padding: var(--ou-space-2) 0; border-bottom: 1px solid var(--ou-line-separator); }
+.ou-record-activity-at { width: 7.5rem; flex: none; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-record-activity > li[data-done] .ou-record-activity-title { color: var(--ou-text-tertiary); text-decoration: line-through; }
+@media (prefers-reduced-motion: reduce) {
+  .ou-record { animation: none; }
+  .ou-record-hidden-toggle > svg, .ou-record-tab, .ou-record-icon { transition: none; }
+}
 @media (max-width: 40rem) {
-  .ou-kanban-track { scroll-snap-type: x mandatory; }
-  .ou-kanban-column { min-width: min(85vw, 20rem); }
+  .ou-board-track { scroll-snap-type: x mandatory; }
+  .ou-board-column { width: min(85vw, var(--ou-board-column)); scroll-snap-align: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ou-board-card, .ou-board-column, .ou-board-add, .ou-board-tool, .ou-card-field { transition: none; }
 }
 
 
@@ -669,9 +775,6 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
   .ou-run-dot { animation: none; opacity: 1; }
 }
 
-/* 看板：拖到列上时列底和焦点环平滑出现；卡片拖起时略微倾斜。 */
-.ou-kanban-column { transition: box-shadow var(--ou-motion-base) var(--ou-ease-standard), background-color var(--ou-motion-base) var(--ou-ease-standard); }
-.ou-kanban-column[data-over] { background: var(--ou-glass-bg); }
 
 
 /* 弹窗（⌘K 用 framer-motion 弹簧，已有）：从中心略微放大出现，遮罩淡入。 */

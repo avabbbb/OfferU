@@ -6,6 +6,7 @@ import { type ReactNode, useState } from "react";
 import type { Job } from "@/lib/core";
 import { VIEW_KINDS, VIEW_NAME, activeCounts, type ViewKind, type ViewState } from "@/lib/jobView";
 
+import { BoardToolbar } from "./BoardToolbar";
 import { FieldsPanel, FilterPanel, GroupPanel, Popover, RowHeightPanel, SortPanel, ctl, ghost, type Patch } from "./ViewPanels";
 
 // 顶栏（Notion 式）：左边视图 tab，选中的是浅灰圆角底；右边一排灰色图标（筛选、分组、排序、搜索、字段、行高、重置），
@@ -17,7 +18,7 @@ const icon = (Icon: typeof Search, name: string, count = 0): ReactNode => (
   </span>
 );
 
-export function ViewBar({ state, jobs, search, adding, setActive, setSearch, patch, reset, onAdd }: {
+export function ViewBar({ state, jobs, search, adding, setActive, setSearch, patch, reset, onAdd, onAddRecord }: {
   state: ViewState;
   jobs: Job[];
   search: string;
@@ -27,16 +28,19 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
   patch: Patch;
   reset: () => void;
   onAdd: () => void;
+  /** 看板的「⊕ 添加记录」：新建一条空记录并在右侧面板打开。 */
+  onAddRecord: () => void;
 }) {
   const view = state.views[state.active];
   const n = activeCounts(view);
   const table = state.active === "table";
-  // 看板自带标签筛选、日历按周看事项，只有表格、甘特和画廊用这排工具；字段和行高只对表格有意义。
+  // 看板有自己的一排工具（BoardToolbar，在视图 tab 下面）；日历按周看事项；表格、甘特和画廊用这排；字段和行高只对表格有意义。
   const listing = state.active === "table" || state.active === "gantt" || state.active === "gallery";
   const [searching, setSearching] = useState(false);
   const showSearch = searching || search.length > 0;
   return (
-    <div className="flex flex-wrap items-center gap-x-1 gap-y-2 pb-1">
+    <div className="space-y-2 pb-1">
+    <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
       <div role="tablist" aria-label="视图" className="ou-segment">
         {VIEW_KINDS.map((k) => (
           <button key={k} type="button" role="tab" aria-selected={state.active === k} onClick={() => setActive(k)}
@@ -65,6 +69,10 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
           {adding ? "收起" : "添加岗位"}
         </button>
       </div>
+    </div>
+    {state.active === "board" && (
+      <BoardToolbar view={view} jobs={jobs} search={search} setSearch={setSearch} patch={patch} onAddRecord={onAddRecord} />
+    )}
     </div>
   );
 }

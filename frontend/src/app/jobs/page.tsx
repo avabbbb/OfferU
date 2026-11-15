@@ -8,9 +8,10 @@ import { JobsGantt } from "@/components/jobs/JobsGantt";
 import { JobsTable } from "@/components/jobs/JobsTable";
 import { RecordDrawer } from "@/components/jobs/RecordDrawer";
 import { ViewBar } from "@/components/jobs/ViewBar";
-import { JobBoard } from "@/components/today/JobBoard";
+import { JobBoard, createJob } from "@/components/today/JobBoard";
 import { type Event, JOB_STATUS, type Job, refreshAll, useTool, write } from "@/lib/core";
 import { evaluateJobs } from "@/lib/evaluate";
+import { boardColumns, boardGroupField, groupPatch, hiddenCardFields } from "@/lib/jobBoard";
 import { VIEW_KINDS, applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
 
 const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
@@ -103,8 +104,26 @@ export default function JobsPage() {
   const shown = useMemo(() => applyView(jobs, view, search), [jobs, view, search]);
   const tagOptions = useMemo(() => [...new Set(jobs.flatMap((j) => j.tags ?? []))].sort((a, b) => a.localeCompare(b, "zh")), [jobs]);
   const unscored = jobs.filter((job) => job.score == null && job.status !== "rejected" && job.status !== "closed").length;
-  const index = openId == null ? -1 : shown.findIndex((j) => j.id === openId);
-  const open = openId == null ? undefined : index >= 0 ? shown[index] : jobs.find((j) => j.id === openId);
+  // 看板里 ↑↓ 按列从左到右、列内从上到下走（跳过折叠的列）；其他视图按当前表格顺序。
+  const board = state.active === "board";
+  const ordered = useMemo(() => (board
+    ? boardColumns(shown, boardGroupField(view)).filter((c) => !view.collapsed.includes(c.key)).flatMap((c) => c.jobs)
+    : shown), [board, shown, view]);
+  const index = openId == null ? -1 : ordered.findIndex((j) => j.id === openId);
+  const open = openId == null ? undefined : index >= 0 ? ordered[index] : jobs.find((j) => j.id === openId);
+  const drawerHidden = board ? hiddenCardFields(view) : state.active === "table" ? view.hidden : [];
+  // 看板「⊕ 添加记录」：在第一列（按状态分组就是「想投」）新建一条空记录，直接在右侧面板里填。
+  const addRecord = async () => {
+    setError("");
+    try {
+      const field = boardGroupField(view);
+      const first = boardColumns(shown, field)[0];
+      const record = await createJob(first ? groupPatch(field, first.value) ?? {} : {});
+      setOpenId(record.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "没能新建记录");
+    }
+  };
   const close = useCallback(() => setOpenId(null), []);
 
   // 给没评过的岗位逐个出评估报告（存在岗位下），分数写回岗位。
@@ -137,7 +156,7 @@ export default function JobsPage() {
       </div>
 
       <ViewBar state={state} jobs={jobs} search={search} adding={adding} setActive={setActive} setSearch={setSearch}
-        patch={patch} reset={reset} onAdd={() => setAdding((a) => !a)} />
+        patch={patch} reset={reset} onAdd={() => setAdding((a) => !a)} onAddRecord={() => void addRecord()} />
       {adding && <AddJob />}
 
       {state.active === "table" && (
@@ -145,15 +164,15 @@ export default function JobsPage() {
           ? <p className="text-[13.5px] text-[var(--foreground-muted)]">还没有岗位。点右上角「添加岗位」贴一个链接或 JD。</p>
           : <JobsTable jobs={shown} view={view} patch={patch} openId={openId} onOpen={setOpenId} onAdd={() => setAdding(true)} />
       )}
-      {state.active === "board" && <JobBoard embedded />}
+      {state.active === "board" && data && <JobBoard embedded jobs={shown} view={view} patch={patch} openId={openId} onOpen={setOpenId} events={events} />}
       {state.active === "calendar" && <JobsCalendar events={events} />}
       {state.active === "gantt" && <JobsGantt jobs={shown} events={events} view={view} openId={openId} onOpen={setOpenId} />}
       {state.active === "gallery" && data && <JobsGallery jobs={shown} total={jobs.length} events={events} drawerOpen={openId != null} onOpen={setOpenId} />}
 
       {open && (
-        <RecordDrawer job={open} index={index} total={shown.length} tagOptions={tagOptions} onClose={close}
-          onPrev={() => { if (index > 0) setOpenId(shown[index - 1].id); }}
-          onNext={() => { if (index >= 0 && index < shown.length - 1) setOpenId(shown[index + 1].id); }} />
+        <RecordDrawer job={open} index={index} total={ordered.length} tagOptions={tagOptions} hidden={drawerHidden} events={events} onClose={close}
+          onPrev={() => { if (index > 0) setOpenId(ordered[index - 1].id); }}
+          onNext={() => { if (index >= 0 && index < ordered.length - 1) setOpenId(ordered[index + 1].id); }} />
       )}
     </div>
   );

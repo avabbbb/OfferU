@@ -165,7 +165,8 @@
   --ou-width-reading: 46rem;  /* forms, settings, job detail text */
   --ou-width-page: 72rem;     /* Today, lists */
   --ou-width-wide: 100rem;    /* tables, kanban, gantt */
-  --ou-kanban-column: clamp(16rem, 18vw + 4rem, 22rem);
+  --ou-board-column: 17rem;            /* kanban column (KDocs-style fixed width, 272px) */
+  --ou-board-column-collapsed: 2.75rem; /* folded column strip */
   --ou-sidebar-width: clamp(14rem, 10rem + 5vw, 16rem);
 
   --ou-ring-hover: 0 0 0 1px var(--ou-line-control);
@@ -220,7 +221,6 @@
   --ou-cal-hour: 3.25rem;    /* 52px per hour */
   --ou-cal-gutter: 3.5rem;
   --ou-cal-day-min: 7.5rem;
-  --ou-kanban-column-min: 12.5rem;
   /* Scroll-edge fades (useScrollEdges): wide on horizontal tracks so "more to the right" reads at a glance. */
   --ou-scroll-fade-x: 5rem;
   --ou-scroll-fade-y: 2rem;
