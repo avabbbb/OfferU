@@ -58,9 +58,7 @@ export function Sidebar() {
       <aside className="offeru-sidebar relative hidden h-full w-[var(--ou-sidebar-width)] shrink-0 overflow-hidden md:flex md:flex-col">
         <div className="offeru-sidebar-brand relative z-10 px-4 pb-2 pt-5">
           <Link href="/" className="flex items-center gap-2.5 rounded-md px-1.5 py-1">
-            <div className="offeru-sidebar-mark ou-tile">
-              <span className="text-[length:var(--ou-type-sm)] font-bold tracking-tight">O</span>
-            </div>
+            <img className="offeru-sidebar-mark" src="/mascot/naiwa-thinking.webp" alt="" width={30} height={30} />
             <p className="text-[length:var(--ou-type-section)] font-semibold tracking-tight text-[var(--foreground)]">OfferU</p>
           </Link>
         </div>
