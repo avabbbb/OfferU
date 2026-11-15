@@ -31,6 +31,27 @@ Judge 和被测 Agent 目前是同一个模型，judge.json 里记 same_model_as
 
 每次运行一个独立目录（场景-尝试-时间），可以并行跑。失败的运行不删，aggregate 一并统计。
 
+## TS 后端（主线）上跑
+
+`backend-ts/scripts/journey/` 是同一套评测的 TS 版：同样的种子、场景和用户原话，C1–C15 代码检查移植自 grade.py，驱动的是 TS 内置 Agent（`packages/core/src/agent` + backend-ts 的 `/api/agent/runtime/*` 路由，进程内 `app.request`），不需要 Python 后端。每次运行在 `--out`（默认系统临时目录下 `offeru-journey/`）建一个 `<场景>-<模式>-a<尝试>-<时间>/`：`data/` 作 OFFERU_DATA_DIR，`traces/` 作 OFFERU_TRACE_DIR；拒绝写进仓库或 OFFERU_DATA_DIR 指向的目录。
+
+以下命令在 `backend-ts` 目录下执行：
+
+```
+npx tsx scripts/journey/run.ts --scenario full                 # mock：脚本模型，不要 Key、不联网，跑完自动判分
+npx tsx scripts/journey/run.ts --scenario s6_interrupt         # 中断（第 2 个工具完成后 abort）+ 重试不重复写入
+OFFERU_LLM_BASE_URL=… OFFERU_LLM_API_KEY=… OFFERU_LLM_MODEL=… \
+  npx tsx scripts/journey/run.ts --scenario full --mode real   # 真实模型（变量见 src/llm-env.ts；Anthropic 加 OFFERU_LLM_FORMAT=anthropic）
+npx tsx scripts/journey/run.ts --grade <运行目录>               # 只重新判分（回放），不调模型
+npx tsx scripts/journey/run.ts --scenario full --seed-only     # 只建隔离目录和种子，人工测试用
+npx vitest run test/journey.test.ts                            # CI：full 和 s6 的 mock 运行 + 判分
+```
+
+- 模式：`mock` 由 `mock.ts` 按回合标签回放写死的工具调用和回复（工具内部的定制简历起草 / 审稿也给固定回答），测的是运行时、工具、存储、中断恢复和判分，**不测模型判断**；`real` 才测提示词和模型。`--renderer stub|playwright` 选 PDF 渲染（mock 默认 stub 写一个假 PDF，real 默认 Playwright，本机没有 Chromium 就加 `--renderer stub`）。
+- 产物：`meta.json`（含 `mock_problems`：脚本缺回合 / 用完 / 没准备的子模型调用）、`transcript.json`、`traces/<journey_id>/<run_id>.json`、`grade.json`，形状和 Python 版一致。
+- 和 Python 版的差别：s6 除了 45 秒，还在第 2 个工具完成后中断（mock 才确定）；C10 额外查 j1 下 BOSS / 小红书话术各不超过一份；m1_memory 场景、judge.py、aggregate.py 还没移植。
+- Node 22 能跑（`node:sqlite` 会打 ExperimentalWarning）；仓库要求 24+，没有发现必须 24 的地方。
+
 ## 每天的迭代方式
 
 1. 真实使用里遇到的失败，先记一行到 docs/DOGFOOD.md。
@@ -89,4 +110,4 @@ OFFERU_DATA_DIR=D/data .venv/Scripts/python.exe run_server.py
 2. 在助手面板按上面的顺序说：补经历 → 比较岗位 → 投递包 → 模拟面试 → 复盘 → 新对话补新证据。助手不会发邮件、不会投递。
 3. 写入不对就在「今天」页最近改动里「撤销」。
 
-看这次运行的 trace：每次 Agent Run 写一个 JSON 到 OFFERU_TRACE_DIR，没设就是 数据目录/traces（真实使用时 H:/OfferU/data/traces），按文件修改时间取最新一个。里面有代码版本、模型、提示词版本、工具参数与返回、子模型调用耗时、change_id、终态和停止原因；token 模型没返回时记为空。觉得不对，把这个 JSON 和你的原话一起记进 docs/DOGFOOD.md，按「每天的迭代方式」收进回归集。
+看这次运行的 trace：每次 Agent Run（Python 后端和 TS 伴侣都是）写一个 JSON 到 OFFERU_TRACE_DIR，没设就是 数据目录/traces（真实使用时 H:/OfferU/data/traces），按文件修改时间取最新一个。里面有代码版本、模型、提示词版本、工具参数与返回、子模型调用耗时、change_id、终态和停止原因；token 模型没返回时记为空。觉得不对，把这个 JSON 和你的原话一起记进 docs/DOGFOOD.md，按「每天的迭代方式」收进回归集。
