@@ -6,7 +6,9 @@ import { pathToFileURL } from "node:url";
 import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
 import { createApp, type AppDeps } from "./app";
+import { SqliteAgentRunStore } from "./agent-store";
 import { nodeToolRuntime } from "./node-runtime";
+import { agentHost } from "./routes/agent";
 import { registerCompanionRoutes } from "./routes/companion";
 import { nodeBossLogin } from "./routes/companion/boss-cli";
 import { filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
@@ -15,7 +17,7 @@ import type { SqliteCoreStore } from "./store";
 
 export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDeps> = {}): Server {
   const { llm, search, fetch, companion } = nodeToolRuntime(store);
-  const app = createApp({
+  const deps: AppDeps = {
     store,
     pairingToken,
     runtime: "node",
@@ -29,9 +31,13 @@ export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDe
     renderer: "renderer" in overrides ? overrides.renderer : playwrightRenderer(),
     schoolLogos: "schoolLogos" in overrides ? overrides.schoolLogos : nodeSchoolLogos(),
     bossLogin: nodeBossLogin(),
+    agentRuns: new SqliteAgentRunStore(store),
     ...overrides,
-  });
+  };
+  const app = createApp(deps);
   registerCompanionRoutes(app);
+  // Runs that were executing when the last process died become resumable.
+  void agentHost(deps).state.recoverInterrupted().catch((cause) => console.error("agent recovery failed", cause));
   return createAdaptorServer({ fetch: app.fetch }) as Server;
 }
 
