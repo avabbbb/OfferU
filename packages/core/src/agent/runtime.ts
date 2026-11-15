@@ -25,7 +25,7 @@ import {
 import { CoreError, type CoreContext, type CoreStore, type Json } from "../types";
 import { AgentHost, type PreparedAttachments, type ResolvedLlm, type RunOptions } from "./host";
 import type { AgentTool } from "./loop";
-import { AGENT_ACTOR, agentSystemPrompt, type MemoryArm } from "./prompt";
+import { AGENT_ACTOR, agentPromptParts, type MemoryArm } from "./prompt";
 import { AgentConversations, AgentRunState, type AgentRunStore } from "./run-state";
 import { CORE_TOOL_SPECS, coreToolSpecs } from "./tool-specs";
 import { bindAgentTools } from "./tools";
@@ -99,7 +99,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
       const names = new Set(record.map((tool) => tool.name));
       return [...record, ...extra.filter((tool) => !names.has(tool.name))];
     },
-    systemPrompt: ({ maxSteps }) => agentSystemPrompt(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm }),
+    systemPrompt: ({ maxSteps }) => agentPromptParts(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm }),
     prepareAttachments: deps.prepareAttachments,
     maxConcurrentRuns: deps.maxConcurrentRuns,
   });

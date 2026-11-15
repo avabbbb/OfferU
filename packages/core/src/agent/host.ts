@@ -9,8 +9,8 @@
 import { CoreError } from "../types";
 import type { ChatContentPart, ChatMessage, LlmClient } from "../llm";
 import { sanitizeLlmError } from "../llm";
-import { runAgentLoop, type AgentTool, type LoopEvent } from "./loop";
-import { MAX_STEPS } from "./prompt";
+import { runAgentLoop, summarizeTurnStats, type AgentTool, type LoopEvent } from "./loop";
+import { MAX_STEPS, contextBlock, type AgentPrompt } from "./prompt";
 import {
   AgentConversations,
   AgentRunState,
@@ -57,7 +57,12 @@ export interface AgentHostDeps {
   resolveLlm(options: RunOptions): Promise<ResolvedLlm>;
   /** Core tools bound to the Agent actor. */
   tools(): AgentTool[];
-  systemPrompt(options: { maxSteps: number }): Promise<string>;
+  /**
+   * The system prompt. AgentPrompt splits it for prompt caching: `system` is
+   * the stable system message, `context` (date, overview, memory) goes once at
+   * the head of a fresh run's first user message. A plain string is all system.
+   */
+  systemPrompt(options: { maxSteps: number }): Promise<string | AgentPrompt>;
   /** Read uploaded attachments; absent means attachments are unsupported here. */
   prepareAttachments?(message: string, ids: string[]): Promise<PreparedAttachments>;
   /** User decisions on queued actions the Agent has not heard about (action_gate.take_decisions_for_agent). */
@@ -108,6 +113,21 @@ export function promptWithContext(goal: string, contextMessages: Array<{ role: s
   if (!rows.length) return goal;
   return "Prior task conversation (context only; Operation results remain the source "
     + `of truth):\n${rows.join("\n").slice(0, 10_000)}\n\nCurrent user request:\n${goal}`;
+}
+
+/** One turn's latency + cache numbers for runtime.turn_completed (the run trace). */
+function turnLlmStats(event: Extract<LoopEvent, { type: "turn_end" }>): Json {
+  const usage = event.usage;
+  const cached = usage.cached_input_tokens ?? 0;
+  return {
+    ...event.timing,
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    cached_input_tokens: cached,
+    cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
+    cache_hit_rate: !usage.estimated && usage.input_tokens > 0 ? Number((cached / usage.input_tokens).toFixed(3)) : null,
+    estimated: usage.estimated,
+  };
 }
 
 function contextUsage(event: Extract<LoopEvent, { type: "turn_end" }>): Json {
@@ -395,6 +415,9 @@ export class AgentHost {
       return { ok: false, run: failed, assistant_message: "", pending_actions: [], errors: [message] };
     };
 
+    // Build the prompt (overview + memory reads) while the run is set up, not after.
+    const promptReady = this.deps.systemPrompt({ maxSteps });
+    promptReady.catch(() => undefined);
     try {
       await publish("run.created", { task_id: run.task_id, skill_id: SKILL_ID, status: run.status });
       if (!input.resumeRunId) for (const seed of await state.listEvents(runId)) await publishPersisted(seed);
@@ -406,7 +429,6 @@ export class AgentHost {
       );
       await publish(input.resumeRunId ? "runtime.resuming" : "runtime.starting", { provider: llm.metadata.provider, model: llm.metadata.model });
 
-      await state.store.putSession(runId, session);
       await persistWorkerEvent("runtime.session_started", { session_id: runId, kernel: "ts" }, "run.started");
       const allTools = [...tools, askTool];
       const current = await state.loadRun(runId) || run;
@@ -417,6 +439,11 @@ export class AgentHost {
         : input.resumeRunId ? goal : promptWithContext(goal, input.contextMessages);
       const decisions = this.deps.takeDecisions ? await this.deps.takeDecisions(runId, String(run.conversation_id || "")) : "";
       promptMessage = [decisions, promptMessage].filter(Boolean).join("\n\n");
+      const prompt = await promptReady;
+      const systemPrompt = typeof prompt === "string" ? prompt : prompt.system;
+      // Context only opens a fresh session: a resumed / continued session keeps the
+      // context it started with, so the bytes already sent stay a cacheable prefix.
+      if (typeof prompt !== "string" && prompt.context && !session.length) promptMessage = `${contextBlock(prompt.context)}\n\n${promptMessage}`;
       const userContent: string | ChatContentPart[] = input.images?.length
         ? [{ type: "text", text: promptMessage }, ...input.images.map((url) => ({ type: "image_url" as const, image_url: { url } }))]
         : promptMessage;
@@ -424,7 +451,7 @@ export class AgentHost {
       await state.store.putSession(runId, session);
 
       activeRun.promptActive = true;
-      const systemPrompt = await this.deps.systemPrompt({ maxSteps });
+      let reasoningShown = false;
       const result = await runAgentLoop({
         client: llm.client,
         systemPrompt,
@@ -434,6 +461,8 @@ export class AgentHost {
         hardLimit: maxSteps + 1,
         signal: activeRun.controller.signal,
         reasoningEffort: options.reasoning_effort || "",
+        maskSeed: runId,
+        cacheKey: `offeru-${String(run.conversation_id || runId)}`,
         takeSteering: () => activeRun.steering.splice(0, activeRun.steering.length),
         onSavePoint: (messages) => state.store.putSession(runId, messages),
         emit: async (event) => {
@@ -448,13 +477,18 @@ export class AgentHost {
               return;
             }
             case "thinking_delta":
-              return;
+              // Tell the UI the model is already producing (reasoning models think for a while
+              // before the first text); once per turn, never stored.
+              if (reasoningShown || !event.text) return;
+              reasoningShown = true;
+              return publish("reasoning.delta", { characters: event.text.length, ...runtimeTag });
             case "agent_start":
               return persistWorkerEvent("runtime.agent_started", {}, "kernel.agent_start");
             case "turn_start":
+              reasoningShown = false;
               return persistWorkerEvent("runtime.turn_started", {}, "kernel.turn_start");
             case "turn_end":
-              return persistWorkerEvent("runtime.turn_completed", { context_usage: contextUsage(event) }, "kernel.turn_end");
+              return persistWorkerEvent("runtime.turn_completed", { context_usage: contextUsage(event), llm: turnLlmStats(event) }, "kernel.turn_end");
             case "agent_end":
               return persistWorkerEvent("runtime.agent_settled", {}, "kernel.agent_end");
             case "tool_execution_start":
@@ -517,6 +551,7 @@ export class AgentHost {
           terminal_state: terminalState,
           stop_reason: stopReason,
           steps_used: result.turns,
+          llm_stats: summarizeTurnStats(result.turnStats) as Json,
         },
       });
       if (inputRequest) await publish("run.waiting_input", { input_request: inputRequest });

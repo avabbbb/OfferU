@@ -230,6 +230,8 @@ function progressForEvent(event: string, operation: unknown): string | null {
       return "有一步不可撤销，已放进待确认列表；助手继续做别的...";
     case "input.required":
       return "助手需要你的回答后继续...";
+    case "reasoning.delta":
+      return "模型正在推理...";
     case "runtime.retry_started":
       return "模型调用正在安全重试...";
     case "runtime.compaction_started":
