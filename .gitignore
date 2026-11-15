@@ -79,6 +79,7 @@ internal/
 !docs/PRD.md
 !docs/DESIGN.md
 !docs/backend-ts-migration.md
+!docs/sync.md
 !docs/DOGFOOD.md
 !docs/RESEARCH_FORMAT.md
 # 状态图被 .agents/skills/statemachine-* 引用，单独版本化

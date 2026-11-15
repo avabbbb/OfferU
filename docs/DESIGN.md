@@ -13,7 +13,7 @@
 **非目标**
 
 - 不做权限审批流、提案队列、Run 生命周期、Operation Registry。旧版的这些设计已归档。
-- 不做多用户、云同步、服务端部署。
+- 不做多用户、托管云服务、服务端部署。跨设备同步只用用户自己的 S3 / R2 存储桶，端到端加密（见 10.1）。
 - 不为每种 Agent 宿主写适配层，只提供 MCP 和命令行两种接入。
 
 ## 2. 总体结构
@@ -159,6 +159,13 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 去重：同步前查 records 和 changes（before / after）里出现过的 mail_id，处理过的跳过，所以撤销后下次同步不会写回来。
 - 不做：发信、标已读、删信、保存原始邮件。
 - services/email_sync.py 只管账号、凭据和游标，每封新信交给 core/mail.classify / apply 写入。旧 Operation Registry 里的候选进展操作（ingest_application_signal、list / review_application_progress 等）已下线，不再暴露给外置 Agent；旧候选表 application_progress_candidates 只剩历史数据，没有写入方，前端不展示，随 legacy 清理一起删表。邮箱同步已不再调用 ingest_application_signal。
+
+### 10.1 云同步（S3 / R2）
+
+- 引擎在 `packages/sync`（`@offeru/sync`，只用 fetch + WebCrypto，浏览器 / companion / Worker 共用），注入 CoreStore、BlobStore（S3 SigV4）和本机状态存储。格式、合并规则、威胁模型和 CORS 见 [sync.md](./sync.md)。
+- 远端是 dejavu 式的内容寻址快照：objects（加密块，id = HMAC）、indexes（快照索引）、refs/latest（If-Match 比较交换）、lock（带过期）。只上传桶里没有的块。
+- 合并以本机上次同步的快照为 base，逐条记录三方合并、字段级合并；真冲突按 updated_at 后写赢，输的版本存成一篇冲突文档；修改赢过并发删除。结果在一个事务里写回，每条一行 change（actor「同步」），可撤销。
+- companion 路由 `GET /api/sync/status`、`POST /api/sync/{configure,now}`；设置 › 数据 › 云同步。凭据和口令只存在本机。
 
 ## 11. 前端
 
