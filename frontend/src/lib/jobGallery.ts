@@ -35,6 +35,13 @@ export function nextDeadline(job: Job, events: Event[]): Event | undefined {
     .sort((a, b) => a.at!.localeCompare(b.at!))[0];
 }
 
+/** 滚轮该走几帧的方向量：普通竖滚轮返回 0，交给页面滚；Shift+滚轮或横向为主的触控板轻扫才切帧。 */
+export function galleryWheelDelta(e: { deltaX: number; deltaY: number; shiftKey: boolean }): number {
+  const horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+  if (horizontal) return e.deltaX;
+  return e.shiftKey ? e.deltaY : 0;
+}
+
 export const clampIndex = (i: number, n: number) => (n <= 0 ? 0 : Math.min(n - 1, Math.max(0, i)));
 
 /** 只渲染离焦点这么近的帧，再远的看不见也不占性能。 */

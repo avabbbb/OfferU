@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Event, Job } from "@/lib/core";
-import { clampIndex, framePose, galleryGroups, galleryJobs, nextDeadline, topMatch } from "@/lib/jobGallery";
+import { clampIndex, framePose, galleryWheelDelta, galleryGroups, galleryJobs, nextDeadline, topMatch } from "@/lib/jobGallery";
 import { VIEW_KINDS, VIEW_NAME, defaultState, loadViews } from "@/lib/jobView";
 
 const job = (id: number, over: Partial<Job> = {}): Job => ({ id, type: "job", job_id: null, created_at: "", updated_at: "", status: "saved", ...over });
@@ -34,6 +34,13 @@ describe("画廊视图", () => {
     expect(clampIndex(7, 3)).toBe(2);
     expect(clampIndex(-1, 3)).toBe(0);
     expect(clampIndex(4, 0)).toBe(0);
+  });
+
+  it("普通滚轮放给页面，Shift+滚轮和横向轻扫才切帧", () => {
+    expect(galleryWheelDelta({ deltaX: 0, deltaY: 100, shiftKey: false })).toBe(0);
+    expect(galleryWheelDelta({ deltaX: 0, deltaY: -100, shiftKey: true })).toBe(-100);
+    expect(galleryWheelDelta({ deltaX: 100, deltaY: 0, shiftKey: true })).toBe(100);
+    expect(galleryWheelDelta({ deltaX: -30, deltaY: 5, shiftKey: false })).toBe(-30);
   });
 
   it("焦点正对、两侧朝里转；减少动态时不转不糊", () => {

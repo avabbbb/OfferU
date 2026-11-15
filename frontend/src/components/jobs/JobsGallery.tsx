@@ -8,12 +8,12 @@ import { JobTag } from "@/components/jobs/JobPickers";
 import { Button, Pill, Popover } from "@/components/ui";
 import { type Event, JOB_STATUS, type Job, when } from "@/lib/core";
 import {
-  GALLERY_REACH, type GalleryGroupKey, clampIndex, framePose, galleryGroups, galleryJobs, nextDeadline, topMatch,
+  GALLERY_REACH, type GalleryGroupKey, clampIndex, framePose, galleryGroups, galleryJobs, galleryWheelDelta, nextDeadline, topMatch,
 } from "@/lib/jobGallery";
 import { STATUS_TONE } from "@/lib/jobView";
 
 // 画廊视图（参考 Inspora · Alim Joldaspayev「new portfolio」）：岗位是一排朝消失点退去的画框，焦点帧正对镜头，
-// 滚轮 / ←→ / 底部箭头一帧一帧走；点焦点帧或回车「走上前」展开成详情，两边退成细条，Esc 退回。
+// Shift+滚轮 / 横向轻扫 / ←→ / 底部箭头一帧一帧走（普通滚轮照常滚页面）；点焦点帧或回车「走上前」展开成详情，两边退成细条，Esc 退回。
 // 焦点帧是设计工具里的选中态：细描边 + 四角小方块 + 左上名字条 + 左下「打开岗位 ↗」。颜色全走 Glass token。
 
 const WHEEL_STEP = 40;
@@ -133,12 +133,12 @@ export function JobsGallery({ jobs, total, events, drawerOpen, onOpen }: {
   const go = useCallback((delta: number) => setIndex((i) => clampIndex(clampIndex(i, n) + delta, n)), [n]);
   const pickGroup = (key: GalleryGroupKey) => { setGroup(key); setIndex(0); setStepped(false); };
 
-  // 滚轮：累计到一格才走一帧，走完锁一小会儿，触控板一次轻扫不会连跳；到头了放行，让页面接着滚。
+  // 普通滚轮不拦，照常滚页面；Shift+滚轮或横向为主的触控板轻扫才切帧。累计到一格才走一帧，走完锁一小会儿，一次轻扫不会连跳；到头了放行。
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const delta = galleryWheelDelta(e);
       const dir = Math.sign(delta);
       if (!dir || (dir < 0 && at === 0) || (dir > 0 && at >= n - 1)) return;
       e.preventDefault();
@@ -214,7 +214,7 @@ export function JobsGallery({ jobs, total, events, drawerOpen, onOpen }: {
           trigger={<button type="button" className="ou-gallery-arrow" aria-label="怎么用"><CircleHelp size={16} strokeWidth={1.75} aria-hidden /></button>}>
           <p className="ou-gallery-help-title">怎么用</p>
           <ul>
-            <li>滚轮或 ← → 键切换</li>
+            <li>Shift+滚轮或 ← → 键切换</li>
             <li>点击或回车放大</li>
             <li>Esc 返回</li>
           </ul>
