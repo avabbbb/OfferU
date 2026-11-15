@@ -8,6 +8,8 @@
 //   files        IndexedDB file stores (uploads, Agent attachments, named backups)
 //   config       /api/config model settings, keys encrypted at rest (config.ts)
 //   agentRuns    IndexedDB (agentRuns.ts)
+//   sync         the companion's SyncService with IndexedDB settings/state (sync.ts); the bucket
+//                is reached straight from the page, so it needs a CORS rule (docs/sync.md)
 //   llmFetch     direct to the provider; falls back to the Worker's /llm-proxy when the
 //                provider sends no CORS headers
 // Companion-only capabilities (local files, Playwright PDF, poppler, BOSS login, Agent board,
@@ -17,6 +19,7 @@
 import { createApp, type AppDeps } from "@offeru/backend/app";
 import { agentHost } from "@offeru/backend/routes/agent";
 import { ConfigRuntime } from "@offeru/backend/routes/config";
+import { SyncService } from "@offeru/backend/syncService";
 import { staticSchoolLogos } from "@offeru/core";
 
 import { BrowserDemoStore } from "@/lib/demo/store";
@@ -24,6 +27,7 @@ import { BrowserDemoStore } from "@/lib/demo/store";
 import { IndexedDbAgentRunStore } from "./agentRuns";
 import { indexedDbConfigStore } from "./config";
 import { indexedDbBackupFiles, indexedDbFileStore } from "./files";
+import { indexedDbSyncStores } from "./sync";
 
 type Fetch = typeof globalThis.fetch;
 
@@ -67,6 +71,7 @@ export function createLocalBackend(baseFetch: Fetch = globalThis.fetch.bind(glob
   const logoBase = new URL("school-logos/", globalThis.location?.href ?? "http://localhost/").toString();
   const store = new BrowserDemoStore(() => ({ version: 1, nextRecordId: 1, nextChangeId: 1, records: [], changes: [] }), "offeru-local");
   const ready = store.ready().then(() => undefined);
+  const syncStores = indexedDbSyncStores("offeru-local-sync");
   const deps: AppDeps = {
     store,
     runtime: "browser",
@@ -81,6 +86,7 @@ export function createLocalBackend(baseFetch: Fetch = globalThis.fetch.bind(glob
     schoolLogos: staticSchoolLogos(logoBase, (url) => baseFetch(url)),
     renderer: null,
     agentRuns: new IndexedDbAgentRunStore(),
+    sync: new SyncService(store, syncStores.settings, syncStores.state, { fetch: (input, init) => baseFetch(input, init), browser: true }),
   };
   const app = createApp(deps);
   void ready.then(() => agentHost(deps).state.recoverInterrupted()).catch(() => undefined);

@@ -55,7 +55,7 @@ export function validateS3Config(config: S3Config): void {
   }
 }
 
-function s3ErrorCode(text: string): string {
+export function s3ErrorCode(text: string): string {
   return /<Code>([^<]+)<\/Code>/.exec(text)?.[1] ?? "";
 }
 
@@ -84,7 +84,13 @@ export class S3BlobStore implements BlobStore {
     return new URL(`${this.base}/${path}`);
   }
 
-  private async send(method: string, key: string, body?: Uint8Array, extra: Record<string, string> = {}): Promise<Response> {
+  /** Bucket root (https://endpoint/bucket or https://bucket.endpoint), used by diagnostics. */
+  get baseUrl(): string {
+    return this.base;
+  }
+
+  /** One signed request, no error mapping: fetch failures propagate as-is. Diagnostics use it. */
+  async rawRequest(method: string, key: string, body?: Uint8Array, extra: Record<string, string> = {}): Promise<Response> {
     const url = this.url(key);
     const headers = await signRequest({
       method,
@@ -98,8 +104,12 @@ export class S3BlobStore implements BlobStore {
         region: this.config.region.trim(),
       },
     });
+    return this.fetchImpl(url.toString(), { method, headers, body: body as RequestInit["body"] });
+  }
+
+  private async send(method: string, key: string, body?: Uint8Array, extra: Record<string, string> = {}): Promise<Response> {
     try {
-      return await this.fetchImpl(url.toString(), { method, headers, body: body as RequestInit["body"] });
+      return await this.rawRequest(method, key, body, extra);
     } catch (cause) {
       throw new SyncError(
         "network",

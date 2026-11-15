@@ -45,7 +45,7 @@ async function companion(s3: MemoryS3) {
     });
     return { status: response.status, json: await response.json() as Record<string, any> };
   };
-  return { store, dir, call };
+  return { store, dir, base, call };
 }
 
 const bucket = (s3: MemoryS3) => ({
@@ -145,5 +145,71 @@ describe("sync over HTTP", () => {
     }
     const changes = await app.call("POST", "/api/tools/changes", { limit: 5 });
     expect(changes.json.items.some((item: { actor: string }) => item.actor === "同步")).toBe(true);
+  });
+
+  it("test / export / import / conflicts over HTTP", async () => {
+    const s3 = new MemoryS3();
+    const app = await companion(s3);
+
+    // 测试连接 saves nothing and names the failing layer.
+    const ok = await app.call("POST", "/api/sync/test", { ...bucket(s3), passphrase: PASS });
+    expect(ok.status).toBe(200);
+    expect(ok.json).toMatchObject({ ok: true, repo: "empty" });
+    expect(ok.json.checks.map((check: { id: string }) => check.id)).toEqual(["network", "clock", "auth", "bucket", "write", "conditional", "repo"]);
+    expect((await app.call("GET", "/api/sync/status")).json.configured).toBe(false);
+    const missing = await app.call("POST", "/api/sync/test", { ...bucket(s3), bucket: "nope" });
+    expect(missing.json.ok).toBe(false);
+    expect(missing.json.checks.at(-1)).toMatchObject({ id: "bucket", status: "fail" });
+
+    // Configure, then a sync reports progress counters in its result and status.
+    await app.call("POST", "/api/sync/configure", { ...bucket(s3), provider: "r2", passphrase: PASS });
+    await app.call("POST", "/api/tools/save", { type: "job", data: { company: "京东", title: "数据" } });
+    const now = await app.call("POST", "/api/sync/now");
+    expect(now.json.result.uploaded.objects).toBeGreaterThan(0);
+    expect(now.json.status).toMatchObject({ syncing: false, progress: null, secrets: "stored", config: { provider: "r2" } });
+
+    // Export: an opaque file; import it into a second companion (offline, no bucket).
+    const exported = await fetch(`${app.base}/api/sync/export`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ passphrase: "backup passphrase" }) });
+    expect(exported.status).toBe(200);
+    expect(exported.headers.get("content-disposition")).toMatch(/offeru-backup-\d{4}-\d{2}-\d{2}\.offeru/);
+    expect(exported.headers.get("x-offeru-records")).toBe("1");
+    const file = new Uint8Array(await exported.arrayBuffer());
+    expect(new TextDecoder().decode(file)).not.toContain("京东");
+
+    const other = await companion(new MemoryS3());
+    const upload = (passphrase: string) => {
+      const form = new FormData();
+      form.set("file", new Blob([file]), "backup.offeru");
+      form.set("passphrase", passphrase);
+      return fetch(`${other.base}/api/sync/import`, { method: "POST", body: form });
+    };
+    const wrong = await upload("not it at all");
+    expect(wrong.status).toBe(400);
+    expect((await wrong.json() as { code: string }).code).toBe("sync_passphrase");
+    const imported = await upload("backup passphrase");
+    expect(imported.status).toBe(200);
+    expect((await imported.json() as { result: { pulled: number } }).result.pulled).toBe(1);
+    expect((await other.store.all("job"))[0]).toMatchObject({ company: "京东", title: "数据" });
+
+    // Conflict view: a browser device edits the same field later.
+    const web = browser(s3);
+    await web.engine.sync();
+    const [webJob] = await web.store.all("job");
+    const [localJob] = await app.store.all("job");
+    await app.call("POST", "/api/tools/save", { type: "job", id: localJob.id, data: { city: "北京" } });
+    tick += 60_000;
+    await saveRecord(web.store, { type: "job", id: webJob.id, data: { city: "上海" } }, ctx());
+    await web.engine.sync();
+    expect((await app.call("POST", "/api/sync/now")).json.result.conflicts).toBe(1);
+    const listed = await app.call("GET", "/api/sync/conflicts");
+    expect(listed.json.conflicts).toHaveLength(1);
+    const [conflict] = listed.json.conflicts;
+    expect(conflict).toMatchObject({ fields: ["city"], mine: { city: "北京" }, theirs: { city: "上海" } });
+    // Pick the side that lost the automatic last-writer-wins (whichever clock was later).
+    const keep = conflict.current === "mine" ? "theirs" : "mine";
+    expect((await app.store.all("job"))[0].city).toBe(conflict[conflict.current].city);
+    const resolved = await app.call("POST", `/api/sync/conflicts/${conflict.id}/resolve`, { keep });
+    expect(resolved.json).toMatchObject({ applied: true, conflicts: [] });
+    expect((await app.store.all("job"))[0].city).toBe(conflict[keep].city);
   });
 });

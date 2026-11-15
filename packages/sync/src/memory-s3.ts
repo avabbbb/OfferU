@@ -14,6 +14,12 @@ export class MemoryS3 {
   readonly log: RequestLog[] = [];
   /** Called before each request is handled; tests use it to inject races. */
   beforeRequest?: (method: string, key: string) => void | Promise<void>;
+  /** Server clock; requests whose x-amz-date is more than 15 minutes off get RequestTimeTooSkewed. */
+  now: () => number = () => Date.now();
+  /** The key can read but not write (PUT / DELETE answer 403 AccessDenied). */
+  readOnly = false;
+  /** false = ignore If-Match / If-None-Match like a server without conditional writes. */
+  conditionalWrites = true;
   private version = 0;
 
   constructor(readonly bucket = "offeru-test", readonly accessKeyId = "test-access-key") {}
@@ -27,6 +33,7 @@ export class MemoryS3 {
     const key = parts.join("/");
     await this.beforeRequest?.(method, key);
     const response = await this.handle(method, bucket, key, headers, init.body);
+    response.headers.set("date", new Date(this.now()).toUTCString());
     this.log.push({ method, key, status: response.status });
     return response;
   };
@@ -52,7 +59,11 @@ export class MemoryS3 {
     if (bucket !== this.bucket) return this.error(404, "NoSuchBucket");
     const auth = headers.get("authorization") ?? "";
     if (!auth.startsWith("AWS4-HMAC-SHA256 ") || !auth.includes(`Credential=${this.accessKeyId}/`)) return this.error(403, "AccessDenied");
-    if (!headers.get("x-amz-date")) return this.error(403, "AccessDenied");
+    const stamp = headers.get("x-amz-date");
+    if (!stamp) return this.error(403, "AccessDenied");
+    const sent = Date.parse(stamp.replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/, "$1-$2-$3T$4:$5:$6Z"));
+    if (Math.abs(sent - this.now()) > 15 * 60_000) return this.error(403, "RequestTimeTooSkewed");
+    if (this.readOnly && (method === "PUT" || method === "DELETE")) return this.error(403, "AccessDenied");
     const existing = this.objects.get(key);
 
     if (method === "GET" || method === "HEAD") {
@@ -64,10 +75,11 @@ export class MemoryS3 {
       return new Response(null, { status: 204 });
     }
     if (method === "PUT") {
-      const bytes = body instanceof Uint8Array ? new Uint8Array(body) as Bytes : new Uint8Array(0) as Bytes;
+      // ArrayBuffer.isView, not instanceof: bodies from another realm (jsdom tests) are still bytes.
+      const bytes = (ArrayBuffer.isView(body) ? new Uint8Array(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength)) : new Uint8Array(0)) as Bytes;
       if (headers.get("x-amz-content-sha256") !== await sha256Hex(bytes)) return this.error(400, "XAmzContentSHA256Mismatch");
-      const ifNoneMatch = headers.get("if-none-match");
-      const ifMatch = headers.get("if-match");
+      const ifNoneMatch = this.conditionalWrites ? headers.get("if-none-match") : null;
+      const ifMatch = this.conditionalWrites ? headers.get("if-match") : null;
       if (ifNoneMatch === "*" && existing) return this.error(412, "PreconditionFailed");
       if (ifMatch && !existing) return this.error(404, "NoSuchKey");
       if (ifMatch && existing && existing.etag !== ifMatch) return this.error(412, "PreconditionFailed");

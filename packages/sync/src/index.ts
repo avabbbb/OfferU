@@ -10,3 +10,6 @@ export * from "./state";
 export * from "./engine";
 export * from "./memory-s3";
 export * from "./memory-store";
+export * from "./bundle";
+export * from "./diagnose";
+export * from "./conflicts";

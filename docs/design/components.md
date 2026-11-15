@@ -88,6 +88,24 @@ L4 磨砂（20px 圆角）+ 带 6px 模糊的遮罩。宽 min(32rem, 视口 − 
 
 浅底 + 深字 + 同色极淡 1px 内描边 + 6px 圆点，12.5px / 500，全圆角。`<Pill tone={toneOf(text)}>`；状态用 `STATUS_TONE`。胶囊里的字必须能单独说明含义。
 
+## Progress（进度条）
+
+`<Progress value={0..1 | null} label>`：0.375rem 细轨道（`--ou-bg-control`）+ 墨色填充（`--ou-text-primary`），宽度随值平滑过渡；`null` = 不确定，一段墨色来回流动（reduced-motion 下改为静止的淡墨条）。`role="progressbar"`，必须有 `label`。下面配一行 12px 三级色文字说清「几个 / 多少字节」。
+
+看：设置 › 数据 › 云同步 › 立即同步。
+
+## CodeBlock（可复制的代码块）
+
+`<CodeBlock code label wrap?>`：给用户粘到别处的配置（CORS 规则、连接码、命令）。`--ou-bg-field` 底、12px 圆角、等宽 12px、最高 16rem 可滚；右上角圆形复制钮，复制后变对勾 1.6 秒。`wrap` 时长串折行（连接码）。
+
+看：云同步向导「测试连接」CORS 失败时、「换设备接入」。
+
+## ChoiceGroup（单选卡片）
+
+`<ChoiceGroup value onChange options label>`：`radiogroup`，每项一张小卡（标题 600 + 一行三级色说明），自适应 11rem 以上的列；未选是 `--ou-bg-field`，选中是白胶囊（`--ou-capsule-bg` + `--ou-capsule-shadow`）。方向键移动并选中，只有选中项在 Tab 序列里。选项要有说明时用它，只有几个短词时用 `.ou-segment`。
+
+看：云同步向导第一步「服务商」。
+
 ## Card（`.ou-card`）
 
 L2：白 84%、**无描边**、`--ou-elev-2`（0 12 32 / 10%）、18px 圆角；悬停 `--ou-elev-2-hover`、上移 2px。
