@@ -23,7 +23,7 @@ export interface AppDeps {
   storage: "sqlite" | "none" | "indexeddb";
   /** The user's configured model (BYOK); called per request so a changed key applies at once. Absent/null = no model. */
   llm?: () => LlmClient | null;
-  /** Web search (Bocha / Tavily / Serper) built from the user's keys; absent/null = not configured. */
+  /** Web search built from the user's keys (Bocha / Tavily / Serper / Parallel / Exa / Firecrawl / Keenable) plus the keyless public endpoints; absent/null = not configured. */
   search?: () => SearchClient | null;
   /** Outbound fetch for fetch_page / add_job (global fetch on Node and Workers). */
   fetch?: HttpFetch;

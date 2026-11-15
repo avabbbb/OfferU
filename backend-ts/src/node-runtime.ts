@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { createSearchClient, type CoreStore, type SearchClient } from "@offeru/core";
+import { createSearchClient, SEARCH_PROVIDERS, type CoreStore, type SearchClient, type SearchKeys } from "@offeru/core";
 
 import { llmFromEnv } from "./llm-env";
 import { dataDir } from "./paths";
@@ -8,14 +8,28 @@ import { createLocalFiles } from "./routes/companion/files";
 import type { ToolRuntime } from "./tools";
 
 /**
- * Dev fallback for web search keys until the config domain (ts/interview-config)
- * injects the user's saved keys: BOCHA_API_KEY / TAVILY_API_KEY / SERPER_API_KEY,
- * the same env names Python Settings read. Read per call.
+ * Web search keys until the config domain injects the user's saved keys: the same env names
+ * Python Settings read (SEARCH_PROVIDER, BOCHA_API_KEY / TAVILY_API_KEY / SERPER_API_KEY) plus
+ * PARALLEL_API_KEY / EXA_API_KEY / FIRECRAWL_API_KEY / KEENABLE_API_KEY. With no key at all the
+ * keyless public endpoints (parallel → exa → firecrawl → keenable) still work;
+ * OFFERU_SEARCH_KEYLESS=0 turns them off. Read per call.
  */
 export function searchFromEnv(env: NodeJS.ProcessEnv = process.env): SearchClient | null {
-  const keys = { bochaApiKey: env.BOCHA_API_KEY?.trim(), tavilyApiKey: env.TAVILY_API_KEY?.trim(), serperApiKey: env.SERPER_API_KEY?.trim() };
-  if (!keys.bochaApiKey && !keys.tavilyApiKey && !keys.serperApiKey) return null;
-  return createSearchClient(keys, (input, init) => globalThis.fetch(input, init));
+  const key = (name: string) => env[name]?.trim() || undefined;
+  const provider = (key("SEARCH_PROVIDER")?.toLowerCase() ?? "auto") as SearchKeys["provider"];
+  const keys: SearchKeys = {
+    provider: SEARCH_PROVIDERS.includes(provider!) ? provider : "auto",
+    bochaApiKey: key("BOCHA_API_KEY"),
+    tavilyApiKey: key("TAVILY_API_KEY"),
+    serperApiKey: key("SERPER_API_KEY"),
+    parallelApiKey: key("PARALLEL_API_KEY"),
+    exaApiKey: key("EXA_API_KEY"),
+    firecrawlApiKey: key("FIRECRAWL_API_KEY"),
+    keenableApiKey: key("KEENABLE_API_KEY"),
+    keyless: !/^(0|false|off|no)$/i.test(key("OFFERU_SEARCH_KEYLESS") ?? ""),
+  };
+  const client = createSearchClient(keys, (input, init) => globalThis.fetch(input, init));
+  return client.available ? client : null;
 }
 
 /** Everything the shared tools get on the Node companion: model, search, network, local files. */
