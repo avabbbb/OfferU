@@ -131,7 +131,9 @@ export class S3BlobStore implements BlobStore {
 
   async head(key: string): Promise<string | null> {
     const response = await this.send("HEAD", key);
-    if (response.status === 404) return null;
+    // AWS answers 403 instead of 404 for a missing key when the policy lacks s3:ListBucket.
+    // Credentials were already proven by the config GET; a real auth problem fails on the PUT.
+    if (response.status === 404 || response.status === 403) return null;
     if (!response.ok) return this.fail(response, "HEAD", key);
     return response.headers.get("etag") ?? "";
   }
