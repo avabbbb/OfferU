@@ -732,9 +732,13 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 }
 
 /* Agent 工作胶囊（参考 Inspora 5-8 · Jakub Antalik「Thinking orbs」）：点阵球 + 静态标签，动效只在球里。
- * 换阶段：旧的模糊 + 右滑 + 淡出，新的淡入（--ou-motion-slow；减少动效时 token 归零、旧的直接隐藏）。 */
+ * 换阶段：旧的模糊 + 右滑 + 淡出，新的淡入（--ou-motion-slow；减少动效时 token 归零、旧的直接隐藏）。
+ * 尺寸：data-size 20（宿主卡片里的小胶囊）/ 32（默认，消息流里的运行胶囊）/ 64。球永远 flex: none 不被压扁，
+ * 标签可收缩、省略号截断；.ou-orb-host 是 inline-size 容器，按所在栏宽（rem，跟着系统字号 / 缩放）收紧。 */
+.ou-orb-host { container: ou-orb / inline-size; min-width: 0; max-width: 100%; }
 .ou-orb-pill {
   display: inline-flex;
+  min-width: 0;
   max-width: 100%;
   align-items: center;
   gap: var(--ou-space-2);
@@ -745,18 +749,31 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
   backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
   box-shadow: var(--ou-glass-highlight), var(--ou-elev-1);
   font-size: var(--ou-type-sm);
+  line-height: 1.4;
   color: var(--ou-text-secondary);
+  vertical-align: middle;
   animation: ou-rise-in var(--ou-motion-slow) var(--ou-ease-spring) both;
 }
+.ou-orb-pill[data-size="32"] { gap: var(--ou-space-3); padding: var(--ou-space-1) var(--ou-space-4) var(--ou-space-1) var(--ou-space-1); font-size: var(--ou-type-body); }
 .ou-orb-pill[data-size="64"] { gap: var(--ou-space-3); padding: var(--ou-space-2) var(--ou-space-6) var(--ou-space-2) var(--ou-space-2); font-size: var(--ou-type-body); }
-.ou-orb-stack { display: grid; min-width: 0; }
+.ou-orb-stack { display: grid; flex: 0 1 auto; min-width: 0; grid-template-columns: minmax(0, auto); }
 .ou-orb-phase { grid-area: 1 / 1; display: inline-flex; min-width: 0; align-items: center; animation: ou-orb-in var(--ou-motion-slow) var(--ou-ease-standard) both; }
 .ou-orb-pill .ou-orb-phase { gap: var(--ou-space-2); }
-.ou-orb-pill[data-size="64"] .ou-orb-phase { gap: var(--ou-space-3); }
+.ou-orb-pill[data-size="32"] .ou-orb-phase, .ou-orb-pill[data-size="64"] .ou-orb-phase { gap: var(--ou-space-3); }
 .ou-orb-phase[data-leaving] { pointer-events: none; animation: ou-orb-out var(--ou-motion-slow) var(--ou-ease-standard) both; }
 .ou-orb { flex: none; display: block; }
 .ou-orb-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ou-orb-meta { flex: none; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); font-variant-numeric: tabular-nums; }
+.ou-orb-meta { flex: none; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 栏宽 ≤ 18rem（300px 侧栏、放大字号后的窄抽屉）：先藏「N 步 ·」，只留用时；再窄（≤ 13rem）连用时也藏、收紧间距，
+ * 球和省略号标签始终在。 */
+@container ou-orb (max-width: 18rem) {
+  .ou-orb-meta-extra { display: none; }
+  .ou-orb-pill[data-size="32"] { gap: var(--ou-space-2); padding-right: var(--ou-space-3); }
+  .ou-orb-pill[data-size="32"] .ou-orb-phase { gap: var(--ou-space-2); }
+}
+@container ou-orb (max-width: 13rem) {
+  .ou-orb-meta { display: none; }
+}
 @keyframes ou-orb-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ou-orb-out { from { opacity: 1; filter: none; transform: none; } to { opacity: 0; filter: blur(var(--ou-space-1)); transform: translateX(var(--ou-space-3)); } }
 

@@ -1139,6 +1139,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
                   {HOSTED_ACTIVE_STATUSES.has(hostedDetail.status) && (
                     <div className="mt-2">
                       <AgentWorkingOrb
+                        size={20}
                         label={hostedDetail.events.length > 0
                           ? hostedEventLabel(hostedDetail.events[hostedDetail.events.length - 1])
                           : "正在启动外部执行器"}
@@ -1657,7 +1658,7 @@ function AgentRunPill({ text, steps = 0, streaming, toolRunning }: { text: strin
       testId="agent-run-pill"
       label={text}
       context={{ streaming, toolRunning }}
-      meta={(steps > 0 ? `${steps} 步 · ` : "") + `${seconds}s`}
+      meta={<>{steps > 0 && <span className="ou-orb-meta-extra">{steps} 步 · </span>}{seconds}s</>}
     />
   );
 }

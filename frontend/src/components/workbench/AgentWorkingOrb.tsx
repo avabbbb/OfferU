@@ -25,8 +25,14 @@ export function useOrbTheme(inverse = false): "dark" | "light" {
   return dark !== inverse ? "dark" : "light";
 }
 
+/**
+ * 点阵球尺寸：thinking-orbs 的 20（行内字号，手调）/ 32（紧凑头像，由 20 和 64 插值）/ 64（聊天头像，手调）。
+ * 运行胶囊默认 32；任务条、工具行、输入框左侧这些和正文同一行的位置保持 20。
+ */
+export type AgentOrbSize = 20 | 32 | 64;
+
 /** 只要一颗球（任务条、工具行、输入框左侧）。 */
-export function AgentOrbIcon({ state, size = 20, inverse, label }: { state: AgentOrbState; size?: 20 | 32 | 64; inverse?: boolean; label?: string }) {
+export function AgentOrbIcon({ state, size = 20, inverse, label }: { state: AgentOrbState; size?: AgentOrbSize; inverse?: boolean; label?: string }) {
   const theme = useOrbTheme(inverse);
   return <ThinkingOrb state={state} size={size} theme={theme} aria-label={label} className="ou-orb" />;
 }
@@ -35,21 +41,23 @@ type Phase = { key: string; label: string; state: AgentOrbState };
 
 /**
  * 运行中的胶囊。label 为空时显示「正在思考」；state 不给就按文案推（见 lib/agentWorkingOrb）。
- * meta 放在胶囊尾部（步数 / 用时），不参与换场动画。
+ * meta 放在胶囊尾部（步数 / 用时），不参与换场动画；里面带 .ou-orb-meta-extra 的部分在窄容器里先藏。
+ * 外层 .ou-orb-host 是 inline-size 容器：胶囊按所在栏的宽度（不是视口）收紧，标签省略号截断，
+ * 完整文案在 title 和读屏里都还在。
  */
 export function AgentWorkingOrb({
   label,
   state,
   context,
   meta,
-  size = 20,
+  size = 32,
   testId,
 }: {
   label?: string | null;
   state?: AgentOrbState;
   context?: AgentOrbContext;
   meta?: ReactNode;
-  size?: 20 | 64;
+  size?: AgentOrbSize;
   testId?: string;
 }) {
   const text = agentOrbLabel(label);
@@ -68,17 +76,19 @@ export function AgentWorkingOrb({
   }, [current.key]);
 
   return (
-    <div className="ou-orb-pill" data-size={size} data-state={orbState} data-testid={testId} role="status" aria-live="polite">
-      <span className="ou-orb-stack">
-        {leaving && <OrbPhase key={"out-" + leaving.key} phase={leaving} size={size} leaving />}
-        <OrbPhase key={"in-" + current.key} phase={current} size={size} />
-      </span>
-      {meta != null && meta !== "" && <span className="ou-orb-meta">{meta}</span>}
+    <div className="ou-orb-host">
+      <div className="ou-orb-pill" data-size={size} data-state={orbState} data-testid={testId} role="status" aria-live="polite" title={text + "…"}>
+        <span className="ou-orb-stack">
+          {leaving && <OrbPhase key={"out-" + leaving.key} phase={leaving} size={size} leaving />}
+          <OrbPhase key={"in-" + current.key} phase={current} size={size} />
+        </span>
+        {meta != null && meta !== "" && <span className="ou-orb-meta">{meta}</span>}
+      </div>
     </div>
   );
 }
 
-function OrbPhase({ phase, size, leaving }: { phase: Phase; size: 20 | 64; leaving?: boolean }) {
+function OrbPhase({ phase, size, leaving }: { phase: Phase; size: AgentOrbSize; leaving?: boolean }) {
   const theme = useOrbTheme();
   return (
     <span className="ou-orb-phase" data-leaving={leaving ? "" : undefined} aria-hidden={leaving || undefined}>

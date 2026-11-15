@@ -159,7 +159,9 @@ Lucide 线性图标，15–16px，描边 1.75–2，颜色跟文字走（多数�
 5. **卡片底部**：放不下的文字底部渐隐（`.ou-fade-bottom`），不硬裁切。
 5a. **标签 / 状态**：选择和展示都是「色点 + 名字」（`Tag`），和 LabelPicker 里的行一个样子；表格的状态列仍可用胶囊。
 6. **Agent 输入框**：一张 26px 圆角玻璃卡：正文 → 附件（图片拼贴 / 文档小胶囊）→ 底栏「+ · 模型 · 模式 … 发送」。
-6a. **Agent 运行**：一颗全圆角玻璃胶囊 = Thinking Orbs 点阵球（20px，单色墨点，浅色界面深点 / 暗色界面浅点）+ 静态中文标签「正在思考…」（次级字色，不扫光、不打字机）+ 「N 步 · 秒数」；完成后收成「› 已处理 · N 次工具调用」。球的形态跟阶段走：思考 breathing、调用工具 working、读取 / 检索 searching、规划 / 分析 solving、启动 / 恢复 / 重试 / 发送 connecting、生成回复 composing、压缩上下文 shaping、等你回答 listening（`lib/agentWorkingOrb.ts`，组件 `AgentWorkingOrb` / `AgentOrbIcon`）。任务条、工具行、托管会话和输入框左侧的小球都用同一颗球，不再用转圈 `Loader2`。
+6a. **Agent 运行**：一颗全圆角玻璃胶囊 = Thinking Orbs 点阵球（32px，单色墨点，浅色界面深点 / 暗色界面浅点）+ 静态中文标签「正在思考…」（次级字色，不扫光、不打字机）+ 「N 步 · 秒数」；完成后收成「› 已处理 · N 次工具调用」。球的形态跟阶段走：思考 breathing、调用工具 working、读取 / 检索 searching、规划 / 分析 solving、启动 / 恢复 / 重试 / 发送 connecting、生成回复 composing、压缩上下文 shaping、等你回答 listening（`lib/agentWorkingOrb.ts`，组件 `AgentWorkingOrb` / `AgentOrbIcon`）。任务条、工具行、托管会话和输入框左侧的小球都用同一颗球，不再用转圈 `Loader2`。
+   - **尺寸**：消息流里的运行胶囊用 32px（库的 32 档，由 20 / 64 两档手调预设插值；胶囊高 40px、左内边距 4px、右 16px、字号 `--ou-type-body`）；任务条、工具行、输入框左侧小球、托管会话卡里的小胶囊跟正文同一行，保持 20px。
+   - **弹性**：胶囊外包一层 `.ou-orb-host`（`container-type: inline-size`），按所在栏宽而不是视口收紧——栏宽 ≤ 18rem（300px 侧栏、放大字号后的窄抽屉）先藏「N 步 ·」只留秒数、间距收一档；≤ 13rem 连秒数也藏。球 `flex: none` 永不压扁，标签 `min-width: 0` + 省略号截断，完整文案在 `title` 和读屏里。断点用 rem，系统字号 / 缩放变大时自动提前收。验收宽度：360 / 414 手机抽屉、768 平板（300px 侧栏）、1440 桌面（380 / 300px 侧栏）、125% 字号。
 7. **Context Meter**：发送键左边 20px 圆环 + 百分比；56k 压缩线起转琥珀。
 
 不做「数字 + 标签」的 KPI 卡。
