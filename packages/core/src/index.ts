@@ -16,3 +16,4 @@ export * from "./attachments";
 export * from "./data";
 export * from "./data-backups";
 export * from "./agent-board";
+export * from "./config";
