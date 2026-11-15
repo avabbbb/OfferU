@@ -1,7 +1,7 @@
 import { JOB_STATUS, type Job, type JobStatus } from "@/lib/core";
 
 // 岗位多维表的视图逻辑：筛选、搜索、排序、分组，以及每个视图的配置（存本机 localStorage）。
-// 纯函数，表格 / 看板 / 甘特共用同一份结果。
+// 纯函数，表格 / 看板 / 甘特 / 画廊共用同一份结果。
 
 export type FieldKey = "company" | "title" | "status" | "city" | "hire_type" | "tags" | "score" | "applied_at" | "created_at";
 export type FieldType = "text" | "select" | "tags" | "number" | "date";
@@ -160,9 +160,9 @@ export function groupJobs(jobs: Job[], fields: FieldKey[], prefix = ""): Group[]
 
 // ---- 视图配置 ----
 
-export type ViewKind = "table" | "board" | "gantt" | "calendar";
-export const VIEW_KINDS: ViewKind[] = ["table", "board", "gantt", "calendar"];
-export const VIEW_NAME: Record<ViewKind, string> = { table: "表格", board: "看板", gantt: "甘特", calendar: "日历" };
+export type ViewKind = "table" | "board" | "gantt" | "calendar" | "gallery";
+export const VIEW_KINDS: ViewKind[] = ["table", "board", "gantt", "calendar", "gallery"];
+export const VIEW_NAME: Record<ViewKind, string> = { table: "表格", board: "看板", gantt: "甘特", calendar: "日历", gallery: "画廊" };
 export type RowHeight = "low" | "medium" | "high";
 export const ROW_HEIGHT: Record<RowHeight, number> = { low: 32, medium: 44, high: 64 };
 
@@ -196,7 +196,7 @@ export function defaultView(kind: ViewKind): ViewConfig {
 }
 
 export function defaultState(): ViewState {
-  return { active: "table", views: { table: defaultView("table"), board: defaultView("board"), gantt: defaultView("gantt"), calendar: defaultView("calendar") } };
+  return { active: "table", views: { table: defaultView("table"), board: defaultView("board"), gantt: defaultView("gantt"), calendar: defaultView("calendar"), gallery: defaultView("gallery") } };
 }
 
 const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
@@ -251,7 +251,7 @@ export function loadViews(store: Store | undefined = local()): ViewState {
   const views = isObj(raw.views) ? raw.views : {};
   return {
     active: VIEW_KINDS.includes(raw.active as ViewKind) ? (raw.active as ViewKind) : "table",
-    views: { table: sanitizeView(views.table, "table"), board: sanitizeView(views.board, "board"), gantt: sanitizeView(views.gantt, "gantt"), calendar: sanitizeView(views.calendar, "calendar") },
+    views: { table: sanitizeView(views.table, "table"), board: sanitizeView(views.board, "board"), gantt: sanitizeView(views.gantt, "gantt"), calendar: sanitizeView(views.calendar, "calendar"), gallery: sanitizeView(views.gallery, "gallery") },
   };
 }
 

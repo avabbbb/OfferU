@@ -2584,3 +2584,222 @@ body {
 @keyframes nw-hmm { 0%, 8% { transform: rotate(0deg); } 18%, 44% { transform: rotate(-7deg) translateX(-6px); } 56%, 76% { transform: rotate(5deg) translateX(8px); } 88%, 100% { transform: rotate(0deg); } }
 @keyframes nw-dot { 0%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { .naiwa-think .nw-head, .naiwa-think .nw-pupil, .naiwa-think .nw-lid, .naiwa-think .nw-mouth, .naiwa-think__bubble i { animation: none; } .naiwa-think__bubble i { opacity: 1; } }
+
+/* ── 岗位画廊视图（JobsGallery，参考 Inspora · Alim Joldaspayev「new portfolio」，配色走 Glass）──
+ * 一排朝消失点退去的画框：舞台给透视，轨道 preserve-3d，帧的位姿由 lib/jobGallery 的 framePose 算好写进内联 transform，
+ * 前后遮挡靠 translateZ 的深度排序，不用 z-index。镜头移动 = 帧的 transform 过渡；减少动态时 token 时长归零、只平移。 */
+.ou-gallery {
+  --ou-gallery-w: clamp(15rem, 12rem + 12vw, 21rem);
+  --ou-gallery-h: calc(var(--ou-gallery-w) * 1.08);
+  --ou-gallery-detail-w: min(44rem, calc(100% - 9rem));
+  --ou-gallery-camera: calc(var(--ou-motion-slow) * 1.8);
+  position: relative;
+  isolation: isolate;
+  height: clamp(30rem, 68vh, 44rem);
+  overflow: hidden;
+  border-radius: var(--ou-radius-panel);
+  background: var(--ou-glass-bg);
+  box-shadow: var(--ou-elev-1);
+  perspective: calc(var(--ou-gallery-w) * 3.6);
+  perspective-origin: 50% 46%;
+  outline: none;
+}
+.ou-gallery:focus-visible { box-shadow: var(--ou-elev-1), var(--ou-ring-focus); }
+.ou-gallery-track { position: absolute; inset: 0 0 4.5rem; transform-style: preserve-3d; }
+.ou-gallery.is-flat .ou-gallery-track { transform-style: flat; }
+
+.ou-gallery-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--ou-gallery-w);
+  min-height: var(--ou-gallery-h);
+  border-radius: var(--ou-radius-card);
+  background: var(--ou-bg-surface-solid);
+  box-shadow: var(--ou-elev-2);
+  color: var(--ou-text-primary);
+  cursor: pointer;
+  transform-origin: 50% 50%;
+  backface-visibility: hidden;
+  transition:
+    transform var(--ou-gallery-camera) var(--ou-ease-spring),
+    opacity var(--ou-gallery-camera) var(--ou-ease-standard),
+    filter var(--ou-gallery-camera) var(--ou-ease-standard),
+    width var(--ou-gallery-camera) var(--ou-ease-spring),
+    box-shadow var(--ou-motion-base) var(--ou-ease-standard);
+  will-change: transform, opacity;
+}
+.ou-gallery-frame:not(.is-focus):hover { box-shadow: var(--ou-elev-2-hover); }
+.ou-gallery-frame.is-focus { box-shadow: var(--ou-elev-3); }
+.ou-gallery-frame.is-detail { width: var(--ou-gallery-detail-w); cursor: default; box-shadow: var(--ou-elev-4); }
+.ou-gallery.is-flat .ou-gallery-frame { transition: none; }
+
+/* 选中态：细描边（画在帧外一圈）+ 四角小方块 + 名字条 */
+.ou-gallery-frame.is-focus::after {
+  content: "";
+  position: absolute;
+  inset: calc(var(--ou-space-1) * -1.5);
+  border: 1px solid var(--ou-action-primary);
+  border-radius: calc(var(--ou-radius-card) + var(--ou-space-1));
+  pointer-events: none;
+}
+.ou-gallery-handle {
+  position: absolute;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border: 1px solid var(--ou-action-primary);
+  background: var(--ou-bg-surface-solid);
+  pointer-events: none;
+}
+.ou-gallery-handle[data-corner="tl"] { top: -0.59rem; left: -0.59rem; }
+.ou-gallery-handle[data-corner="tr"] { top: -0.59rem; right: -0.59rem; }
+.ou-gallery-handle[data-corner="bl"] { bottom: -0.59rem; left: -0.59rem; }
+.ou-gallery-handle[data-corner="br"] { bottom: -0.59rem; right: -0.59rem; }
+.ou-gallery-chip {
+  position: absolute;
+  left: calc(var(--ou-space-1) * -1.5);
+  max-width: calc(100% + var(--ou-space-3));
+  overflow: hidden;
+  padding: 0.125rem var(--ou-space-2);
+  border-radius: var(--ou-radius-1);
+  background: var(--ou-action-primary);
+  color: var(--ou-on-action-primary);
+  font-size: var(--ou-type-xs);
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ou-gallery-chip-top { bottom: calc(100% + var(--ou-space-2)); pointer-events: none; }
+.ou-gallery-chip-bottom { top: calc(100% + var(--ou-space-2)); text-decoration: none; }
+.ou-gallery-chip-bottom:hover { background: var(--ou-action-primary-hover); }
+.ou-gallery-chip-bottom:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+
+/* 「OfferU」光标：Agent 的紫，指着当前组里最匹配的那一帧 */
+.ou-gallery-cursor {
+  position: absolute;
+  top: calc(var(--ou-space-6) * -1);
+  right: calc(var(--ou-space-4) * -1);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ou-space-1);
+  padding: 0.125rem var(--ou-space-2);
+  border-radius: var(--ou-radius-pill);
+  background: var(--ou-tone-purple-bg);
+  color: var(--ou-tone-purple-text);
+  box-shadow: var(--ou-capsule-shadow);
+  font-size: var(--ou-type-xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ou-gallery-cursor-tip {
+  position: absolute;
+  bottom: -0.45rem;
+  left: -0.3rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  background: var(--ou-tone-purple-dot);
+  clip-path: polygon(0 100%, 30% 0, 100% 45%);
+}
+
+.ou-gallery-face { display: flex; flex-direction: column; gap: var(--ou-space-3); padding: var(--ou-space-6) var(--ou-space-6) var(--ou-space-4); }
+.ou-gallery-company {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--ou-text-primary);
+  font-size: calc(var(--ou-type-page) * 1.15);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+.ou-gallery-title { color: var(--ou-text-secondary); font-size: var(--ou-type-section); font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.ou-gallery-score {
+  padding: 0.0625rem var(--ou-space-2);
+  border-radius: var(--ou-radius-pill);
+  background: var(--ou-bg-selected);
+  color: var(--ou-text-primary);
+  font-size: var(--ou-type-pill);
+  font-variant-numeric: tabular-nums;
+}
+.ou-gallery-meta { display: grid; grid-template-columns: auto 1fr; gap: var(--ou-space-1) var(--ou-space-3); margin: 0; font-size: var(--ou-type-sm); }
+.ou-gallery-meta dt { color: var(--ou-text-tertiary); }
+.ou-gallery-meta dd { min-width: 0; margin: 0; overflow: hidden; color: var(--ou-text-primary); text-overflow: ellipsis; white-space: nowrap; }
+.ou-gallery-muted { color: var(--ou-text-tertiary); font-size: var(--ou-type-sm); }
+.ou-gallery-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ou-space-3);
+  padding-top: var(--ou-space-3);
+  border-top: 1px solid var(--ou-line-separator);
+  font-size: var(--ou-type-body);
+  line-height: var(--ou-line-body);
+  animation: ou-gallery-rise var(--ou-gallery-camera) var(--ou-ease-spring) both;
+}
+.ou-gallery-essence { color: var(--ou-text-primary); }
+.ou-gallery-detail h4 { margin-bottom: var(--ou-space-1); color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); font-weight: 500; }
+.ou-gallery-detail ul { display: flex; flex-direction: column; gap: var(--ou-space-1); padding-left: 1.1em; list-style: disc; color: var(--ou-text-secondary); }
+@keyframes ou-gallery-rise { from { opacity: 0; transform: translateY(var(--ou-rise)); } to { opacity: 1; transform: none; } }
+
+/* 底部胶囊导航：状态分组 | ‹ n / 总数 › | ? */
+.ou-gallery-nav {
+  position: absolute;
+  bottom: var(--ou-space-4);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--ou-space-1);
+  max-width: calc(100% - var(--ou-space-8));
+  padding: var(--ou-space-1);
+  border-radius: var(--ou-radius-pill);
+  background: var(--ou-bg-floating);
+  box-shadow: var(--ou-elev-3);
+  backdrop-filter: blur(var(--ou-glass-blur)) saturate(var(--ou-glass-saturate));
+  transform: translateX(-50%);
+}
+.ou-gallery-groups { display: flex; min-width: 0; gap: 0.125rem; overflow-x: auto; scrollbar-width: none; }
+.ou-gallery-group {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--ou-space-1);
+  padding: var(--ou-space-1) var(--ou-space-3);
+  border-radius: var(--ou-radius-pill);
+  color: var(--ou-text-secondary);
+  font-size: var(--ou-type-sm);
+  white-space: nowrap;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-gallery-group span { color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
+.ou-gallery-group:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.ou-gallery-group[aria-pressed="true"] { background: var(--ou-action-primary); color: var(--ou-on-action-primary); }
+.ou-gallery-group[aria-pressed="true"] span { color: inherit; opacity: var(--ou-alpha-soft); }
+.ou-gallery-sep { flex-shrink: 0; width: 1px; height: 1.25rem; margin: 0 var(--ou-space-1); background: var(--ou-line-separator); }
+.ou-gallery-arrow {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  border-radius: var(--ou-radius-pill);
+  color: var(--ou-text-secondary);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-gallery-arrow:hover:not(:disabled) { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.ou-gallery-arrow:disabled { opacity: var(--ou-alpha-faint); cursor: default; }
+.ou-gallery-group:focus-visible, .ou-gallery-arrow:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.ou-gallery-count { min-width: 3.25rem; color: var(--ou-text-primary); font-size: var(--ou-type-sm); text-align: center; }
+.ou-gallery-help { width: 13rem; padding: var(--ou-space-3) var(--ou-space-4); font-size: var(--ou-type-sm); }
+.ou-gallery-help-title { margin-bottom: var(--ou-space-1); color: var(--ou-text-primary); font-weight: 600; }
+.ou-gallery-help ul { display: flex; flex-direction: column; gap: 0.125rem; color: var(--ou-text-secondary); }
+
+.ou-gallery-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ou-space-2); padding: var(--ou-space-8); text-align: center; }
+
+@media (max-width: 640px) {
+  .ou-gallery { --ou-gallery-w: min(15rem, 62vw); --ou-gallery-detail-w: calc(100% - 3rem); }
+  .ou-gallery-groups { max-width: 42vw; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ou-gallery-frame, .ou-gallery-detail { transition: none; animation: none; }
+}

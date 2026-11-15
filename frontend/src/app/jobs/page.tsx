@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { JobsCalendar } from "@/components/jobs/JobsCalendar";
+import { JobsGallery } from "@/components/jobs/JobsGallery";
 import { JobsGantt } from "@/components/jobs/JobsGantt";
 import { JobsTable } from "@/components/jobs/JobsTable";
 import { RecordDrawer } from "@/components/jobs/RecordDrawer";
@@ -67,7 +68,7 @@ function AddJob() {
   );
 }
 
-// 岗位多维表：表格 / 看板 / 甘特三个视图，各自记住筛选、分组、排序、字段（存在本机浏览器）。
+// 岗位多维表：表格 / 看板 / 甘特 / 日历 / 画廊几个视图，各自记住筛选、分组、排序、字段（存在本机浏览器）。
 export default function JobsPage() {
   const { data } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 }, 5000);
   const jobs = useMemo(() => data?.items ?? [], [data]);
@@ -147,6 +148,7 @@ export default function JobsPage() {
       {state.active === "board" && <JobBoard embedded />}
       {state.active === "calendar" && <JobsCalendar events={events} />}
       {state.active === "gantt" && <JobsGantt jobs={shown} events={events} view={view} openId={openId} onOpen={setOpenId} />}
+      {state.active === "gallery" && data && <JobsGallery jobs={shown} total={jobs.length} events={events} drawerOpen={openId != null} onOpen={setOpenId} />}
 
       {open && (
         <RecordDrawer job={open} index={index} total={shown.length} tagOptions={tagOptions} onClose={close}
