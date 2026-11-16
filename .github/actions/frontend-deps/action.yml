@@ -1,0 +1,27 @@
+name: Frontend Node and dependencies
+description: >
+  Node 24 with the npm download cache, plus frontend/node_modules cached by
+  lockfile hash so a warm run skips `npm ci` entirely.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Restore frontend node_modules
+      id: modules
+      uses: actions/cache@v4
+      with:
+        path: frontend/node_modules
+        key: frontend-node-modules-${{ runner.os }}-node24-${{ hashFiles('frontend/package-lock.json', 'packages/core/package.json', 'packages/sync/package.json') }}
+
+    - name: Install frontend dependencies
+      if: steps.modules.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: frontend
+      run: npm ci

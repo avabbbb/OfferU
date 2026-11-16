@@ -8,13 +8,14 @@
     "build:web": "vite build --mode local-web && node scripts/check-browser-bundle.mjs",
     "build:sidecar": "node ../backend/scripts/build_sidecar.mjs",
     "start": "vite preview --port 7410 --strictPort",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
     "api:types": "openapi-typescript http://127.0.0.1:8766/openapi.json -o src/lib/api-types.generated.ts",
     "design:audit": "node scripts/design-audit.mjs",
-    "design:audit:test": "node --test scripts/design-audit.test.mjs"
+    "design:audit:test": "node --test scripts/design-audit.test.mjs",
+    "typecheck:tsc": "tsc --noEmit"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -58,6 +59,7 @@
     "@types/node": "^22.20.4",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "@vitejs/plugin-react": "^6.0.4",
     "jsdom": "^29.1.1",
     "openapi-typescript": "^7.13.0",
