@@ -62,7 +62,7 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
 
    拿不准就往高一档算。
 4. **required checks**（`.github/workflows/build.yml`，按改动路径触发，一般 1–3 分钟）：`Backend tests`、`Frontend typecheck and build`、`Browser extension typecheck, test and build`、`Agent runtime install and audit`。红了先修，不绕过，不直接 push `main`。
-5. **重活不挡合并**：Windows / macOS 安装包、安装后冒烟、跨进程恢复每晚 02:00 CST 跑一次（`schedule`），打 `v*` tag 和手动触发时也跑；成功后发布 rolling nightly。nightly 红了，第二天第一件事是修或 revert。
+5. **重活不挡合并**：Windows / macOS 安装包、安装后冒烟、跨进程恢复每天 05:00 CST 跑一次（`schedule`），打 `v*` tag 和手动触发时也跑；成功后发布 rolling nightly。nightly 红了，第二天第一件事是修或 revert。
 6. **你合的你负责**：合进去出问题，作者优先修；修不了就直接 revert（`git revert` 走低档 PR），不追责。
 7. `test` 分支：没有保护，不用等 CI，可以直接合进去试。
 8. 不要碰用户自己没提交的改动；需要干净工作区时用 `git worktree`。合完同步本地 `main`。

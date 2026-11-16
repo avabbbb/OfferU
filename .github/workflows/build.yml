@@ -6,9 +6,9 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
-  # 重活（安装包、安装后冒烟、跨进程恢复）不再跟每次 main 推送跑，改为每晚 02:00 CST 一次 + 打 tag + 手动触发。
+  # 重活（安装包、安装后冒烟、跨进程恢复）不再跟每次 main 推送跑，改为每天 05:00 CST 一次 + 打 tag + 手动触发。
   schedule:
-    - cron: '0 18 * * *'
+    - cron: '0 21 * * *'
   workflow_dispatch:
     inputs:
       publish_candidate:
