@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import worker, { relayHosts } from "../src/worker";
+import worker, { relayAllowed, relayHosts } from "../src/worker";
 
 const ORIGIN = "https://offeru.example.workers.dev";
 const env = { ASSETS: { fetch: async (request: Request) => new Response(`asset ${new URL(request.url).pathname}`) } };
@@ -49,6 +49,13 @@ describe("worker", () => {
     expect((await relay("https://api.deepseek.com/chat/completions", { body: "{}", headers: { Origin: "https://other.example" } })).status).toBe(403);
     expect((await worker.fetch(new Request(`${ORIGIN}/llm-proxy`, { method: "POST", headers: { Origin: ORIGIN } }), env)).status).toBe(400);
     expect((await worker.fetch(new Request(`${ORIGIN}/llm-proxy`, { method: "POST", headers: { Origin: ORIGIN, "X-OfferU-LLM-URL": "https://api.deepseek.com/x" } }), { ...env, LLM_PROXY: "off" })).status).toBe(404);
+  });
+
+  it("allows OpenCode only on its model paths", () => {
+    expect(relayAllowed(new URL("https://opencode.ai/zen/v1/chat/completions"))).toBe(true);
+    expect(relayAllowed(new URL("https://opencode.ai/inference/v1/models"))).toBe(true);
+    expect(relayAllowed(new URL("https://opencode.ai/auth/login"))).toBe(false);
+    expect(relayAllowed(new URL("https://evil.opencode.ai/zen/v1/chat/completions"))).toBe(false);
   });
 
   it("extra hosts extend the allowlist", () => {
