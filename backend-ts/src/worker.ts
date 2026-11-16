@@ -31,6 +31,23 @@ const FORWARD_REQUEST_HEADERS = ["authorization", "x-api-key", "anthropic-versio
 const FORWARD_RESPONSE_HEADERS = ["content-type", "cache-control", "retry-after", "x-request-id", "request-id"];
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
+/**
+ * Gateways that are not built-in presets but are common for user keys and send no CORS on
+ * their completion endpoints (OpenCode Zen answers the preflight with 404). Path-restricted,
+ * mirroring Flovart's server/llmProxy.ts allowlist.
+ */
+export const RELAY_PATH_HOSTS: Record<string, readonly string[]> = {
+  "opencode.ai": ["/zen/", "/inference/"],
+};
+
+/** True when the relay may reach this https URL (preset host, extra host, or an allowed gateway path). */
+export function relayAllowed(target: URL, extra = ""): boolean {
+  const host = target.hostname.toLowerCase();
+  if (relayHosts(extra).has(host)) return true;
+  const prefixes = RELAY_PATH_HOSTS[host];
+  return !!prefixes && prefixes.some((prefix) => target.pathname.startsWith(prefix));
+}
+
 /** Hosts of the built-in provider presets (https only; local endpoints never go through the Worker). */
 export function relayHosts(extra = ""): Set<string> {
   const hosts = new Set<string>(["api.anthropic.com"]);
@@ -66,7 +83,7 @@ export async function relayLlm(request: Request, env: Env): Promise<Response> {
   }
   if (target.protocol !== "https:" || target.username || target.password) return json(400, { detail: "只转发 https 模型接口", code: "invalid" });
   if (request.method === "GET" && !/\/models\/?$/.test(target.pathname)) return json(405, { detail: "GET 只用于获取模型列表", code: "invalid" });
-  if (!relayHosts(env.LLM_PROXY_EXTRA_HOSTS).has(target.hostname.toLowerCase())) {
+  if (!relayAllowed(target, env.LLM_PROXY_EXTRA_HOSTS)) {
     return json(403, { detail: `不转发到 ${target.hostname}：只支持内置的模型服务商`, code: "forbidden" });
   }
   const length = Number(request.headers.get("content-length") || 0);
