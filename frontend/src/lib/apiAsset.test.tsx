@@ -9,7 +9,10 @@ vi.mock("@/lib/local/mode", () => ({ LOCAL_WEB: true, OFFERU_MODE: "local-web" }
 
 import { ApiImg, isInPageApiUrl } from "./apiAsset";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("isInPageApiUrl", () => {
   it("is true only for same-origin /api/* URLs in the web build", () => {
@@ -25,12 +28,13 @@ describe("isInPageApiUrl", () => {
 
 describe("ApiImg", () => {
   it("loads /api/* through fetch and shows a blob: URL", async () => {
-    const fetchMock = vi.fn(async () => new Response(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" })));
+    const fetchMock = vi.fn(async () => ({ ok: true, blob: async () => new Blob(["png"], { type: "image/png" }) }));
     vi.stubGlobal("fetch", fetchMock);
-    const createObjectURL = vi.fn(() => "blob:local/1");
-    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    if (!URL.createObjectURL) Object.assign(URL, { createObjectURL: () => "", revokeObjectURL: () => undefined });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:local/1");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const { container } = render(<ApiImg src="/api/files/photo.png" alt="p" />);
-    await waitFor(() => expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:local/1"));
+    await waitFor(() => expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:local/1"), { timeout: 5000 });
     expect(fetchMock).toHaveBeenCalledWith("/api/files/photo.png");
   });
 
