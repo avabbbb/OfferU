@@ -10,7 +10,8 @@ const COMMIT = /^[0-9a-f]{40}$/;
 const FINGERPRINT = /^sha256:[0-9a-f]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RUNTIME_TYPES = new Set(["local", "desktop-sidecar", "lite"]);
-const PACKAGE_VERSION = "0.2.0";
+/** The app version this companion reports (kept equal to frontend/package.json by scripts/release/audit_version_consistency.mjs). */
+export const APP_VERSION = "0.2.0";
 
 const text = (value: string | undefined): string | null => (value && value.trim() && value !== "unknown" ? value.trim() : null);
 
@@ -53,7 +54,7 @@ function packagedMetadata(path: string, appVersion: string): BuildMetadata | nul
  * take the commit the shell passed (OFFERU_BUILD_COMMIT / _DIRTY) or ask git.
  */
 export function nodeRuntimeInfo(env: NodeJS.ProcessEnv = process.env, workbenchToken: () => string | null = () => env.OFFERU_APPROVAL_TOKEN || null): RuntimeInfo {
-  const appVersion = text(env.OFFERU_VERSION) ?? PACKAGE_VERSION;
+  const appVersion = text(env.OFFERU_VERSION) ?? APP_VERSION;
   const runtimeMode = text(env.OFFERU_RUNTIME_MODE) ?? "local";
   const buildMode = text(env.OFFERU_BUILD_MODE) ?? "local-development";
   const pairCodes = new Map<string, number>();

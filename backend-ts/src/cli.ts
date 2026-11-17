@@ -13,6 +13,7 @@ import { ALL_TOOL_SPECS } from "@offeru/core";
 import { nodeToolRuntime } from "./node-runtime";
 import { callTool, TOOL_NAMES } from "./tools";
 import { openStore } from "./store";
+import { APP_VERSION } from "./runtime-identity";
 
 const HELP = `OfferU TS CLI
 
@@ -77,7 +78,7 @@ async function main(): Promise<number> {
     process.stdout.write(JSON.stringify({
       ok: true,
       service: "OfferU TS",
-      version: "0.1.0",
+      version: process.env.OFFERU_VERSION || APP_VERSION,
       runtime: "node",
       database: dbPath(),
       tools: TOOL_NAMES,

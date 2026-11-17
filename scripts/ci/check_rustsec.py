@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 TAURI_DIR = ROOT / "frontend" / "src-tauri"
 ADVISORY_ID = "RUSTSEC-2024-0429"
 EXEMPT_PACKAGE = ("glib", "0.18.5")

@@ -34,7 +34,8 @@ export async function bundleCompanion(out) {
   cpSync(join(backendTs, "assets/school_logos"), join(out, "assets/school_logos"), { recursive: true });
   cpSync(join(backendTs, "skill/SKILL.md"), join(out, "skill/SKILL.md"));
   const playwright = join(backendTs, "node_modules/playwright-core");
-  if (existsSync(playwright)) cpSync(playwright, join(out, "node_modules/playwright-core"), { recursive: true, dereference: true });
+  // Docs are not needed at runtime (and the Agent-skill markdown in it carries sample e-mail addresses).
+  if (existsSync(playwright)) cpSync(playwright, join(out, "node_modules/playwright-core"), { recursive: true, dereference: true, filter: (src) => !src.endsWith(".md") });
   else console.warn("playwright-core is not installed: the bundle will answer PDF export with 501.");
   return out;
 }
