@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import {
   CoreError,
   applyConfigUpdate,
+  configureLlm,
   configResponse,
   createLlmClient,
   endpointFromSettings,
@@ -54,7 +55,9 @@ export class ConfigRuntime {
       return null;
     }
     try {
-      return createLlmClient(endpointFromSettings(this.cached, "standard", { env: this.env }), { fetch: this.fetchFn as never });
+      const client = createLlmClient(endpointFromSettings(this.cached, "standard", { env: this.env }), { fetch: this.fetchFn as never });
+      // runtime() for /api/interviews/runtime, transcribe() for interview-review audio.
+      return configureLlm(client, this.cached, { fetch: this.fetchFn as never, env: this.env });
     } catch {
       return null;
     }

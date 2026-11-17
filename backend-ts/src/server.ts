@@ -18,6 +18,7 @@ import { nodeBossLogin } from "./routes/companion/boss-cli";
 import { filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
 import { ConfigRuntime } from "./routes/config";
 import { nodeConfigFile } from "./routes/companion/config-file";
+import { nodeConsentFile } from "./routes/companion/consent-file";
 import { llmFromEnv } from "./llm-env";
 import { openStore } from "./store";
 import { CompanionSync } from "./sync";
@@ -48,6 +49,7 @@ export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDe
     agentBoard: new NodeAgentBoard({ dataDir: dirname(dbPath()) }),
     agentRuns: new SqliteAgentRunStore(store),
     sync: new CompanionSync(store, dirname(dbPath())),
+    consent: nodeConsentFile(join(dirname(dbPath()), "platform-consent.json")),
     ...overrides,
   };
   const app = createApp(deps);
