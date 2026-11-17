@@ -35,6 +35,8 @@ jobs:
       extension: ${{ steps.filter.outputs.extension }}
       tauri: ${{ steps.filter.outputs.tauri }}
       ci: ${{ steps.filter.outputs.ci }}
+      frontend_test_mode: ${{ steps.frontend_tests.outputs.mode }}
+      frontend_test_base: ${{ steps.frontend_tests.outputs.base }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,12 +60,40 @@ jobs:
           {
             echo "backend=$(flag '^(backend/|requirements.*|pyproject\.toml)')"
             echo "ts_backend=$(flag '^(backend-ts/|packages/core/)')"
-            echo "frontend=$(flag '^(frontend/|packages/core/)')"
+            echo "frontend=$(flag '^(frontend/|packages/(core|sync)/|backend-ts/src/)')"
             echo "agent_runtime=$(flag '^agent-runtime/')"
             echo "extension=$(flag '^extension/')"
             echo "tauri=$(flag '^frontend/src-tauri/')"
             echo "ci=$(flag '^(\.github/workflows/|AGENTS\.md$|backend/scripts/dev/branch_guard\.py$)')"
           } >> "$GITHUB_OUTPUT"
+      - id: frontend_tests
+        name: Plan frontend tests (changed-only on PRs, full on main)
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          mode=full
+          base=""
+          reason="${EVENT_NAME} always runs the full suite"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$(git merge-base "$PR_BASE_SHA" HEAD)"
+            plan="$(.github/scripts/frontend-test-plan.sh "$base" HEAD)"
+            mode="$(sed -n 's/^mode=//p' <<< "$plan")"
+            reason="$(sed -n 's/^reason=//p' <<< "$plan")"
+          fi
+          echo "Frontend test plan: mode=$mode base=${base:-n/a} ($reason)"
+          {
+            echo "mode=$mode"
+            echo "base=$base"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Frontend test plan"
+            echo "- mode: \`$mode\`"
+            echo "- merge base: \`${base:-n/a}\`"
+            echo "- reason: $reason"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   backend-tests:
     name: Backend tests
@@ -134,8 +164,10 @@ jobs:
         working-directory: backend-ts
         run: npm test
 
-  frontend-quality:
-    name: Frontend typecheck and build
+  # Frontend lint, typecheck, tests and build run as parallel jobs.
+  # `frontend-quality` aggregates them so downstream `needs:` keep working.
+  frontend-lint:
+    name: Frontend design audit
     needs: changes
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true' }}
     runs-on: ubuntu-latest
@@ -149,20 +181,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Typecheck
-        working-directory: frontend
-        run: npm run typecheck
-
-      - name: Run frontend tests
-        working-directory: frontend
-        run: npm test
 
       - name: Test visual design audit rules
         working-directory: frontend
@@ -174,6 +192,59 @@ jobs:
           DESIGN_AUDIT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: npm run design:audit
 
+  frontend-typecheck:
+    name: Frontend typecheck (tsgo)
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Frontend Node and dependencies
+        uses: ./.github/actions/frontend-deps
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+  frontend-test:
+    name: Frontend tests (${{ needs.changes.outputs.frontend_test_mode }})
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Changed-only runs diff against the merge base, which needs history.
+          fetch-depth: ${{ needs.changes.outputs.frontend_test_mode == 'changed' && '0' || '1' }}
+
+      - name: Frontend Node and dependencies
+        uses: ./.github/actions/frontend-deps
+
+      - name: Run frontend tests (full)
+        if: needs.changes.outputs.frontend_test_mode != 'changed'
+        working-directory: frontend
+        run: npm test
+
+      - name: Run frontend tests (changed since merge base)
+        if: needs.changes.outputs.frontend_test_mode == 'changed'
+        working-directory: frontend
+        run: npx vitest run --changed ${{ needs.changes.outputs.frontend_test_base }} --passWithNoTests
+
+  frontend-build:
+    name: Frontend build and audit
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Frontend Node and dependencies
+        uses: ./.github/actions/frontend-deps
+
       - name: Build frontend
         working-directory: frontend
         run: npm run build
@@ -182,6 +253,25 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
+
+  frontend-quality:
+    name: Frontend typecheck and build
+    needs: [changes, frontend-lint, frontend-typecheck, frontend-test, frontend-build]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: All frontend jobs passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "needs results: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then
+              echo "::error::A frontend job did not succeed ($RESULTS)"
+              exit 1
+            fi
+          done
 
   agent-runtime-quality:
     name: Agent runtime install and audit
