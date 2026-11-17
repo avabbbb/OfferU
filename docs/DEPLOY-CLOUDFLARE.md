@@ -6,7 +6,7 @@
 
 - Worker 只做两件事：发 `frontend/dist` 的静态文件（Workers Static Assets，静态资源请求不计入 Worker 调用次数），以及转发浏览器没法直连的模型请求（`POST /llm-proxy`）。
 - 不用 D1 / KV / Durable Objects / R2，没有任何按存储计费的东西；用户数据全在各自的浏览器 IndexedDB 里。
-- 免费计划的限制（以 Cloudflare 当前文档为准）：Worker 每天 10 万次请求、每次 10 ms CPU。转发是流式 I/O，几乎不占 CPU；只有走转发的模型调用和 `/api/health` 算请求。单个静态文件 ≤ 25 MiB，文件数 ≤ 2 万（当前约 950 个，其中约 800 个是校徽 PNG）。
+- 免费计划的限制（以 Cloudflare 当前文档为准）：Worker 每天 10 万次请求、每次 10 ms CPU。转发是流式 I/O，几乎不占 CPU；`wrangler.toml` 的 `run_worker_first` 只有 `/llm-proxy`，所以只有走转发的模型调用算 Worker 请求；页面里的 `/api/*` 全在浏览器内由页面内后端回答（含 `<img>` 里的上传图片、校徽、Agent 附件，见 `frontend/src/lib/apiAsset.tsx`），不出浏览器。单个静态文件 ≤ 25 MiB，文件数 ≤ 2 万（当前约 950 个，其中约 800 个是校徽 PNG）。
 
 ## 一次性准备
 

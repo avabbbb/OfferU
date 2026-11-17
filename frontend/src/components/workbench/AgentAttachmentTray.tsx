@@ -1,5 +1,6 @@
 import { FileText, Loader2, Presentation, X } from "lucide-react";
 import { attachmentExtension, formatAttachmentSize, type AgentAttachmentKind } from "@/lib/agentAttachments";
+import { useApiAssetUrl } from "@/lib/apiAsset";
 import type { ComposerAttachment } from "./useComposerAttachments";
 
 /** What a sent user message keeps of its attachments. */
@@ -80,6 +81,16 @@ export function AgentAttachmentTray({
   );
 }
 
+// 网页版 /api/* 由页面内后端回答，<a>/<img> 不走 fetch，所以先读成 blob: URL（见 lib/apiAsset）。
+function MessageImage({ attachment, url }: { attachment: SentAttachment; url: string }) {
+  const src = useApiAssetUrl(url);
+  return (
+    <a href={src} target="_blank" rel="noreferrer" className="agent-message-image" title={attachment.name}>
+      {src ? <img src={src} alt={attachment.name} /> : null}
+    </a>
+  );
+}
+
 export function AgentMessageAttachments({
   attachments,
   imageUrl,
@@ -92,16 +103,7 @@ export function AgentMessageAttachments({
     <div className="agent-message-attachments" data-testid="agent-message-attachments">
       {attachments.map((attachment) =>
         attachment.kind === "image" ? (
-          <a
-            key={attachment.id}
-            href={imageUrl(attachment.id)}
-            target="_blank"
-            rel="noreferrer"
-            className="agent-message-image"
-            title={attachment.name}
-          >
-            <img src={imageUrl(attachment.id)} alt={attachment.name} />
-          </a>
+          <MessageImage key={attachment.id} attachment={attachment} url={imageUrl(attachment.id)} />
         ) : (
           <span key={attachment.id} className="agent-message-file" title={attachment.name}>
             <DocumentIcon name={attachment.name} />

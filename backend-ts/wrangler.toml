@@ -10,8 +10,11 @@ directory = "../frontend/dist"
 binding = "ASSETS"
 # HashRouter app: unknown paths fall back to index.html.
 not_found_handling = "single-page-application"
-# /api/* and /llm-proxy reach the Worker script first; everything else is a static file.
-run_worker_first = ["/api/*", "/llm-proxy"]
+# Only the model relay runs the Worker script first. Everything else is a static asset
+# (free, not counted as a Worker invocation). The web page answers /api/* itself
+# (frontend/src/lib/local); a stray non-navigation /api/* fetch that matches no asset still
+# falls through to the Worker, which answers /api/health and 501 for the rest.
+run_worker_first = ["/llm-proxy"]
 
 [vars]
 # LLM_PROXY = "off"                       # disable the model relay
