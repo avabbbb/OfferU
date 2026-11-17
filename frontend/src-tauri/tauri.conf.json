@@ -29,12 +29,10 @@
   "bundle": {
     "active": true,
     "externalBin": [
-      "binaries/offeru-backend",
-      "binaries/offeru-node",
-      "binaries/offeru-boss"
+      "binaries/offeru-node"
     ],
     "resources": {
-      "../../.tmp/p/": "agent-runtime/"
+      "../../.tmp/ts-sidecar/": "backend-ts/"
     },
     "targets": "all",
     "icon": [

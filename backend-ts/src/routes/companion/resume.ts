@@ -55,7 +55,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 /** The ~800 bundled emblems (5.8 MB): backend-ts/assets/school_logos, or OFFERU_SCHOOL_LOGO_DIR (packaged builds). */
 export function schoolLogoDir(): string | null {
-  const candidates = [process.env.OFFERU_SCHOOL_LOGO_DIR, resolve(here, "../../../assets/school_logos")]
+  const candidates = [process.env.OFFERU_SCHOOL_LOGO_DIR, resolve(here, "../../../assets/school_logos"), resolve(here, "assets/school_logos")]
     .filter((p): p is string => Boolean(p));
   return candidates.find((p) => existsSync(join(p, "index.json"))) ?? null;
 }

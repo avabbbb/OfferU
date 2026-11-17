@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-
-import { dirname } from "node:path";
+import { spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { runMcpServer } from "./mcp";
 import { NodeAgentBoard } from "./routes/companion/agent-board";
@@ -21,9 +22,23 @@ usage:
   offeru-ts mcp
   offeru-ts serve
   offeru-ts doctor
+  offeru-ts start [--no-browser]
+      serve the built workbench (frontend/dist) and the API on 127.0.0.1:8766, open #/pair/<code>.
+global: --data-dir <dir> (else $OFFERU_DATA_DIR)
 
 tools: ${TOOL_NAMES.join(", ")}
 `;
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+function openBrowser(url: string): void {
+  const [cmd, args] = process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+  try {
+    spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).unref();
+  } catch {
+    // the URL is printed; the user opens it
+  }
+}
 
 function takeFlag(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
@@ -45,6 +60,9 @@ function payloadOf(raw: string | undefined): unknown {
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
+  // Python `offeru --data-dir <dir> ...`: the Skill command pins the database of this install.
+  const dataDir = takeFlag(args, "--data-dir");
+  if (dataDir) process.env.OFFERU_DATA_DIR = dataDir;
   const command = args.shift() || "help";
   const pretty = args.includes("--pretty");
   const actor = takeFlag(args, "--actor") || process.env.OFFERU_ACTOR || "agent";
@@ -94,6 +112,27 @@ async function main(): Promise<number> {
       return 0;
     }
 
+    if (command === "start") {
+      // Python `offeru start` (lite): workbench + API on one origin, :8766, one-time pair link.
+      process.env.OFFERU_RUNTIME_MODE ||= "lite";
+      const noBrowser = args.includes("--no-browser");
+      const webDir = process.env.OFFERU_WEB_DIR || [resolve(here, "web"), resolve(here, "../../frontend/dist")].find((dir) => existsSync(join(dir, "index.html")));
+      if (!webDir) throw new Error("没找到工作台页面（frontend/dist）。先 npm --prefix frontend run build，或设置 OFFERU_WEB_DIR");
+      const port = Number(process.env.OFFERU_PORT || 8766);
+      const server = startHttpServer(store, port, { webDir });
+      const info = (server as unknown as { offeruRuntime?: { mintPairCode?: () => string } }).offeruRuntime;
+      const code = info?.mintPairCode?.();
+      const url = `http://127.0.0.1:${port}/${code ? `#/pair/${code}` : ""}`;
+      process.stdout.write(`OfferU: ${url}\n`);
+      if (!noBrowser) openBrowser(url);
+      await new Promise<void>((done) => {
+        const close = () => server.close(() => done());
+        process.on("SIGINT", close);
+        process.on("SIGTERM", close);
+      });
+      return 0;
+    }
+
     if (command === "serve") {
       const server = startHttpServer(store);
       await new Promise<void>((resolve) => {
@@ -107,7 +146,7 @@ async function main(): Promise<number> {
     process.stderr.write(HELP);
     return 2;
   } finally {
-    if (command !== "mcp" && command !== "serve") store.close();
+    if (command !== "mcp" && command !== "serve" && command !== "start") store.close();
   }
 }
 

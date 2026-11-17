@@ -12,7 +12,10 @@
     "build:web": "npm --prefix ../frontend run build:web",
     "worker:dev": "wrangler dev",
     "worker:dry-run": "wrangler deploy --dry-run",
-    "deploy": "npm run build:web && wrangler deploy"
+    "deploy": "npm run build:web && wrangler deploy",
+    "bundle": "node scripts/bundle.mjs",
+    "build:sidecar": "node scripts/build_sidecar.mjs",
+    "build:lite": "node scripts/build_lite.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.19",
@@ -26,6 +29,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261115.1",
     "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vitest": "^5.0.5",

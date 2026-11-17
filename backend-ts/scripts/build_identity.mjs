@@ -6,13 +6,18 @@ import { spawnSync } from "node:child_process";
 
 const SCRIPT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SOURCE_ROOTS = [
-  "backend/app",
-  "backend/requirements.txt",
-  "backend/sidecar_entry.py",
-  "backend/scripts/build_identity.mjs",
-  "backend/scripts/build_sidecar.mjs",
-  "backend/scripts/build_sidecar.ps1",
-  "backend/tests/fixtures",
+  "backend-ts/src",
+  "backend-ts/assets",
+  "backend-ts/skill",
+  "backend-ts/package.json",
+  "backend-ts/package-lock.json",
+  "backend-ts/scripts/build_identity.mjs",
+  "backend-ts/scripts/bundle.mjs",
+  "backend-ts/scripts/build_sidecar.mjs",
+  "packages/core/src",
+  "packages/core/package.json",
+  "packages/sync/src",
+  "packages/sync/package.json",
   "frontend/src",
   "frontend/src-tauri",
   "frontend/public",
@@ -22,9 +27,6 @@ const SOURCE_ROOTS = [
   "frontend/vite.config.ts",
   "frontend/postcss.config.mjs",
   "frontend/tailwind.config.ts",
-  "agent-runtime/src",
-  "agent-runtime/package.json",
-  "agent-runtime/package-lock.json",
   ".agents/skills/offeru",
 ];
 const IGNORED_SEGMENTS = new Set([

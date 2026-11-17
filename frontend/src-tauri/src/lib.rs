@@ -1,5 +1,7 @@
-// OfferU Tauri desktop launcher (dev mode)
-// 启动时只 spawn FastAPI + Python AgentKernel @ :8766。
+// OfferU Tauri desktop launcher
+// 启动时 spawn TS 本机伴侣（backend-ts，Node）@ :8766：
+//   release: 打包的 offeru-node + <resources>/backend-ts/server.mjs（scripts/build_sidecar.mjs 生成）
+//   dev:     node --import tsx backend-ts/src/server-main.ts
 // frontend Vite dev @ :7410 由 tauri.conf.json 的 beforeDevCommand 负责，避免重复启动。
 // dev WebView 加载 http://127.0.0.1:7410；release WebView 直接加载嵌入的 dist。
 // 关窗时 kill 后端子进程
@@ -226,7 +228,7 @@ mod approval_tests {
 mod desktop_runtime_tests {
     use super::{
         build_commit, build_dirty, build_source_fingerprint, build_timestamp,
-        database_url_for_data_root, expected_build_mode, health_response_matches, runtime_mode,
+        expected_build_mode, health_response_matches, runtime_mode,
         validate_data_root_override,
     };
     use std::ffi::OsString;
@@ -244,12 +246,10 @@ mod desktop_runtime_tests {
     }
 
     #[test]
-    fn desktop_backend_overrides_inherited_database_url_with_selected_data_root() {
+    fn desktop_backend_is_bound_to_the_selected_data_root() {
         let selected_root = std::env::temp_dir().join("offeru-native-selected-root");
-        let foreign_database_url = "sqlite+aiosqlite:///H:/synthetic/foreign-root/djm.db";
-        let expected_database_url = database_url_for_data_root(&selected_root);
-        let mut command = Command::new("python");
-        command.env("DATABASE_URL", foreign_database_url);
+        let mut command = Command::new("node");
+        command.env("OFFERU_DB_PATH", "/synthetic/foreign-root/offeru.db");
 
         super::configure_backend_command(
             &mut command,
@@ -258,18 +258,16 @@ mod desktop_runtime_tests {
             "synthetic-approval-token",
         );
 
-        let configured_database_url = command
+        // An inherited OFFERU_DB_PATH would point the companion at another database.
+        assert!(command
             .get_envs()
-            .find(|(key, _)| *key == std::ffi::OsStr::new("DATABASE_URL"))
-            .and_then(|(_, value)| value)
-            .expect("desktop child must explicitly configure DATABASE_URL");
+            .any(|(key, value)| key == std::ffi::OsStr::new("OFFERU_DB_PATH") && value.is_none()));
         assert_eq!(
-            configured_database_url,
-            std::ffi::OsStr::new(&expected_database_url)
-        );
-        assert_ne!(
-            configured_database_url,
-            std::ffi::OsStr::new(foreign_database_url)
+            command
+                .get_envs()
+                .find(|(key, _)| *key == std::ffi::OsStr::new("OFFERU_PORT"))
+                .and_then(|(_, value)| value),
+            Some(std::ffi::OsStr::new("8766"))
         );
         assert_eq!(
             command
@@ -312,7 +310,7 @@ mod desktop_runtime_tests {
         let health = serde_json::json!({
             "status": "ok",
             "service": "OfferU",
-            "runtime": "python",
+            "runtime": "node",
             "build_mode": expected_build_mode(),
             "runtime_mode": runtime_mode(),
             "version": env!("CARGO_PKG_VERSION"),
@@ -341,6 +339,15 @@ mod desktop_runtime_tests {
             &health,
             &data_root,
             "a17f6393-6a53-4656-9f21-3798dcc39670",
+            runtime_mode()
+        ));
+
+        let mut python = health.clone();
+        python["runtime"] = serde_json::Value::String("python".to_string());
+        assert!(!health_response_matches(
+            &python,
+            &data_root,
+            expected_id,
             runtime_mode()
         ));
 
@@ -405,10 +412,10 @@ fn find_packaged_file(
 }
 
 fn project_root_from_exe() -> std::path::PathBuf {
-    // dev: target/debug/app.exe -> 向上直到含 frontend/ 和 backend/ 的目录
+    // dev: target/debug/app.exe -> 向上直到含 frontend/ 和 backend-ts/ 的目录
     let mut d = std::env::current_exe().unwrap();
     for _ in 0..8 {
-        if d.join("frontend").is_dir() && d.join("backend").is_dir() {
+        if d.join("frontend").is_dir() && d.join("backend-ts").is_dir() {
             return d;
         }
         if !d.pop() {
@@ -454,7 +461,7 @@ fn resolve_data_root(app: &AppHandle) -> Result<PathBuf, String> {
     let configured = validate_data_root_override(std::env::var_os("OFFERU_DATA_DIR"))?;
     let data_root = match configured {
         Some(path) => path,
-        None if cfg!(debug_assertions) => project_root_from_exe().join("backend"),
+        None if cfg!(debug_assertions) => project_root_from_exe().join("backend-ts").join(".data"),
         None => app
             .path()
             .app_data_dir()
@@ -473,14 +480,6 @@ fn runtime_mode() -> &'static str {
     }
 }
 
-fn database_url_for_data_root(data_root: &Path) -> String {
-    let database_path = data_root
-        .join("djm.db")
-        .to_string_lossy()
-        .replace('\\', "/");
-    format!("sqlite+aiosqlite:///{database_path}")
-}
-
 fn configure_backend_command(
     command: &mut Command,
     data_root: &Path,
@@ -489,10 +488,12 @@ fn configure_backend_command(
 ) {
     command
         .env("OFFERU_DATA_DIR", data_root)
-        // The desktop-selected data root is the authority for the Runtime DB.
-        // An inherited DATABASE_URL wins over both backend/.env and the
-        // runtime default, so bind the child explicitly to this root.
-        .env("DATABASE_URL", database_url_for_data_root(data_root))
+        // The desktop-selected data root is the authority for the database
+        // (<data>/offeru.db); an inherited OFFERU_DB_PATH would override it.
+        .env_remove("OFFERU_DB_PATH")
+        .env_remove("OFFERU_TS_PORT")
+        // node:sqlite prints an ExperimentalWarning on every start; keep stderr for real failures.
+        .env("NODE_NO_WARNINGS", "1")
         .env("OFFERU_RUNTIME_INSTANCE_ID", runtime_instance_id)
         .env(
             "OFFERU_BUILD_MODE",
@@ -532,28 +533,20 @@ fn configure_backend_command(
     }
 }
 
-fn spawn_python_backend(
+fn spawn_dev_backend(
     root: &Path,
     data_root: &Path,
     runtime_instance_id: &str,
     approval_token: &str,
 ) -> Command {
-    let py = root
-        .join("backend")
-        .join(".venv312")
-        .join("Scripts")
-        .join("python.exe");
-    let py_str = if py.is_file() {
-        py.to_string_lossy().into_owned()
-    } else {
-        String::from("python")
-    };
-    let cwd = root.join("backend");
+    // Dev runs the TypeScript source through tsx (backend-ts devDependency); `npm --prefix backend-ts ci` first.
+    let node = std::env::var_os("OFFERU_NODE_PATH").unwrap_or_else(|| OsString::from("node"));
+    let cwd = root.join("backend-ts");
 
-    println!("[OfferU] spawning Python backend on :8766: run_server.py");
+    println!("[OfferU] spawning TS backend on :8766: backend-ts/src/server-main.ts");
 
-    let mut cmd = Command::new(&py_str);
-    cmd.arg("run_server.py").current_dir(&cwd);
+    let mut cmd = Command::new(node);
+    cmd.args(["--import", "tsx", "src/server-main.ts"]).current_dir(&cwd);
     configure_backend_command(&mut cmd, data_root, runtime_instance_id, approval_token);
     cmd
 }
@@ -568,27 +561,6 @@ fn spawn_release_sidecar(
         Ok(path) => path,
         Err(error) => return Err(format!("cannot resolve resource directory: {error}")),
     };
-    #[cfg(windows)]
-    let backend_names = [
-        "offeru-backend.exe",
-        "offeru-backend-x86_64-pc-windows-msvc.exe",
-        "offeru-backend-aarch64-pc-windows-msvc.exe",
-    ];
-    #[cfg(target_os = "macos")]
-    let backend_names = [
-        "offeru-backend",
-        "offeru-backend-aarch64-apple-darwin",
-        "offeru-backend-x86_64-apple-darwin",
-    ];
-    #[cfg(target_os = "linux")]
-    let backend_names = [
-        "offeru-backend",
-        "offeru-backend-x86_64-unknown-linux-gnu",
-        "offeru-backend-aarch64-unknown-linux-gnu",
-    ];
-    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
-    let backend_names = ["offeru-backend"];
-
     #[cfg(windows)]
     let node_names = [
         "offeru-node.exe",
@@ -610,41 +582,28 @@ fn spawn_release_sidecar(
     #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     let node_names = ["offeru-node"];
 
-    #[cfg(windows)]
-    let boss_names = ["offeru-boss.exe", "offeru-boss-x86_64-pc-windows-msvc.exe"];
-    #[cfg(target_os = "macos")]
-    let boss_names = ["offeru-boss", "offeru-boss-aarch64-apple-darwin", "offeru-boss-x86_64-apple-darwin"];
-    #[cfg(not(any(windows, target_os = "macos")))]
-    let boss_names = ["offeru-boss", "offeru-boss-x86_64-unknown-linux-gnu"];
-
-    let sidecar = find_packaged_file(&resource_dir, &backend_names);
-
-    let Some(sidecar) = sidecar else {
-        return Err("packaged backend sidecar was not found beside the app executable or in the resource directory".to_string());
+    let Some(node) = find_packaged_file(&resource_dir, &node_names) else {
+        return Err("packaged Node runtime (offeru-node) was not found beside the app executable or in the resource directory".to_string());
     };
-    let node = find_packaged_file(&resource_dir, &node_names);
-    if node.is_none() {
-        eprintln!("[OfferU] packaged Node runtime was not found; Node-based Agent providers may be unavailable");
+    let companion = resource_dir.join("backend-ts");
+    let server = companion.join("server.mjs");
+    if !server.is_file() {
+        return Err("packaged TS backend (backend-ts/server.mjs) was not found in the resource directory".to_string());
     }
 
-    let cors_origins = concat!(
-        "http://localhost:7410,http://127.0.0.1:7410,",
-        "http://tauri.localhost,https://tauri.localhost,tauri://localhost"
-    );
-    println!("[OfferU] spawning packaged backend sidecar on :8766");
-    let mut cmd = Command::new(sidecar);
-    cmd.env(
-        "OFFERU_AGENT_RUNTIME_DIR",
-        resource_dir.join("agent-runtime"),
-    )
-    .env("CORS_ORIGINS", cors_origins)
-    .current_dir(data_root);
+    println!("[OfferU] spawning packaged TS backend sidecar on :8766");
+    let mut cmd = Command::new(&node);
+    cmd.arg(&server)
+        .env("OFFERU_BUILD_IDENTITY_PATH", companion.join("offeru-build-identity.json"))
+        .env("OFFERU_SCHOOL_LOGO_DIR", companion.join("assets").join("school_logos"))
+        .env("OFFERU_SKILL_PATH", companion.join("skill").join("SKILL.md"))
+        // The Skill's <offeru> command: the bundled Node running the bundled CLI against this data root.
+        .env("OFFERU_CLI_PATH", companion.join("cli.mjs"))
+        .current_dir(data_root);
     configure_backend_command(&mut cmd, data_root, runtime_instance_id, approval_token);
-    if let Some(node) = node {
-        cmd.env("OFFERU_NODE_PATH", node);
-    }
-    if let Some(boss) = find_packaged_file(&resource_dir, &boss_names) {
-        cmd.env("OFFERU_BOSS_BIN", boss);
+    let browsers = companion.join("resume-browsers");
+    if browsers.is_dir() {
+        cmd.env("PLAYWRIGHT_BROWSERS_PATH", browsers);
     }
 
     Ok(cmd)
@@ -657,7 +616,7 @@ fn spawn_backend(
     approval_token: &str,
 ) -> Result<Command, String> {
     if cfg!(debug_assertions) {
-        return Ok(spawn_python_backend(
+        return Ok(spawn_dev_backend(
             &project_root_from_exe(),
             data_root,
             runtime_instance_id,
@@ -752,7 +711,7 @@ fn health_response_matches(
     };
     object.get("status").and_then(|value| value.as_str()) == Some("ok")
         && object.get("service").and_then(|value| value.as_str()) == Some("OfferU")
-        && object.get("runtime").and_then(|value| value.as_str()) == Some("python")
+        && object.get("runtime").and_then(|value| value.as_str()) == Some("node")
         && object.get("build_mode").and_then(|value| value.as_str()) == Some(expected_build_mode())
         && object.get("runtime_mode").and_then(|value| value.as_str())
             == Some(expected_runtime_type)
@@ -786,7 +745,7 @@ fn terminate_owned_backend(children: &Arc<Mutex<Option<ProcessTree>>>) {
     drop(child);
 }
 
-fn wait_for_python_backend(
+fn wait_for_backend(
     children: &Arc<Mutex<Option<ProcessTree>>>,
     data_root: &Path,
     runtime_instance_id: &str,
@@ -989,7 +948,7 @@ pub fn run() {
                     *children.lock().unwrap() = Some(child);
                     let children_for_wait = children.clone();
                     thread::spawn(move || {
-                        let startup = wait_for_python_backend(
+                        let startup = wait_for_backend(
                             &children_for_wait,
                             &data_root,
                             &runtime_instance_id,
