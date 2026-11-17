@@ -4,7 +4,6 @@
 
 ## 网页版（local-web）
 
-- **设置页的「导出数据」还连着 `/api/agent/data/export`**（Python 的 UserDataExport 形状），TS 后端只有 `/api/data/export`（offeru-data v1 快照），网页版点导出会 404。命名备份 / 恢复可用。
 - **抓网页、按链接存岗位**受浏览器 CORS 限制，多数招聘站会失败；Worker 刻意不做通用代理。粘贴 JD 文本可用。
 - **联网搜索**：Bocha / Tavily / Serper 的 Key 还没进 `/api/config`，网页版没有搜索。
 - **一键导入模型服务商**（`/api/config/llm-providers/import`）未迁，回 501；在模型设置里手动添加。
@@ -13,15 +12,17 @@
 
 ## 伴侣（backend-ts Node）
 
-- 模型 Key 存在 `<data>/offeru-ts-config.json`（0600），还没接系统钥匙串（Python 版有）；不读 Python 的 `config.json`，两边各配各的。
+- 模型 Key 存在 `<data>/offeru-ts-config.json`（0600），不接系统钥匙串。从 Python 桌面版升级的用户：首次启动会从旧 `<data>/config.json` 导入模型列表，但 Key 在系统钥匙串里，**需要重填一次**。
 - `/mcp` 只有 stdio，HTTP（Streamable）未迁。
-- 邮箱同步（IMAP）、面试（`/api/interview*`）、连接管理、consent、bridge 等仍只在 Python 后端。
+- 邮箱同步（IMAP）未迁，Python 版删除后暂时没有。`/api/bridge/proposals/*`、`/api/agent/runtime/skill`、`/api/research/*` 按决定不迁（见 [route-coverage](./route-coverage.md)）。
+- BOSS 扫码登录要本机自装 boss CLI；安装包不再附带。
 - `node:sqlite` 在 Node 24 上仍是 experimental。
 
 ## 发布
 
 - 安装包签名、上一版本升级路径、Tauri 自动更新、干净机器人工验收仍未完成（详见归档的发布台账）。
-- 桌面安装包仍打包 Python sidecar；切到 TS 伴侣的打包方案未定。
+- 桌面安装包改为打包 Node + TS 伴侣（`backend-ts/scripts/build_sidecar.mjs`），Rust 侧（`src-tauri/src/lib.rs`）只在 CI 编译验证过。
+- 发布前浏览器冒烟收窄为 `scripts/e2e/smoke.mjs`（伴侣 + 工作台主路径）；旧 Python 版的多场景 e2e（空状态矩阵、面试回放、CareerTask 并发 / 恢复）已随 Python 删除。
 
 ## 工程
 

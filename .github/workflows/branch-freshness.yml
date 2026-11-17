@@ -25,7 +25,7 @@ jobs:
 
       - name: Report stale PR baseline
         run: |
-          python backend/scripts/dev/branch_guard.py \
+          python3 scripts/ci/branch_guard.py \
             --mode pr \
             --base-ref "origin/${{ github.event.pull_request.base.ref }}" \
             --no-fetch

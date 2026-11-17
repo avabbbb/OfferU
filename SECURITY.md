@@ -2,6 +2,8 @@
 
 更新时间：2026-09-24
 
+> 2026-11-18：Python 后端与 `agent-runtime/` 已删除（最后一版 tag `python-backend-final`），后端现为 `backend-ts`（Node / 浏览器）。下文 2026-09 的证据（FastAPI、`pip-audit`、Python logger AST contract 等）针对旧实现，只作历史记录，需要针对 TS 后端重新取证。
+
 ## Current verdict
 
 ```text
@@ -99,7 +101,7 @@ CI now runs `audit_artifacts.py --json` on the artifact directory after the inst
 
 本地 `cargo-audit 0.22.2` 已扫描当前 `Cargo.lock` 的 441 个依赖：普通 audit 为 `0 vulnerabilities`，唯一 unsound finding 为 `glib 0.18.5 / RUSTSEC-2024-0429`，同时保留 16 条 unmaintained warning。RustSec 将 `glib >=0.20.0` 列为修复版本；当前 Tauri 2/Wry Linux 栈仍绑定 GTK 0.18。虽然 `gtk 0.19.0` 已发布且依赖修复后的 `glib 0.22`，Wry 对该栈的集成 PR #1843 仍为 Draft，并把 MSRV 提高到 Rust 1.92；本仓当前 Tauri 应用声明 Rust 1.77.2，且当前发布的 Tauri/Wry graph 仍使用 GTK 0.18。Tauri GTK4/WebKitGTK 6 迁移也仍为 Open 的 breaking-change 工作，因此当前没有可直接采用且兼容本仓 MSRV 的已发布升级路径。
 
-非 tag CI 的 `backend/scripts/security/check_rustsec.py` 只容忍上述唯一 advisory/package/version 组合，且仅当它确实存在于 Linux 图、在 Windows x64 与 macOS x64/arm64 发布目标图均不存在时才使用 `--ignore RUSTSEC-2024-0429`；脚本拒绝 tag refs，例外于 `2026-12-23` UTC 到期并在当日 fail closed，届时必须移除或重新评审，不会自动续期。tag/release 使用不带 ignore 的 `cargo audit --deny unsound`，因此当前会被此 finding 阻断，直到依赖修复。当前 Linux 仅为 CI/开发图，不是 release artifact target；将来新增 Linux 发布目标必须先移除该例外或为其完成上游修复。该图检查不证明相关 API 在 Linux 上不可达，也不替代真实 release build 审核。完整 release artifact canary、所有权限 surface diff、全部 logging/PII data-flow、历史 Agent Run scrub、privacy/consent 和签名仍待完成，R55 仍为 PARTIAL。
+非 tag CI 的 `scripts/ci/check_rustsec.py` 只容忍上述唯一 advisory/package/version 组合，且仅当它确实存在于 Linux 图、在 Windows x64 与 macOS x64/arm64 发布目标图均不存在时才使用 `--ignore RUSTSEC-2024-0429`；脚本拒绝 tag refs，例外于 `2026-12-23` UTC 到期并在当日 fail closed，届时必须移除或重新评审，不会自动续期。tag/release 使用不带 ignore 的 `cargo audit --deny unsound`，因此当前会被此 finding 阻断，直到依赖修复。当前 Linux 仅为 CI/开发图，不是 release artifact target；将来新增 Linux 发布目标必须先移除该例外或为其完成上游修复。该图检查不证明相关 API 在 Linux 上不可达，也不替代真实 release build 审核。完整 release artifact canary、所有权限 surface diff、全部 logging/PII data-flow、历史 Agent Run scrub、privacy/consent 和签名仍待完成，R55 仍为 PARTIAL。
 
 ## Security exception format
 

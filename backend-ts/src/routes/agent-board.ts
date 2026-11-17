@@ -73,7 +73,8 @@ export function registerAgentBoard(app: Hono<AppEnv>): void {
     const deps = c.get("deps");
     const service = board(deps);
     const [scheme, token] = (c.req.header("authorization") || "").split(" ");
-    if (scheme?.toLowerCase() !== "bearer" || !token || !deps.pairingToken || token !== deps.pairingToken()) {
+    const accepted = [deps.pairingToken?.(), deps.approvalToken?.()].filter((value): value is string => Boolean(value));
+    if (scheme?.toLowerCase() !== "bearer" || !token || !accepted.includes(token)) {
       throw new CoreError("只能在 OfferU 工作台里打开对话", "forbidden");
     }
     return c.json(await service.launch(c.req.param("id")));

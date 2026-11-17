@@ -3,6 +3,8 @@ name: statemachine-tailor-run-asks
 description: 改按岗位改写简历（tailor.run、review_only、_running、pick_asks、doc.pending_asks、TailorBar 追问）前读。运行状态机和 pending_asks 生命周期、已知问题、怎么验证。
 ---
 
+> 注意（2026-11-18）：Python 后端已删除。下文的 `backend/…`、`*.py:行号` 指 tag `python-backend-final` 上的旧实现，只作行为参考；现行代码在 `packages/core/src/`（规则、Agent 循环）和 `backend-ts/src/routes/`（HTTP）。改行为前先在 TS 里找对应实现。
+
 # tailor.run 和 doc.pending_asks
 
 ## 运行：idle / running（每份 doc 一个）

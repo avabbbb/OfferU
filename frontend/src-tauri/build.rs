@@ -18,12 +18,15 @@ fn watch_identity_sources(root: &Path, artifact: &Path, helper: &Path) {
     println!("cargo:rerun-if-changed={}", artifact.display());
     println!("cargo:rerun-if-changed={}", helper.display());
     for source in [
-        "backend/app",
-        "backend/requirements.txt",
-        "backend/sidecar_entry.py",
-        "backend/scripts/build_sidecar.mjs",
-        "backend/scripts/build_sidecar.ps1",
-        "backend/tests/fixtures",
+        "backend-ts/src",
+        "backend-ts/assets",
+        "backend-ts/skill",
+        "backend-ts/package.json",
+        "backend-ts/package-lock.json",
+        "backend-ts/scripts/bundle.mjs",
+        "backend-ts/scripts/build_sidecar.mjs",
+        "packages/core/src",
+        "packages/sync/src",
         "frontend/src",
         "frontend/public",
         "frontend/index.html",
@@ -37,9 +40,6 @@ fn watch_identity_sources(root: &Path, artifact: &Path, helper: &Path) {
         "frontend/src-tauri/Cargo.toml",
         "frontend/src-tauri/Cargo.lock",
         "frontend/src-tauri/tauri.conf.json",
-        "agent-runtime/src",
-        "agent-runtime/package.json",
-        "agent-runtime/package-lock.json",
         ".agents/skills/offeru",
     ] {
         let path = root.join(source);
@@ -143,7 +143,7 @@ fn configure_source_identity(root: &Path) {
 fn main() {
     let root = repository_root();
     let artifact = root.join(".tmp/offeru-build-identity.json");
-    let helper = root.join("backend/scripts/build_identity.mjs");
+    let helper = root.join("backend-ts/scripts/build_identity.mjs");
     watch_identity_sources(&root, &artifact, &helper);
 
     if std::env::var("PROFILE").as_deref() == Ok("release") {

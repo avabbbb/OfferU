@@ -7,7 +7,7 @@
 | [系统设计](./DESIGN.md) | 数据怎么存、工具有哪些、Agent 怎么接、撤销怎么做 |
 | [开发](./DEVELOPMENT.md) | 装依赖、npm 命令、测试与契约测试 |
 | [部署到 Cloudflare](./DEPLOY-CLOUDFLARE.md) | wrangler 部署网页版，零成本的前提 |
-| [迁移进度](./backend-ts-migration.md) | Python → TS 各阶段状态、还没迁的 |
+| [路由覆盖](./route-coverage.md) | 删除的 Python 后端每条路由在 TS 里的去向 |
 | [已知问题](./KNOWN_ISSUES.md) | 当前缺口 |
 | 同步（`sync.md`） | 多设备同步：用户自带 S3/R2，端到端加密、增量快照、按记录合并 |
 | [视觉系统](./design/visual-system.md) | 新 UI 的视觉与交互 |

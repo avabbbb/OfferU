@@ -3,6 +3,8 @@ name: statemachine-change-undo
 description: 改 core store 的写入、改动合并、撤销（最近改动、Agent undo 工具）前读。changes 表 live/undone 状态机、不变式、已知问题、怎么验证。
 ---
 
+> 注意（2026-11-18）：Python 后端已删除。下文的 `backend/…`、`*.py:行号` 指 tag `python-backend-final` 上的旧实现，只作行为参考；现行代码在 `packages/core/src/`（规则、Agent 循环）和 `backend-ts/src/routes/`（HTTP）。改行为前先在 TS 里找对应实现。
+
 # changes.undone_at
 
 状态：live（undone_at 为空）/ undone。表结构 backend/app/core/store.py:28-30。

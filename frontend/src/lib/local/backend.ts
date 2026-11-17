@@ -22,7 +22,7 @@ import { staticSchoolLogos } from "@offeru/core";
 import { BrowserDemoStore } from "@/lib/demo/store";
 
 import { IndexedDbAgentRunStore } from "./agentRuns";
-import { indexedDbConfigStore } from "./config";
+import { indexedDbConfigStore, indexedDbConsentStore } from "./config";
 import { indexedDbBackupFiles, indexedDbFileStore } from "./files";
 
 type Fetch = typeof globalThis.fetch;
@@ -81,6 +81,7 @@ export function createLocalBackend(baseFetch: Fetch = globalThis.fetch.bind(glob
     schoolLogos: staticSchoolLogos(logoBase, (url) => baseFetch(url)),
     renderer: null,
     agentRuns: new IndexedDbAgentRunStore(),
+    consent: indexedDbConsentStore(),
   };
   const app = createApp(deps);
   void ready.then(() => agentHost(deps).state.recoverInterrupted()).catch(() => undefined);

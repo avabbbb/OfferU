@@ -89,6 +89,8 @@ export interface CoreStore {
   dumpAll?(): Promise<import("./data").DataRows>;
   /** Optional: delete every record and change, then insert these rows as-is (ids kept). Called inside transaction(). Needed for restore. */
   replaceAll?(rows: import("./data").DataRows): Promise<void>;
+  /** Optional: engine-level check (SQLite PRAGMA integrity_check / foreign_key_check / user_version). */
+  checkIntegrity?(): Promise<{ integrity_check: string[]; foreign_key_violations: unknown[][]; user_version: number }>;
 }
 
 /**

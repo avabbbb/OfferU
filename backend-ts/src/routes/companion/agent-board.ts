@@ -30,8 +30,13 @@ import {
 import type { AgentBoardService } from "../agent-board";
 
 const here = dirname(fileURLToPath(import.meta.url));
-/** Canonical Skill text (one copy in the repo, shared with the Python backend while it exists). */
-export const SOURCE_SKILL = resolve(here, "../../../../backend/skill/SKILL.md");
+/**
+ * Canonical Skill text: backend-ts/skill/SKILL.md in the repo; the desktop package ships it
+ * next to the bundled server (OFFERU_SKILL_PATH, or skill/SKILL.md beside the bundle).
+ */
+export const SOURCE_SKILL = [process.env.OFFERU_SKILL_PATH, resolve(here, "../../../skill/SKILL.md"), resolve(here, "skill/SKILL.md")]
+  .filter((p): p is string => Boolean(p))
+  .find((p) => existsSync(p)) ?? resolve(here, "../../../skill/SKILL.md");
 const BACKEND_TS = resolve(here, "../../..");
 const VERSION = /^version:\s*(\S+)/m;
 const PROCESS_CACHE_MS = 5000;
@@ -108,8 +113,19 @@ export class NodeAgentBoard implements AgentBoardService {
     renameSync(tmp, this.path);
   }
 
+  /**
+   * Python agent_integration.tool_command: the command of this installation plus --data-dir, so an
+   * external Agent reads the same database. Packaged builds run the bundled cli.mjs with the bundled
+   * Node (OFFERU_CLI_PATH from the desktop shell); a source checkout goes through npm.
+   */
   private toolCommand(): string {
-    return this.options.toolCommand ?? this.env.OFFERU_TOOL_COMMAND ?? `npm --prefix ${JSON.stringify(BACKEND_TS)} run -s cli --`;
+    if (this.options.toolCommand ?? this.env.OFFERU_TOOL_COMMAND) return (this.options.toolCommand ?? this.env.OFFERU_TOOL_COMMAND)!;
+    const quote = (value: string) => (process.platform === "win32" ? `'${value.replaceAll("'", "''")}'` : JSON.stringify(value));
+    const dataDir = `--data-dir ${quote(this.options.dataDir)}`;
+    if (this.env.OFFERU_CLI_PATH) {
+      return `${process.platform === "win32" ? "& " : ""}${quote(process.execPath)} ${quote(this.env.OFFERU_CLI_PATH)} ${dataDir}`;
+    }
+    return `npm --prefix ${JSON.stringify(BACKEND_TS)} run -s cli -- ${dataDir}`;
   }
 
   /** _installed_content: the Skill with <offeru> filled for this install. */

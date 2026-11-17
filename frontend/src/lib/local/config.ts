@@ -3,7 +3,7 @@
 // non-extractable device key (demo/keyVault). Same-origin script can still use them.
 
 import localforage from "localforage";
-import type { ConfigStore, StoredConfig } from "@offeru/core";
+import type { ConfigStore, ConsentRecord, ConsentStore, StoredConfig } from "@offeru/core";
 
 import { decryptSecret, encryptSecret, type EncryptedSecret } from "@/lib/demo/keyVault";
 
@@ -40,6 +40,21 @@ export function indexedDbConfigStore(database = "offeru-local-config"): ConfigSt
       const rest: Record<string, unknown> = { ...config };
       for (const field of LEGACY_KEYS) rest[field] = "";
       await db.setItem(KEY, { ...rest, llm_api_configs: configs });
+    },
+  };
+}
+
+/** Browser ConsentStore for /api/consent/platform-collect (version + agreed_at only). */
+export function indexedDbConsentStore(database = "offeru-local-config"): ConsentStore {
+  const db = localforage.createInstance({ name: database, storeName: "consent" });
+  const key = "platform-collect";
+  return {
+    async load() {
+      return (await db.getItem<ConsentRecord>(key)) ?? null;
+    },
+    async save(record) {
+      if (record) await db.setItem(key, record);
+      else await db.removeItem(key);
     },
   };
 }

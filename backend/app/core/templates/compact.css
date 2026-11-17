@@ -1,5 +1,0 @@
-/* 紧凑：联系方式下一条主题色粗线，分节不再画线，给内容多的人。 */
-.resume { --name: 16pt; --h2: calc(var(--body-size) * 1.08); }
-.resume h1 + p { padding-bottom: 2mm; border-bottom: .3mm solid var(--accent); }
-.resume h2 { border-bottom: none; padding-bottom: 0; }
-.resume h3 { margin-top: calc(var(--item-gap) * .6); }

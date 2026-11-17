@@ -21,21 +21,12 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
   - package-ecosystem: npm
-    directory: /agent-runtime
+    directory: /backend-ts
     schedule:
       interval: weekly
     open-pull-requests-limit: 0
     groups:
-      agent-runtime-security:
-        applies-to: security-updates
-        patterns: ["*"]
-  - package-ecosystem: pip
-    directory: /backend
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 0
-    groups:
-      backend-security:
+      backend-ts-security:
         applies-to: security-updates
         patterns: ["*"]
   - package-ecosystem: cargo

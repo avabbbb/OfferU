@@ -293,7 +293,7 @@ flowchart LR
 
 - **`packages/core`** —— 纯 TypeScript 的领域规则：工具表、校验、overview、改动记录与撤销、简历渲染、内置 Agent 循环。不依赖 React、DOM、Node。
 - **`backend-ts`** —— 一个运行时无关的 Hono 应用加各运行形态的适配器：网页版里它**跑在页面内**（数据在 IndexedDB）；桌面版是 **Node 伴侣**（SQLite、本机文件、PDF、BOSS 登录）；**Cloudflare Worker** 入口只发静态网站、转发模型请求，不存任何东西（不用 D1 / KV / Durable Objects / R2）。
-- **`backend/`** —— 原来的 Python（FastAPI）后端，保留为回滚路径，也提供还没迁移的领域（邮箱同步、面试）。
+- 原来的 Python（FastAPI）后端已删除，最后一版在 tag [`python-backend-final`](https://github.com/avabbbb/OfferU/tree/python-backend-final)；每条路由的去向见 [docs/route-coverage.md](./docs/route-coverage.md)。
 
 各运行形态能做什么、代码在哪、怎么加工具：[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。数据模型与工具语义：[系统设计](./docs/DESIGN.md)。
 
@@ -308,7 +308,6 @@ IndexedDB            → 网页版数据（在用户自己的浏览器里）
 SQLite (node:sqlite) → 桌面伴侣数据
 Cloudflare Workers   → 静态托管 + 无状态模型转发（免费计划）
 Tauri / Rust         → 桌面外壳
-Python / FastAPI     → 旧后端，回滚路径
 ```
 
 OfferU 刻意不在 UI、CLI、插件和 Agent 集成之间复制业务逻辑。
@@ -324,7 +323,7 @@ OfferU 刻意不在 UI、CLI、插件和 Agent 集成之间复制业务逻辑。
 - 职业证据保留来源；行为信号与模型推断先进入审核收件箱。
 - Provider 失败必须可见，不允许用"假成功"掩盖。
 - 数据留在你手里：网页版在你的浏览器里，桌面版在你的电脑上。Cloudflare Worker 只发静态文件、转发模型请求，不保存用户数据，也不记录这些请求。
-- 网页版的 API Key 用浏览器内不可导出的密钥加密后再存进 IndexedDB；旧的 Python 后端把 Key 存在系统钥匙串。
+- 网页版的 API Key 用浏览器内不可导出的密钥加密后再存进 IndexedDB；桌面伴侣把 Key 存在本机数据目录（文件权限 0600）。
 - 凭据不进入模型上下文、日志和版本库。
 
 当前安全状态见 [SECURITY.md](./SECURITY.md)。
@@ -352,7 +351,7 @@ npx wrangler deploy      # Cloudflare Workers 免费计划；本地预览用 npm
 
 ## 发布状态
 
-- Python → TS 迁移进度：[docs/backend-ts-migration.md](./docs/backend-ts-migration.md)
+- Python → TS 路由覆盖：[docs/route-coverage.md](./docs/route-coverage.md)
 - 已知缺口：[docs/KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
 
 ```bash

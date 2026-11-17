@@ -3,6 +3,8 @@ name: statemachine-agent-run
 description: 改 Agent Run 生命周期（services/agent_run_state.py、续跑、启动恢复、bridge run.finish、AgentPanel 停放标签）前读。状态机、守卫、已知问题、怎么验证。
 ---
 
+> 注意（2026-11-18）：Python 后端已删除。下文的 `backend/…`、`*.py:行号` 指 tag `python-backend-final` 上的旧实现，只作行为参考；现行代码在 `packages/core/src/`（规则、Agent 循环）和 `backend-ts/src/routes/`（HTTP）。改行为前先在 TS 里找对应实现。
+
 # Agent Run
 
 状态：活跃 created / planning / executing / interrupted；终态 completed / cancelled / failed（backend/app/services/agent_run_state.py:25-26）。created 只是列默认值和 _clean_run 兜底（backend/app/models/models.py:1021；agent_run_state.py:101），创建路径都显式写 planning 或 executing（262）。

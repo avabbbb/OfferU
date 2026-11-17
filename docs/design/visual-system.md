@@ -230,7 +230,7 @@ v1 里「橙色主按钮」改为「墨黑主按钮」：Apple HIG 要求强调�
 
 v3 Glass 落地：Token + 外壳（PR #196），简历编辑器文档化（PR #197）；v3.1：浅色玻璃菜单 + 标签选择器 + ⌘K 两栏（PR #198）、周日历 + 色块（PR #199）、Agent 窗格 + 输入框（PR #200），各自怎么看见 [DESIGN.md](DESIGN.md) 的「v3.1 新增 · 怎么看」。旧变量（`--surface`、`--border`、`--background`…）全部桥接到 v3，未迁移的页面自动跟随渐变底、半透明面、胶囊按钮；页面里写死的白底 / 1px 边框是历史债，`design:audit` 有统计。
 
-**怎么看**：`frontend/` 里 `npm run build`，`backend/` 里 `OFFERU_RUNTIME_MODE=lite uvicorn app.main:app --port 8766`（后端直接托管 `frontend/dist`），打开 `http://127.0.0.1:8766/#/`（今天）、`#/jobs`（岗位）、`#/resume`（简历编辑器）；开发时 `npm run dev` 看 `http://127.0.0.1:7410`。
+**怎么看**：`frontend/` 里 `npm run build`，`cd backend-ts && npm run cli -- start --no-browser`（伴侣直接托管 `frontend/dist`，8766），打开 `http://127.0.0.1:8766/#/`（今天）、`#/jobs`（岗位）、`#/resume`（简历编辑器）；开发时 `npm run dev` 看 `http://127.0.0.1:7410`。
 
 | 范围 | 状态 |
 | --- | --- |

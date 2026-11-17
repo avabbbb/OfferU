@@ -1,6 +1,6 @@
 # OfferU 状态图：core 的 5 条用户流程
 
-来源：2026-11-09 隐式状态机盘点，2026-11-10 按当前代码复核。每个子系统的事件、守卫、file:line 和验证命令在 .agents/skills/statemachine-<名字>/SKILL.md；可执行模型在 backend/tests/test_statemachine_models.py。已修的问题保留编号并标「已修」，现在是普通测试；known() 只剩 helper，没有 strict xfail 用例。
+来源：2026-11-09 隐式状态机盘点，2026-11-10 按当前代码复核。每个子系统的事件、守卫、file:line 和验证命令在 .agents/skills/statemachine-<名字>/SKILL.md；可执行模型原在 backend/tests/test_statemachine_models.py（Python 已删除，见 tag `python-backend-final`）。已修的问题保留编号并标「已修」，现在是普通测试；known() 只剩 helper，没有 strict xfail 用例。
 
 ## 1. 改写 -> 追问 -> 档案 -> 只审稿
 

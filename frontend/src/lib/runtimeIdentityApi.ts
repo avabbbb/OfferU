@@ -124,7 +124,7 @@ export function matchesDesktopRuntimeIdentity(
   if (
     health.status !== "ok" ||
     health.service !== "OfferU" ||
-    health.runtime !== "python" ||
+    health.runtime !== "node" ||
     health.runtime_instance_id !== expected.runtime_instance_id ||
     health.version !== expected.version ||
     health.runtime_mode !== expected.runtime_type

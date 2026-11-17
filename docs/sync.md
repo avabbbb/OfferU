@@ -24,7 +24,7 @@ POST /api/sync/configure   { endpoint, bucket, region, accessKeyId, secretAccess
 POST /api/sync/now         -> { result: { pulled, pushed, uploaded, conflicts, resurrected, ... }, status }
 ```
 
-错误码：`sync_config` / `sync_passphrase` 400，`sync_auth` 401，`sync_locked` / `sync_conflict` 409，`sync_format` / `sync_decrypt` 422，`sync_network` / `sync_http` 502。Python 后端（8766）没有这些路由，设置页会提示「当前后端还不支持同步」。
+错误码：`sync_config` / `sync_passphrase` 400，`sync_auth` 401，`sync_locked` / `sync_conflict` 409，`sync_format` / `sync_decrypt` 422，`sync_network` / `sync_http` 502。后端不支持同步时（例如没有这些路由的旧版本），设置页会提示「当前后端还不支持同步」。
 
 ## 远端格式（v1）
 
