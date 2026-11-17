@@ -18,7 +18,7 @@
 
 ## 2. 总体结构
 
-> 2026-11 起后端是 TypeScript：规则在 `packages/core`，HTTP 应用是 `backend-ts/src/app.ts` 的 `createApp(deps)`，同一份代码跑在浏览器页面里（网页版）、Node 伴侣里（桌面版）。运行形态、能力矩阵和代码位置见 [ARCHITECTURE](./ARCHITECTURE.md)。下面各节的工具语义、数据模型、撤销规则不变；提到的 `core/*.py` 是 Python 回滚后端里的对应实现，TS 版在 `packages/core/src/` 的同名领域目录。
+> 2026-11 起后端是 TypeScript：规则在 `packages/core`，HTTP 应用是 `backend-ts/src/app.ts` 的 `createApp(deps)`，同一份代码跑在浏览器页面里（网页版）、Node 伴侣里（桌面版）。运行形态、能力矩阵和代码位置见 [ARCHITECTURE](./ARCHITECTURE.md)。下面各节的工具语义、数据模型、撤销规则不变；提到的 `core/*.py` 是已删除的 Python 版里的对应实现（tag `python-backend-final`），TS 版在 `packages/core/src/` 的同名领域目录。
 
 ```text
  网页（Vite + React）  浏览器插件     Codex / Claude Code       内置 Agent
@@ -249,11 +249,11 @@ pywebview 小窗，随 `offeru start` 打开，轮询 overview；有新的改动
 
 ## 14. 目录
 
-见 [ARCHITECTURE §2](./ARCHITECTURE.md#2-代码在哪)。Python 后端（`backend/app/core/` 等）保留为回滚路径，不再加功能。
+见 [ARCHITECTURE §2](./ARCHITECTURE.md#2-代码在哪)。Python 后端已删除（tag `python-backend-final`）。
 
 ## 15. 测试策略
 
-- 后端：`backend-ts/test/` 用 `createApp(deps).request()` 走完整 HTTP 管线，伴侣端到端测试起真实服务；每个迁移的工具 / 路由有一条和 Python 对照的契约用例（`test/fixtures/` 由 Python 生成）。
+- 后端：`backend-ts/test/` 用 `createApp(deps).request()` 走完整 HTTP 管线，伴侣端到端测试起真实服务；每个工具 / 路由有一条契约用例（`test/fixtures/` 的期望最初由 Python 版生成）。
 - 页面内后端：`frontend/src/lib/local/backend.test.ts` 在 jsdom 里跑同一个 app。
 - 前端：vitest；改界面时用 Playwright 在干净数据目录下把主线点一遍并截图。
 - 不写只为提高覆盖率的单元测试，不写防御性分支。命令见 [DEVELOPMENT](./DEVELOPMENT.md)。

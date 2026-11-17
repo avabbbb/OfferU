@@ -3,6 +3,8 @@ name: statemachine-agent-ask
 description: 改 Agent 向用户提问（input request、回答、消费、过期，lib/agentAsk.ts）前读。状态机、CAS 守卫、已知问题、怎么验证。
 ---
 
+> 注意（2026-11-18）：Python 后端已删除。下文的 `backend/…`、`*.py:行号` 指 tag `python-backend-final` 上的旧实现，只作行为参考；现行代码在 `packages/core/src/`（规则、Agent 循环）和 `backend-ts/src/routes/`（HTTP）。改行为前先在 TS 里找对应实现。
+
 # Agent Ask
 
 agent_input_requests：status pending -> answered，再写一次 consumed_at（consumed）；pending -> expired（也是 status 值）。定义 backend/app/services/agent_run_state.py:726-847,884-1025；视图 _input_request_view:624。

@@ -30,7 +30,6 @@ jobs:
     outputs:
       ts_backend: ${{ steps.filter.outputs.ts_backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      agent_runtime: ${{ steps.filter.outputs.agent_runtime }}
       extension: ${{ steps.filter.outputs.extension }}
       tauri: ${{ steps.filter.outputs.tauri }}
       ci: ${{ steps.filter.outputs.ci }}
@@ -57,7 +56,6 @@ jobs:
           {
             echo "ts_backend=$(flag '^(backend-ts/|packages/core/)')"
             echo "frontend=$(flag '^(frontend/|packages/core/)')"
-            echo "agent_runtime=$(flag '^agent-runtime/')"
             echo "extension=$(flag '^extension/')"
             echo "tauri=$(flag '^frontend/src-tauri/')"
             echo "ci=$(flag '^(\.github/workflows/|AGENTS\.md$|scripts/)')"
@@ -135,11 +133,15 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend-ts/package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+      # The web build and the typecheck compile backend-ts/src (in-page backend), so both need their dependencies.
+      - name: Install frontend and TS backend dependencies
+        run: |
+          npm --prefix backend-ts ci
+          npm --prefix frontend ci
 
       - name: Typecheck
         working-directory: frontend
@@ -166,31 +168,6 @@ jobs:
       - name: Audit production dependencies
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         working-directory: frontend
-        run: npm audit --omit=dev --audit-level=high
-
-  agent-runtime-quality:
-    name: Agent runtime install and audit
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.agent_runtime == 'true' || needs.changes.outputs.ci == 'true' }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: agent-runtime/package-lock.json
-
-      - name: Install agent runtime dependencies
-        working-directory: agent-runtime
-        run: npm ci
-
-      - name: Audit agent runtime production dependencies
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
-        working-directory: agent-runtime
         run: npm audit --omit=dev --audit-level=high
 
   rust-security-audit:

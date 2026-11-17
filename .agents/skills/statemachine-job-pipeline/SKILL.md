@@ -3,6 +3,8 @@ name: statemachine-job-pipeline
 description: 改 job.status、mail.apply、applied_at、投递阶段或 draft_email 收尾前读。core 岗位状态机：状态、事件、守卫、不变式、已知问题、怎么验证。
 ---
 
+> 注意（2026-11-18）：Python 后端已删除。下文的 `backend/…`、`*.py:行号` 指 tag `python-backend-final` 上的旧实现，只作行为参考；现行代码在 `packages/core/src/`（规则、Agent 循环）和 `backend-ts/src/routes/`（HTTP）。改行为前先在 TS 里找对应实现。
+
 # job.status
 
 状态：saved 想投 / applied 已投递 / test 笔试测评 / interview 面试中 / offer / rejected 未通过 / closed 不投了。定义 backend/app/core/tools.py:22 JOB_STATUS；前端镜像 frontend/src/lib/core.ts:12-14，改一边要改另一边。

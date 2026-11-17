@@ -1,10 +1,9 @@
 // Data backup / restore: export_data / import_data and the backup routes, against Python's store
 // (fixtures/data/gen_data_roundtrip.py: a store Python wrote, its rows and its own tool views).
 
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { exportData, importData, parseSnapshot } from "@offeru/core";
@@ -116,22 +115,6 @@ describe("data routes", () => {
     expect((await web.request("/api/data/import", { method: "POST", body: JSON.stringify(python.snapshot) })).status).toBe(200);
     expect((await (await web.request("/api/data/export")).json() as any).counts).toEqual(python.snapshot.counts);
     expect((await web.request("/api/agent/data/backups")).status).toBe(501);
-  });
-
-  const pythonReady = (() => { try { execFileSync("python3", ["-c", "import pydantic"], { stdio: "ignore" }); return true; } catch { return false; } })();
-  it.skipIf(!pythonReady)("Python reads a store TS restored (same schema)", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "offeru-py-"));
-    const store = open(join(dir, "offeru.db"));
-    await importData(store, python.snapshot, USER);
-    store.close();
-    stores = [];
-    const out = execFileSync("python3", ["-c", [
-      "import json, sys",
-      `sys.path.insert(0, ${JSON.stringify(resolve(here, "../../backend"))})`,
-      "from app.core import tools",
-      "print(json.dumps({t: tools.call('list', {'type': t, 'full': True}, actor='你') for t in ['profile','memory','job','event','doc']}, ensure_ascii=False))",
-    ].join("\n")], { env: { ...process.env, OFFERU_DATA_DIR: dir }, encoding: "utf8" });
-    expect(JSON.parse(out)).toEqual(python.views.list);
   });
 
   it("legacy /api/agent/data/export answers the settings page and stays importable", async () => {

@@ -54,7 +54,7 @@ describe("正文标记", () => {
   });
 });
 
-// 和 backend/tests/test_rich_markup_cases.py 跑同一份用例。
+// 用例在 richMarkup.cases.json（原先 Python 后端也跑同一份）。
 describe("前后端共用用例", () => {
   it.each(cases.inline)("行内 %#", (c) => expect(inlineHtml(c.in)).toBe(c.html));
   it.each(cases.lines)("拆行 %#", (c) => expect(parseLine(c.raw)).toEqual(c.line));

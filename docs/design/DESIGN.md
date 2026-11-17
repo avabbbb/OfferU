@@ -37,7 +37,7 @@
 
 不变：墨黑主按钮（一屏一个）、橙 = 紧急 / 委托、紫 = Agent、九色状态胶囊、字号阶梯、间距、动效 Token、HIG 无障碍要求。
 
-**怎么看**：`frontend/` 里 `npm run build`，再在 `backend/` 里 `OFFERU_RUNTIME_MODE=lite uvicorn app.main:app --port 8766`，打开 `http://127.0.0.1:8766/#/`（今天）、`#/jobs`、`#/resume`；或 `npm run dev` 看 `http://127.0.0.1:7410`。PR：#196（Token + 外壳）、#197（简历编辑器文档化）。
+**怎么看**：`frontend/` 里 `npm run build`，再 `cd backend-ts && npm run cli -- start --no-browser`（托管 `frontend/dist` + API，8766），打开 `http://127.0.0.1:8766/#/`（今天）、`#/jobs`、`#/resume`；或 `npm run dev` 看 `http://127.0.0.1:7410`。PR：#196（Token + 外壳）、#197（简历编辑器文档化）。
 
 ## v3.1 新增 · 怎么看（2026-11-13，PR #198 / #199 / #200）
 

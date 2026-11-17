@@ -3,6 +3,8 @@ name: statemachine-actiongate
 description: 改外部 Agent（bridge、CLI）的写入确认、拒绝、撤销（services/action_gate.py、agent_actions 表）前读。状态机、已知竞态、怎么验证。
 ---
 
+> 注意（2026-11-18）：Python 后端已删除。下文的 `backend/…`、`*.py:行号` 指 tag `python-backend-final` 上的旧实现，只作行为参考；现行代码在 `packages/core/src/`（规则、Agent 循环）和 `backend-ts/src/routes/`（HTTP）。改行为前先在 TS 里找对应实现。
+
 # agent_actions.status（旧 ops 路径）
 
 状态：pending / done / failed / rejected / undone，另有 delivered 标志（backend/app/models/models.py:1068-1086，状态说明在 1071）。只包 backend/app/ops.py:1898 的 OPERATIONS，给外部 Agent（bridge / CLI）用；撤销走 change_capture.restore（action_gate.py:25,186-194）。

@@ -309,8 +309,9 @@ flowchart LR
   version (data in IndexedDB), as the **Node desktop companion** (SQLite, local files, PDF, BOSS login),
   and its **Cloudflare Worker** entry serves the static site and relays model calls. The Worker stores
   nothing: no D1, KV, Durable Objects or R2.
-- **`backend/`** — the previous Python (FastAPI) backend, kept as a rollback path and for the domains not
-  migrated yet (mail sync, interviews).
+- The previous Python (FastAPI) backend has been removed; its last version is tagged
+  [`python-backend-final`](https://github.com/avabbbb/OfferU/tree/python-backend-final). Where each of its routes went:
+  [docs/route-coverage.md](./docs/route-coverage.md).
 
 Capabilities per runtime, where code lives and how to add a tool: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 Data model and tool semantics: [docs/DESIGN.md](./docs/DESIGN.md).
@@ -326,7 +327,6 @@ IndexedDB            → web version data (in the user's browser)
 SQLite (node:sqlite) → desktop companion data
 Cloudflare Workers   → static hosting + stateless model relay (free plan)
 Tauri / Rust         → desktop shell
-Python / FastAPI     → legacy backend, rollback path
 ```
 
 OfferU intentionally does not duplicate business logic across UI, CLI, plugins and agent integrations.
@@ -344,7 +344,7 @@ OfferU intentionally does not duplicate business logic across UI, CLI, plugins a
 - Your data stays with you: in your browser (web version) or on your machine (desktop). The Cloudflare
   Worker only serves static files and relays model calls; it keeps no user data and no logs of them.
 - In the web version API keys are encrypted with a non-extractable per-browser key before they are
-  stored in IndexedDB. The legacy Python backend keeps them in the OS keyring.
+  stored in IndexedDB. The desktop companion keeps them in its local data directory (file mode 0600).
 - Credentials should stay out of model context, logs and version control.
 
 See [SECURITY.md](./SECURITY.md) for the current security status.
@@ -373,7 +373,7 @@ Open the site, add your model API key under Settings → Model, and start. See
 
 ## Release status
 
-- Migration from the Python backend: [docs/backend-ts-migration.md](./docs/backend-ts-migration.md)
+- Python → TypeScript route coverage: [docs/route-coverage.md](./docs/route-coverage.md)
 - Known gaps: [docs/KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
 
 ```bash

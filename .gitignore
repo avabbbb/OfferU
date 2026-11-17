@@ -25,17 +25,13 @@ extension/offscreen/
 extension/background.js
 extension/manifest.json
 extension/popup.html
-backend/*.db
 *.db
-backend/data/
 offeru-data/
 
 # ---- 环境配置 ----
 .env
 .env.local
 .env.*.local
-backend/.env
-backend/config.json
 
 # ---- IDE / 编辑器 ----
 .vscode/
@@ -49,27 +45,15 @@ backend/config.json
 Thumbs.db
 desktop.ini
 
-# ---- 上传目录中的用户文件 ----
-backend/uploads/photos/*
-!backend/uploads/photos/.gitkeep
-
 # ---- 日志 ----
 *.log
 npm-debug.log*
 # 诊断/健康检查输出与本地服务日志（含环境细节，绝不能入库）
-backend/doctor_*.txt
-backend/doctor_out*.txt
-backend/codex-*.log
-backend/preview-*.log
-backend/server-*.log
-backend/uvicorn-*.log
 
 # ---- 测试/临时 ----
 coverage/
-.pytest_cache/
 .playwright-mcp/
 *playwright-cli/
-backend/.playwright-cli/
 .temp/
 # 文档默认保持本地；只版本化下面白名单里的现行文档和归档。
 docs/*
@@ -78,7 +62,7 @@ internal/
 !docs/README.md
 !docs/PRD.md
 !docs/DESIGN.md
-!docs/backend-ts-migration.md
+!docs/route-coverage.md
 !docs/sync.md
 !docs/DOGFOOD.md
 !docs/RESEARCH_FORMAT.md
@@ -145,9 +129,6 @@ boss-*.json
 # ---- 本地参考仓库（不入库） ----
 references/
 reference/
-# The default interview scoring rubric is versioned product input, not a local reference repo.
-!backend/app/agents/skills/interview-scoring/references/
-!backend/app/agents/skills/interview-scoring/references/default-rubric.json
 /Niuke/
 
 # ---- Launcher 打包产物 ----
@@ -165,9 +146,6 @@ launcher/__pycache__/
 dist-lite/
 
 # Agent iteration log is tracked
-
-# ---- Agent 看板运行时状态 ----
-backend/agent_board.json
 
 # Local outputs (not part of the repo)
 deliverables/

@@ -4,11 +4,11 @@ OfferU 的主线后端。一个运行时无关的 Hono 应用（`src/app.ts` 的
 
 | 入口 | 文件 | 存储 | 用途 |
 | --- | --- | --- | --- |
-| Node 伴侣 | `src/server.ts`（127.0.0.1:8767，`OFFERU_TS_PORT`） | SQLite（与 Python 同表结构） | 桌面版 / 本机开发，带本机能力 |
+| Node 伴侣 | `src/server.ts`（127.0.0.1:8767，`OFFERU_TS_PORT`） | SQLite（`records / changes`，沿用 Python 版表结构） | 桌面版 / 本机开发，带本机能力 |
 | 浏览器页面内 | `frontend/src/lib/local/backend.ts` 导入本目录源码 | IndexedDB | 网页版（`VITE_OFFERU_MODE=local-web`） |
 | Cloudflare Worker | `src/worker.ts` + `wrangler.toml` | 无 | 发静态前端 + 无状态模型转发 `/llm-proxy`，其余 `/api/*` 回 501 |
 
-架构和能力矩阵见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，部署见 [docs/DEPLOY-CLOUDFLARE.md](../docs/DEPLOY-CLOUDFLARE.md)，迁移进度见 [docs/backend-ts-migration.md](../docs/backend-ts-migration.md)。
+架构和能力矩阵见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，部署见 [docs/DEPLOY-CLOUDFLARE.md](../docs/DEPLOY-CLOUDFLARE.md)，旧 Python 路由的去向见 [docs/route-coverage.md](../docs/route-coverage.md)。
 
 ## 目录
 
@@ -20,7 +20,7 @@ src/server.ts         Node 伴侣组装（SQLite + companion 适配器）
 src/worker.ts         Cloudflare Worker
 src/cli.ts, mcp.ts    offeru-ts CLI 和 stdio MCP
 src/store.ts          SQLite CoreStore（node:sqlite）
-test/                 vitest；fixtures/ 里是 Python 生成的契约期望
+test/                 vitest；fixtures/ 里是契约期望（最初由 Python 版生成）
 src/sync.ts           伴侣端 S3/R2 端到端加密同步（引擎在 packages/sync，见 docs/sync.md）
 ```
 
@@ -47,8 +47,8 @@ npm run deploy                    # build:web + wrangler deploy
 2. 路由在 `src/routes/<领域>.ts` 导出 `registerX(app)`，`routes/index.ts` 加一行；依赖从 `c.get("deps")` 取，没有就抛 `CoreError(..., "unsupported")`（501）。
 3. 只有本机能做的放 `src/routes/companion/`，在 `server.ts` 注入。
 4. 新依赖加到 `AppDeps`（可选字段），并在 `server.ts` 和 `frontend/src/lib/local/backend.ts` 各自接上或明确不接。
-5. 每个迁移的工具 / 路由：一条和 Python 对照的契约用例 + 一条走 HTTP 的测试。
+5. 每个工具 / 路由：一条契约用例 + 一条走 HTTP 的测试。
 
 ## 还没迁的
 
-邮箱同步（IMAP）、HTTP `/mcp`、面试 / 连接 / consent 路由、模型设置的系统钥匙串与一键导入、TS 伴侣的生产打包。这些仍由 Python 后端（`backend/`）提供；Python 保留为回滚路径，在 TS 版有同样的数据、错误、恢复行为并通过备份往返之前不删。
+Python 后端已删除（tag `python-backend-final`）。没迁的：邮箱同步（IMAP）、HTTP `/mcp`（只有 stdio）、模型设置的系统钥匙串与一键导入。按决定不迁的路由见 [docs/route-coverage.md](../docs/route-coverage.md)。

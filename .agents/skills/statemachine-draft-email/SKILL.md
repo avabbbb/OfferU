@@ -3,6 +3,8 @@ name: statemachine-draft-email
 description: 改投递邮件草稿（draft_email、kind=email 文档、发送后岗位状态）前读。缺失的状态和已知问题。
 ---
 
+> 注意（2026-11-18）：Python 后端已删除。下文的 `backend/…`、`*.py:行号` 指 tag `python-backend-final` 上的旧实现，只作行为参考；现行代码在 `packages/core/src/`（规则、Agent 循环）和 `backend-ts/src/routes/`（HTTP）。改行为前先在 TS 里找对应实现。
+
 # 投递邮件草稿
 
 draft_email（backend/app/core/tools.py:1201-1241）按岗位 upsert 一份 kind=email 的 doc：to、subject、body、attachment（起草时导出简历 PDF，tools.py:1223-1230）、rules（JD 里的邮件要求）。不发送，用户自己发。DOC_KIND 在 tools.py:32。

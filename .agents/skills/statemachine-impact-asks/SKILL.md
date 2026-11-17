@@ -3,6 +3,8 @@ name: statemachine-impact-asks
 description: 改改写后的追问成果流程（回答 -> 整理成记忆草稿 -> 存进档案 -> 用新成果再改）前读。前端隐式状态机、已知问题、怎么验证。
 ---
 
+> 注意（2026-11-18）：Python 后端已删除。下文的 `backend/…`、`*.py:行号` 指 tag `python-backend-final` 上的旧实现，只作行为参考；现行代码在 `packages/core/src/`（规则、Agent 循环）和 `backend-ts/src/routes/`（HTTP）。改行为前先在 TS 里找对应实现。
+
 # 追问成果（前端拥有）
 
 状态藏在 TailorBar 的 useState 里：asks、answers、drafts、dropped、busy、stored（frontend/src/components/resume/TailorBar.tsx:39-44）。只有用户触发。
