@@ -9,7 +9,7 @@ import type { CoreStore, StoredRecord } from "../types";
 import { CoreError } from "../types";
 import { extractJson, requireLlm, type LlmClient } from "../llm";
 import { NO_MODEL_HINT } from "../llm-endpoint";
-import { desensitize, restore } from "./desensitize";
+import { desensitize, restore } from "../desensitize";
 import { isObject, optionalPositiveInt, stringField, topicDocs, userContext, type Args } from "./common";
 
 export const EXPERIENCE_TOPIC = "interview_experience";
@@ -166,7 +166,7 @@ export async function extractExperienceQuestions(store: CoreStore, args: Args, l
   const client = requireLlm(llm, NO_MODEL_HINT);
   let rawText = [...String(doc.body ?? "")].slice(0, 6000).join("");
   let mapping: Record<string, string> = {};
-  if (!client.local) [rawText, mapping] = desensitize(rawText);
+  if (!client.local) ({ text: rawText, mapping } = desensitize(rawText));
   const raw = await client.chat([{ role: "user", content: EXTRACT_PROMPT(String(doc.company ?? ""), String(doc.role ?? ""), rawText) }], {
     json: true, tier: "standard", temperature: 0.2,
   });

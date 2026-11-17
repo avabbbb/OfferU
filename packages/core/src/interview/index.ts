@@ -15,4 +15,3 @@ export {
   validateBehaviorEvents, validateContentEvaluation,
 } from "./scoring";
 export type { BehaviorEvent, ContentEvaluation, ScoringSkillDefinition } from "./scoring";
-export { desensitize, restore as restoreDesensitized } from "./desensitize";
