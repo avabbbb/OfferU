@@ -21,3 +21,5 @@ export * from "./llm-runtime";
 export * from "./consent";
 export * from "./interview";
 export * from "./interview-api";
+export * from "./data-safety";
+export * from "./agent-runtime-compat";

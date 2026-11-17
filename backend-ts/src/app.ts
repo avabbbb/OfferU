@@ -6,6 +6,7 @@ import type { AgentBoardService } from "./routes/agent-board";
 import type { SyncController } from "./routes/sync";
 import type { BossLoginService } from "./routes/companion/boss-login";
 import type { ConfigRuntime } from "./routes/config";
+import type { RuntimeInfo } from "./routes/agent-extras";
 import { TOOL_NAMES, type ToolRuntime } from "./tools";
 
 /**
@@ -53,6 +54,10 @@ export interface AppDeps {
   agentRuns?: AgentRunStore;
   /** Logged-in platform collection consent (/api/consent; companion: <data>/platform-consent.json, web: IndexedDB). Absent = 501. */
   consent?: ConsentStore | null;
+  /** Build / instance identity and lite pairing (companion). Absent = web identity, /api/ui/pair 403. */
+  runtimeInfo?: RuntimeInfo | null;
+  /** Desktop shell's UI approval token (OFFERU_APPROVAL_TOKEN): accepted like the pairing token for Agent-board launch. */
+  approvalToken?: (() => string) | null;
   /** S3/R2 sync (companion: config + state next to the SQLite file). Absent = /api/sync answers 501. */
   sync?: SyncController;
 }
@@ -163,14 +168,28 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     });
   });
 
-  app.get("/api/health", (c) => c.json({
-    status: "ok",
-    service: "OfferU",
-    runtime: deps.runtime,
-    version: "0.1.0",
-    storage: deps.storage,
-    tools: TOOL_NAMES,
-  }));
+  app.get("/api/health", (c) => {
+    const info = deps.runtimeInfo;
+    const body: Record<string, unknown> = {
+      status: "ok",
+      service: "OfferU",
+      runtime: deps.runtime,
+      version: info?.appVersion ?? "0.1.0",
+      storage: deps.storage,
+      tools: TOOL_NAMES,
+    };
+    if (info) {
+      // The desktop shell matches these against what it launched (runtimeIdentityApi.matchesDesktopRuntimeIdentity).
+      const identity = info.identity();
+      Object.assign(body, {
+        build_mode: info.buildMode,
+        runtime_mode: info.runtimeMode,
+        runtime_instance_id: identity.runtime_instance_id,
+        build_identity: identity,
+      });
+    }
+    return c.json(body);
+  });
 
   registerRoutes(app);
 

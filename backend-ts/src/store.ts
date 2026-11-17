@@ -231,6 +231,14 @@ export class SqliteCoreStore implements CoreStore {
     }
   }
 
+  /** /api/agent/data/safety/integrity: SQLite's own checks (Python check_database_integrity). */
+  async checkIntegrity(): Promise<{ integrity_check: string[]; foreign_key_violations: unknown[][]; user_version: number }> {
+    const integrity = (this.db.prepare("PRAGMA integrity_check").all() as Array<Record<string, unknown>>).map((row) => String(Object.values(row)[0]));
+    const foreign = (this.db.prepare("PRAGMA foreign_key_check").all() as Array<Record<string, unknown>>).map((row) => Object.values(row));
+    const version = this.db.prepare("PRAGMA user_version").get() as Record<string, unknown> | undefined;
+    return { integrity_check: integrity, foreign_key_violations: foreign, user_version: Number(version ? Object.values(version)[0] : 0) || 0 };
+  }
+
   close(): void {
     this.db.close();
   }

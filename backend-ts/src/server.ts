@@ -21,6 +21,7 @@ import { nodeConfigFile } from "./routes/companion/config-file";
 import { nodeConsentFile } from "./routes/companion/consent-file";
 import { llmFromEnv } from "./llm-env";
 import { openStore } from "./store";
+import { nodeRuntimeInfo } from "./runtime-identity";
 import { CompanionSync } from "./sync";
 import type { SqliteCoreStore } from "./store";
 
@@ -50,6 +51,8 @@ export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDe
     agentRuns: new SqliteAgentRunStore(store),
     sync: new CompanionSync(store, dirname(dbPath())),
     consent: nodeConsentFile(join(dirname(dbPath()), "platform-consent.json")),
+    runtimeInfo: nodeRuntimeInfo(process.env, () => process.env.OFFERU_APPROVAL_TOKEN || pairingToken()),
+    approvalToken: process.env.OFFERU_APPROVAL_TOKEN ? () => process.env.OFFERU_APPROVAL_TOKEN! : null,
     ...overrides,
   };
   const app = createApp(deps);
