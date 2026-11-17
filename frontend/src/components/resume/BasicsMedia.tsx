@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { apiUrl, upload, write } from "@/lib/core";
 import type { ResumeStyle } from "@/lib/resumeStyle";
+import { ApiImg } from "@/lib/apiAsset";
 
 type Hit = { school_name: string; file: string; url: string };
 type Props = { style: ResumeStyle; onStyle: (next: ResumeStyle) => void; photo?: string; school: string; onPhoto: () => void };
@@ -111,7 +112,7 @@ export function BasicsMedia({ style, onStyle, photo, school, onPhoto }: Props) {
         <span className="rf-label">证件照</span>
         <button type="button" className="rf-thumb rf-thumb-photo" onClick={() => photoInput.current?.click()}
           aria-label={photo ? "更换证件照" : "上传证件照"} title={photo ? "点击更换" : "点击上传"}>
-          {photo ? <img src={apiUrl("/api/files/" + photo)} alt="证件照" /> : <span>上传</span>}
+          {photo ? <ApiImg src={apiUrl("/api/files/" + photo)} alt="证件照" /> : <span>上传</span>}
         </button>
         <label className="rf-check">
           <input type="checkbox" checked={style.photo} disabled={!photo} onChange={(e) => set({ photo: e.target.checked })} />
@@ -123,7 +124,7 @@ export function BasicsMedia({ style, onStyle, photo, school, onPhoto }: Props) {
       <div className="rf-media-box min-w-0 flex-1">
         <span className="rf-label">校徽</span>
         <div className="flex items-start gap-2">
-          <span className="rf-thumb rf-thumb-logo">{style.logo ? <img src={apiUrl("/api/files/" + style.logo)} alt="校徽" /> : <span>无</span>}</span>
+          <span className="rf-thumb rf-thumb-logo">{style.logo ? <ApiImg src={apiUrl("/api/files/" + style.logo)} alt="校徽" /> : <span>无</span>}</span>
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <div className="rf-combo-box">
               <input value={query} placeholder="输入学校名，如 华南、师范、浙大" aria-label="搜索校徽"
@@ -137,7 +138,7 @@ export function BasicsMedia({ style, onStyle, photo, school, onPhoto }: Props) {
                   {hits.length ? hits.map((hit, i) => (
                     <li key={hit.file} id={"rf-logo-" + i} role="option" aria-selected={i === active} data-active={i === active || undefined}
                       onMouseDown={(e) => { e.preventDefault(); pick(hit); }} onMouseEnter={() => setActive(i)}>
-                      <img src={apiUrl(hit.url)} alt="" />
+                      <ApiImg src={apiUrl(hit.url)} alt="" />
                       <span>{marked(hit.school_name, q)}</span>
                     </li>
                   )) : <li className="rf-suggest-empty" aria-disabled="true">校徽库里没找到，可以自己上传一张</li>}

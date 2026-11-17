@@ -13,7 +13,9 @@
 //      logged or stored; the target host must be a known provider endpoint so
 //      this is not an open proxy;
 //   3. answers /api/health, and 501 for any other /api/* (data APIs run in the
-//      page, never here).
+//      page, never here). wrangler.toml runs this script first only for /llm-proxy,
+//      so /api/* reaches it only as a fallback (a non-navigation request matching no
+//      static file); the web page itself never calls /api/* over the network.
 //
 // No node:* imports: this bundles for workerd without nodejs_compat.
 

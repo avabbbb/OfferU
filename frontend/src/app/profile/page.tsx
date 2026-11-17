@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Select } from "@/components/ui";
 import { apiUrl, MEMORY_KIND, MEMORY_MODE, type Memory, type MemoryKind, type Profile, tool, upload, useTool, write } from "@/lib/core";
+import { ApiImg } from "@/lib/apiAsset";
 
 const FIELDS: Array<[Exclude<keyof Profile, "id">, string, string]> = [
   ["name", "姓名", "张三"], ["phone", "电话", "138 0000 0000"], ["email", "邮箱", "you@example.com"], ["city", "城市", "上海"],
@@ -167,7 +168,7 @@ export default function ProfilePage() {
         </dl>
         <button type="button" onClick={() => photoRef.current?.click()} aria-label="证件照"
           className={`flex h-[112px] w-[84px] shrink-0 items-center justify-center overflow-hidden rounded-md ${profile.photo ? "" : "border border-dashed border-[var(--ou-line-separator)]"} text-[length:var(--ou-type-xs)] text-[var(--ou-text-secondary)] hover:border-[var(--foreground-muted)]`}>
-          {profile.photo ? <img src={apiUrl(`/api/files/${profile.photo}`)} alt="证件照" className="h-full w-full object-cover" /> : "证件照"}
+          {profile.photo ? <ApiImg src={apiUrl(`/api/files/${profile.photo}`)} alt="证件照" className="h-full w-full object-cover" /> : "证件照"}
         </button>
         <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" hidden
           onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) saveProfile({ photo: (await upload(f)).name }); }} />
