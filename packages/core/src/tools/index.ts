@@ -59,6 +59,7 @@ export const AGENT_TOOL_SPECS: ToolSpec[] = [...TOOL_SPECS, ...TS_TOOL_SPECS.fil
 export type { ToolDeps } from "./deps";
 export type { JsonSchema, ToolSpec } from "./schema";
 export { validateArgs } from "./schema";
+export * from "./catalog";
 export { MCP_INSTRUCTIONS, TOOL_SPECS } from "./specs";
 export { cleanHtml, cleanText, guard as guardPosting, guardCounts, guardWarning, unescapeHtml } from "./posting-guard";
 export type { GuardCounts, GuardFindings } from "./posting-guard";

@@ -139,6 +139,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 循环、流式和 provider 复用现有的 `app/agent/`（`run_agent_loop`），`app/core/agent.py` 把全部 core TOOLS 包成 `LoopTool`（`loop_tools()`），每次经 `asyncio.to_thread(tools.call, ...)` 执行，actor=助手，最多 6 步，工具报错作为文本回给模型。宿主里的 skill router 和 guardian 暂时仍走旧 OPERATIONS，PR5 删除。
 - 改写简历：网页仍走 SSE；工具 tailor_resume 同步返回，内部用 `_await` 把协程交给主事件循环（`run_coroutine_threadsafe`，lifespan 里设 `MAIN_LOOP`）。在事件循环线程里同步调用会直接报错，要用 `asyncio.to_thread`。HTTP 的 `POST /api/tools/{name}` 在线程池里跑、MCP 经 `anyio.to_thread`，都不会死锁。
 - 系统提示词只有三件事：今天日期和 overview 摘要、工具说明、规则（不编造经历；对外的事只写草稿；长任务调用 handoff）。
+- 工具说明渐进披露（`packages/core/src/tools/catalog.ts`，借 Flovart `workflow.node.tool.list`）：每轮只给模型一行简述（`TOOL_BRIEFS`）+ 去掉 title / 长描述的精简 schema（校验仍用工具表原 schema），系统提示里放分组工具索引；要完整字段和规则时模型调只读的 `tool_manual(names=[…])`，常用流程（`role.research` / `evidence.map` / `resume.tailor` / `interview.prepare`）用 `tool_manual(capability=…)` 取步骤，流程只是现有工具的调用顺序，不新增业务逻辑。HTTP / MCP / CLI 仍列完整说明。
 - 没配模型时，Ctrl+K 只做本地解析不了的提示：「先在设置里填模型，或者在 Codex 里说这句话」。
 
 ## 9. 后台 Codex 交接（PR5）

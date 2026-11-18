@@ -27,7 +27,9 @@ import { AgentHost, type PreparedAttachments, type ResolvedLlm, type RunOptions 
 import type { AgentTool } from "./loop";
 import { AGENT_ACTOR, agentSystemPrompt, type MemoryArm } from "./prompt";
 import { AgentConversations, AgentRunState, type AgentRunStore } from "./run-state";
-import { CORE_TOOL_SPECS, coreToolSpecs } from "./tool-specs";
+import { CORE_TOOL_SPECS, coreToolSpecs, registrySpecs } from "./tool-specs";
+import { toolManualTool } from "./discovery";
+import { TOOL_MANUAL_NAME, type ToolSpec } from "../tools";
 import { bindAgentTools } from "./tools";
 
 /** Record tools every runtime has (core/tools.py TOOLS that need no network / files / model). */
@@ -79,7 +81,10 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
   const names = deps.toolDeps
     ? CORE_TOOL_SPECS.map((spec) => spec.name).filter((name) => name in CORE_HANDLERS || name in handlers)
     : [...AGENT_RECORD_TOOLS];
-  const registrySpecs = coreToolSpecs(names);
+  const agentSpecs = coreToolSpecs(names);
+  const manualSpecs = registrySpecs(names);
+  const extraSpecs = (): ToolSpec[] => (deps.extraTools?.() ?? []).map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.parameters as ToolSpec["inputSchema"] }));
+  const toolNames = () => [...names, ...extraSpecs().map((spec) => spec.name).filter((name) => !names.includes(name))];
   return new AgentHost({
     state,
     conversations,
@@ -90,16 +95,17 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
       return { client: picked, metadata: { provider: picked.provider || "custom", model: picked.model || "", source: "active_config" } };
     },
     tools() {
-      const record = bindAgentTools(registrySpecs, (name, args) => {
+      const record = bindAgentTools(agentSpecs, (name, args) => {
         const ctx = agentContext();
         const runtime = deps.toolDeps?.(ctx) ?? { store: deps.store };
         return callCoreTool(name, args, { ...runtime, ctx }, handlers);
       });
       const extra = deps.extraTools?.() ?? [];
       const names = new Set(record.map((tool) => tool.name));
-      return [...record, ...extra.filter((tool) => !names.has(tool.name))];
+      const manual = toolManualTool(() => [...manualSpecs, ...extraSpecs().filter((spec) => !names.has(spec.name))]);
+      return [...record, ...extra.filter((tool) => !names.has(tool.name) && tool.name !== TOOL_MANUAL_NAME), manual];
     },
-    systemPrompt: ({ maxSteps }) => agentSystemPrompt(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm }),
+    systemPrompt: ({ maxSteps }) => agentSystemPrompt(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm, tools: toolNames() }),
     prepareAttachments: deps.prepareAttachments,
     maxConcurrentRuns: deps.maxConcurrentRuns,
   });
