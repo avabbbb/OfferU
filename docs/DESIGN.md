@@ -116,7 +116,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | 入口 | 地址 | 说明 |
 | --- | --- | --- |
 | HTTP | `GET /api/tools`、`POST /api/tools/{name}` | 网页、插件、小球都用这个。请求头 `x-offeru-actor` 指定 actor。 |
-| MCP | `/mcp`（Streamable HTTP）和 `offeru mcp`（stdio） | `offeru connect` 自动执行 `codex mcp add` / `claude mcp add`。 |
+| MCP | `/mcp`（Streamable HTTP）和 `offeru mcp`（stdio） | `claude mcp add offeru -- offeru mcp` / `codex mcp add offeru -- offeru mcp` 注册；Skill 由 Agent 看板「连接」装进 Agent 的 Skill 目录（见 7.1）。 |
 | 命令行 | `offeru tool <name> '<json>'` | MCP 连不上时的备用，也方便脚本和测试。参数也可以写 @文件路径（UTF-8 JSON）或 -（标准输入），避开 PowerShell 吞引号。 |
 
 三个入口最后都调用 `tools.call(name, args, actor=)`，没有各自的业务逻辑。
@@ -128,7 +128,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
   - 正在运行：每次列看板扫一次进程表（Windows 用 Get-CimInstance Win32_Process，其他系统用 ps），缓存 5 秒；命令行按空白、斜杠、引号切成词，匹配内置表里的名字（如 gemini-cli、oh-my-pi），自定义 Agent 匹配 id 和启动命令名。
   - 调用过：MCP 取客户端名（无状态 HTTP 取 User-Agent），命令行取 OFFERU_ACTOR，映射到看板上的 Agent 后记一条 calls（时间、客户端、对话提示、thread）。没有对话提示的普通调用同一个 Agent 30 秒最多写一次；记账失败不影响工具调用。
 - 摘要行（在线 · 运行中 · Skill 已安装 · 需处理）由前端按当前显示的行计算，所以和看到的行永远一致；后端不返回汇总。
-- 打开对话：POST /api/agent-board/{id}/launch，和确认动作一样要工作台的 Authorization，在用户目录下开一个新终端窗口运行 Agent 的交互式 CLI。命令只来自内置表或自定义 Agent 保存的裸命令名，从不来自请求。命令行对应 offeru agent launch <id>。
+- 打开对话：POST /api/agent-board/{id}/launch，和确认动作一样要工作台的 Authorization，在用户目录下开一个新终端窗口运行 Agent 的交互式 CLI。命令只来自内置表或自定义 Agent 保存的裸命令名，从不来自请求。只在工作台里操作，没有对应的命令行。
 - 看板不改 Agent 的设置或记忆文件。
 
 ## 8. 内置 Agent（PR3）

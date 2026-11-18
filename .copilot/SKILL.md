@@ -1,16 +1,18 @@
 ---
 name: offeru
 description: OfferU 本机求职工作台：岗位、简历、档案、日程、网申和邮件草稿都存在用户电脑上。用户谈求职、实习、JD、简历、网申、笔试面试、offer 时用。
-version: 2026-11-06
+version: 2026-11-18
 ---
 
 # OfferU
 
-21 个工具，网页和内置助手用的是同一套。写入直接生效，用户可在「最近改动」撤销，不用先问。对外的事（网申、邮件、联系 HR）只写草稿，用户自己发。
+工作台、内置助手、MCP 和命令行用的是同一张工具表（`<offeru> tool` 列出全部）。写入直接生效，用户可在「最近改动」撤销，不用先问。对外的事（网申、邮件、联系 HR）只写草稿，用户自己发。
 
 ## 调用
 
 优先 MCP。没有就用命令行（输出 JSON）：`<offeru> tool overview`、`<offeru> tool get '{"type":"job","id":3}'`。参数含中文或在 PowerShell 里，先写成 UTF-8 的 JSON 文件，再 `<offeru> tool save @args.json`。报错就按提示改参数；命令不通看文末。
+
+`<offeru>` 是装好的 `offeru` 命令；从源码运行时是 `npm --prefix <仓库>/backend-ts run --silent cli --`。
 
 ## 数据
 
@@ -20,7 +22,7 @@ profile 档案；memory 职业记忆（一条一件事）；job 岗位；event �
 
 1. 开场 overview。查经历和用户说过的话用 search；list 列表，get 看全文；save、delete 写删；改错用 changes + undo；记忆前后对不上用 reconcile_memory（只读，用户在档案页采纳）。
 2. 旧简历：find_files → read_file → split_resume。
-3. 用户贴链接、JD 或「公司 岗位」：add_job。抓不到（要登录、在图片里）就让用户贴正文或用插件存，不存空壳。add_job 和 enrich_jobs 会自动打标签（招聘类型、城市、方向、公司属性），用户要加或去标签就 save 改 tags。
+3. 用户贴链接、JD 或「公司 岗位」：add_job。抓不到（要登录、在图片里）就让用户贴正文或用插件存，不存空壳。add_job 会自动打标签（招聘类型、城市、方向、公司属性），用户要加或去标签就 save 改 tags。
 4. 存完马上 evaluate_jobs：分数、三句理由、打招呼语。打招呼语里每个事实都要在档案里找得到。
 5. 改简历：tailor_resume。asks 逐句问用户；用户确认的回答 save 成 memory（带原话和日期），再 review_only=true 改一次。导出 export_resume_pdf。
 6. 网申 apply_answer；邮件 draft_email；邮箱回执 email_sync。
@@ -40,4 +42,16 @@ profile 档案；memory 职业记忆（一条一件事）；job 岗位；event �
 
 ## 首次使用
 
-先征得用户同意，给用户看命令：装 uv（https://docs.astral.sh/uv/getting-started/installation/）→ `uv tool install https://github.com/avabbbb/OfferU/releases/download/v0.2.0-lite/offeru-0.2.0-py3-none-any.whl` → `offeru connect`（装 Skill、注册 MCP）→ `offeru start`（工作台 http://127.0.0.1:8766，保持运行），然后开新会话。
+先征得用户同意，给用户看命令再执行。OfferU 现在是 TypeScript（Node）运行时，需要 Node 22.19 以上；旧的 Python 安装包已停用，不要再装。
+
+1. 已经装了 OfferU 桌面版或 lite 包（有 `offeru` 命令）：跳到第 3 步。
+2. 从源码装（目前唯一可用的命令行安装方式）：
+   - `git clone https://github.com/avabbbb/OfferU.git`，进入仓库目录；
+   - `npm --prefix backend-ts install` 和 `npm --prefix frontend install`；
+   - `npm --prefix frontend run build`（打包工作台页面）。
+   发布了 `v*-lite` 版本后也可以 `npm install -g <Release 里的 offeru-lite-*.tgz 链接>`，得到 `offeru` 命令。
+3. 启动工作台：`<offeru> start`（http://127.0.0.1:8766，保持运行，首次会打开一个配对链接）。`<offeru> doctor` 检查数据库和工具表。
+4. 接入 Agent：
+   - MCP（stdio）：`claude mcp add offeru -- <offeru> mcp` 或 `codex mcp add offeru -- <offeru> mcp`；
+   - Skill：在工作台「设置 → 我的 Agent」（Agent 看板）点「连接」，会把这份 SKILL.md 装进对应 Agent 的 Skill 目录；也可以手动复制 `backend-ts/skill/SKILL.md`。
+   然后开新会话。

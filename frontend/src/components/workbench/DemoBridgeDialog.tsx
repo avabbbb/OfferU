@@ -123,7 +123,7 @@ export function DemoBridgeDialog({ open, onClose }: { open: boolean; onClose: ()
               <span className="text-[12px] text-[var(--foreground-muted)]">{notice}</span>
             </div>
             <p className="mt-4 border-t border-[var(--border)] pt-3 text-[12px] leading-relaxed text-[var(--foreground-muted)]">
-              外置 Agent：本机运行 <code>offeru connect</code> 注册 Skill / MCP；命令行用 <code>offeru tool overview '{"{}"}'</code>。线上静态页本身不提供 MCP。
+              外置 Agent：在工作台「设置 → 我的 Agent」点「连接」装 Skill，MCP 用 <code>offeru mcp</code> 注册；命令行用 <code>offeru tool overview '{"{}"}'</code>。线上静态页本身不提供 MCP。
             </p>
           </>
         )}

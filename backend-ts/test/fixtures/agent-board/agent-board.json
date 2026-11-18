@@ -235,7 +235,7 @@
   },
   {
    "name": "connect_unknown",
-   "error": "看板里没有这个 Agent：nobody。先运行 offeru agent list 查看"
+   "error": "看板里没有这个 Agent：nobody。先在工作台「设置 → 我的 Agent」里查看"
   },
   {
    "name": "hide_claude",

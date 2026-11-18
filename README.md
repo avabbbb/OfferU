@@ -376,6 +376,18 @@ npx wrangler deploy      # free Cloudflare Workers plan; or `npm run worker:dev`
 Open the site, add your model API key under Settings → Model, and start. See
 [docs/DEPLOY-CLOUDFLARE.md](./docs/DEPLOY-CLOUDFLARE.md).
 
+**Local workbench + external Agent (Node companion, data in SQLite on this machine)**
+
+```bash
+npm --prefix backend-ts install && npm --prefix frontend install
+npm --prefix frontend run build
+npm --prefix backend-ts run cli -- start     # workbench + API on http://127.0.0.1:8766
+claude mcp add offeru -- npm --prefix "$PWD/backend-ts" run --silent cli -- mcp   # or: codex mcp add …
+```
+
+Node 22.19+. The old Python package (`v0.2.0-lite`) is retired. The Agent Skill is
+[`.agents/skills/offeru/SKILL.md`](./.agents/skills/offeru/SKILL.md); Settings → My Agent → Connect installs it.
+
 **Source development** — [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) (npm commands, tests, contract tests).
 
 ---
