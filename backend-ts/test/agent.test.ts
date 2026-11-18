@@ -104,7 +104,8 @@ describe("POST /api/agent/runtime/runs", () => {
 
     // user-only guard: the Agent may not confirm a memory; the error goes back to the model
     const toolReply = seen[1].messages.find((message) => message.role === "tool");
-    expect(String(toolReply?.content)).toMatch(/^ERROR: 只有用户能确认记忆/);
+    expect(JSON.parse(String(toolReply?.content))).toMatchObject({ ok: false, error: { code: "forbidden", retryable: false } });
+    expect(JSON.parse(String(toolReply?.content)).error.message).toMatch(/^只有用户能确认记忆/);
     const [memory] = await store.all("memory");
     expect(memory).toMatchObject({ title: "只投上海", confirmed: false, source: "agent" });
     const [change] = await store.changes(1);

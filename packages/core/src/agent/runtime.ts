@@ -29,7 +29,7 @@ import { AGENT_ACTOR, agentSystemPrompt, type MemoryArm } from "./prompt";
 import { AgentConversations, AgentRunState, type AgentRunStore } from "./run-state";
 import { CORE_TOOL_SPECS, coreToolSpecs, registrySpecs } from "./tool-specs";
 import { toolManualTool } from "./discovery";
-import { TOOL_MANUAL_NAME, type ToolSpec } from "../tools";
+import { TOOL_MANUAL_NAME, preflightTool, toolSpec, type ToolSpec } from "../tools";
 import { bindAgentTools } from "./tools";
 
 /** Record tools every runtime has (core/tools.py TOOLS that need no network / files / model). */
@@ -99,6 +99,9 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
         const ctx = agentContext();
         const runtime = deps.toolDeps?.(ctx) ?? { store: deps.store };
         return callCoreTool(name, args, { ...runtime, ctx }, handlers);
+      }, async (name, args) => {
+        const spec = toolSpec(name);
+        return spec ? preflightTool(spec, args, deps.store) : null;
       });
       const extra = deps.extraTools?.() ?? [];
       const names = new Set(record.map((tool) => tool.name));
