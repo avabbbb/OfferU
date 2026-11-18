@@ -61,6 +61,14 @@
 
 可选 `side`，以及受控的 `open / onOpenChange`：调用方自己决定何时打开。例：简历要点的「⋮⋮」把手——按下后移动是拖动排序，没移动松手才开菜单；触发器的 `onPointerDown` 里 `preventDefault()` 就能跳过 Radix 默认的「按下即开」，键盘 Enter / Space 仍由 Radix 打开。可选 `onCloseAutoFocus`：某一项要把焦点放到别处（如「在下面加一条」后的新块）时在这里 `preventDefault()`，否则关菜单会把焦点还给触发器。
 
+## ListboxPopover（Radix Popover + `lib/useListboxKeyboard`）
+
+「边打字边选」的候选列表（Agent 输入框的 `/` 命令）。和 Menu 同一块玻璃、同一种 40px 胶囊行（`.ou-menu-item`，高亮 = `data-highlighted`），限高滚动（`.ou-listbox`）。**焦点始终留在输入框**：打开 / 关闭不抢焦点（`onOpenAutoFocus` / `onCloseAutoFocus` 都阻止），高亮项用 `aria-activedescendant` 表示；↑/↓ 移动（回绕）、Enter 或 Tab 选中、Esc 关闭，输入法组字期间不接管任何键。贴着 `anchorRef`（`virtualRef`，不改输入框 DOM）；点回带 `data-ou-listbox-anchor` 的元素不算「点外面」。选项可带 `group`（相邻同组只出一次小标题）、`description`、`hint`（行尾小字，如 `/new`）。
+
+`lib/useListboxKeyboard.ts`（移植自 Flovart，MIT）是所有带搜索框的列表浮层的共用键盘规则：打开即聚焦搜索框、可打印字符转给搜索框、Esc 先清空再关闭、悬停同步高亮。Agent 的历史对话浮层（`AgentHistoryList`）也用它，另加 Delete 删除高亮那条。
+
+看：Agent 输入框里打 `/`；Agent 头部标题 ▾ 打开历史对话，直接打字搜索。
+
 ## Popover（Radix Popover）
 
 筛选、排序、字段、行高、上下文用量、日历「新建事项」。和 Menu 同一块浅色玻璃（22px 圆角、白 70% + 40px 模糊、`--ou-elev-menu`），内边距 12px，最小宽 16rem，贴边自动翻转（`collisionPadding` 12）。可选 `side`、`style`、`label`（`aria-label`）。

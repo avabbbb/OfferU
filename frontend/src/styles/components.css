@@ -96,6 +96,10 @@
 .ou-menu-caret { display: inline-flex; flex: none; color: var(--ou-text-primary); opacity: var(--ou-alpha-faint); }
 .ou-menu .ou-menu-subtrigger[data-state="open"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
 .ou-menu .ou-menu-subtrigger[data-state="open"] .ou-menu-text { opacity: 1; }
+/* 候选列表（ListboxPopover）：同一块玻璃，限高滚动；宽度跟输入框走但不超过一屏。 */
+.ou-listbox { width: min(24rem, calc(100vw - 2 * var(--ou-space-4))); max-height: min(22rem, 60vh); overflow-y: auto; }
+.ou-listbox-list { outline: none; }
+.ou-listbox-empty { padding: var(--ou-space-2) var(--ou-space-3); font-size: var(--ou-type-sm); color: var(--ou-text-tertiary); }
 .ou-menu-heading { padding: var(--ou-space-2) var(--ou-space-3) var(--ou-space-1); font-size: var(--ou-type-xs); color: var(--ou-text-primary); opacity: var(--ou-alpha-faint); }
 @keyframes ou-menu-in { from { opacity: 0; transform: scale(0.96) translateY(-4px); } to { opacity: 1; transform: none; } }
 .ou-menu { animation: ou-menu-in var(--ou-motion-slow) var(--ou-ease-spring-soft); }

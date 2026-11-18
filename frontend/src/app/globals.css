@@ -2075,6 +2075,12 @@ body {
 }
 .offeru-agent-panel .agent-history-row { display: flex; align-items: center; gap: var(--ou-space-1); padding: var(--ou-space-2) var(--ou-space-3); border-radius: var(--ou-radius-card); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard); }
 .offeru-agent-panel .agent-history-row:hover, .offeru-agent-panel .agent-history-row[data-current] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+.offeru-agent-panel .agent-history-row { cursor: pointer; }
+.offeru-agent-panel .agent-history-row[data-listbox-active] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow), var(--ou-ring-agent); }
+.offeru-agent-panel .agent-history-search { display: flex; align-items: center; gap: var(--ou-space-2); margin-bottom: var(--ou-space-2); padding: var(--ou-space-1) var(--ou-space-3); border-radius: var(--ou-radius-pill); background: var(--ou-bg-control); color: var(--ou-text-tertiary); }
+.offeru-agent-panel .agent-history-search input { min-width: 0; flex: 1; border: 0; background: transparent; font-size: var(--agent-fs-sm); color: var(--ou-text-primary); outline: none; }
+.offeru-agent-panel .agent-history-delete { flex: none; padding: var(--ou-space-1); border-radius: var(--ou-radius-1); color: var(--ou-text-tertiary); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-history-delete:hover { background: var(--ou-tone-red-bg); color: var(--ou-tone-red-text); }
 
 /* 空状态 */
 .offeru-agent-panel .agent-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--ou-space-2); padding: 18vh var(--ou-space-2) var(--ou-space-4); }
