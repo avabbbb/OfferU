@@ -354,6 +354,18 @@ npx wrangler deploy      # Cloudflare Workers 免费计划；本地预览用 npm
 
 打开网站，在设置 → 模型里填自己的 API Key 即可使用。详见 [docs/DEPLOY-CLOUDFLARE.md](./docs/DEPLOY-CLOUDFLARE.md)。
 
+**本机工作台 + 外置 Agent（Node 伴侣，数据在本机 SQLite）**
+
+```bash
+npm --prefix backend-ts install && npm --prefix frontend install
+npm --prefix frontend run build
+npm --prefix backend-ts run cli -- start     # 工作台和 API：http://127.0.0.1:8766
+claude mcp add offeru -- npm --prefix "$PWD/backend-ts" run --silent cli -- mcp   # 或 codex mcp add …
+```
+
+需要 Node 22.19+。旧的 Python 安装包（`v0.2.0-lite`）已停用。Agent Skill 在
+[`.agents/skills/offeru/SKILL.md`](./.agents/skills/offeru/SKILL.md)，工作台「设置 → 我的 Agent」点「连接」即可装上。
+
 **源码开发** —— [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md)（npm 命令、测试、契约测试）。
 
 ---

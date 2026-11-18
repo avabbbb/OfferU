@@ -75,7 +75,7 @@ export const boardIds = (data: BoardData): string[] => [...BOARD_HOSTS.map((host
 export function requireBoardAgent(data: BoardData, id: string): void {
   if (customAgent(data, id)) return;
   if (hostSpec(id) && INTEGRATION_IDS.includes(id)) return;
-  throw new CoreError(`看板里没有这个 Agent：${id}。先运行 offeru agent list 查看`);
+  throw new CoreError(`看板里没有这个 Agent：${id}。先在工作台「设置 → 我的 Agent」里查看`);
 }
 
 /**
