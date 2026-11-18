@@ -10,6 +10,8 @@
 import { desensitize, restore } from "../desensitize";
 import type { ReasoningEffort } from "../llm-reasoning";
 import { classifyToolError, toolFailure, unknownToolFailure, type ToolFailure } from "../tools/preflight";
+import { compactSession, estimateTokens, isContextOverflow, type CompactionPolicy, DEFAULT_COMPACTION } from "./compaction";
+import { DEFAULT_STREAM_GUARD, guardedStream, type StreamGuardPolicy, type StreamRetryReason } from "./stream-guard";
 import { streamCompletion, type ChatMessage, type ChatToolCall, type LlmClient, type LlmUsage, type ParsedToolCall, type LlmToolSpec } from "../llm";
 
 export interface AgentToolContext {
@@ -48,7 +50,9 @@ export type LoopEvent =
   | { type: "tool_execution_start"; tool_call_id: string; tool_name: string; args: Record<string, unknown> }
   | { type: "tool_execution_end"; tool_call_id: string; tool_name: string; args: Record<string, unknown>; result: ToolResultView; is_error: boolean }
   | { type: "turn_end"; usage: LlmUsage; messages: ChatMessage[] }
-  | { type: "agent_end" };
+  | { type: "agent_end" }
+  | { type: "stream_retry"; attempt: number; reason: StreamRetryReason; error: string }
+  | { type: "compaction"; before: number; after: number; shrunk: number; aggressive: boolean };
 
 export interface LoopOptions {
   client: LlmClient;
@@ -68,6 +72,10 @@ export interface LoopOptions {
   reasoningEffort?: ReasoningEffort;
   /** Mask phone / email / id numbers before the request (default true, like Python). */
   maskPii?: boolean;
+  /** First-byte / idle timeouts + retry before output (default DEFAULT_STREAM_GUARD; false = plain stream). */
+  streamGuard?: StreamGuardPolicy | false;
+  /** Context compaction (default DEFAULT_COMPACTION; false = off). */
+  compaction?: CompactionPolicy | false;
 }
 
 export type LoopStopReason = "stop" | "tool_calls" | "length" | "hard_loop_limit" | "error" | "aborted" | string;
@@ -151,6 +159,9 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
   const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]));
   const specs: LlmToolSpec[] = options.tools.map(({ name, description, parameters }) => ({ name, description, parameters }));
   const mask = options.maskPii !== false;
+  const compaction = options.compaction === false ? null : options.compaction ?? DEFAULT_COMPACTION;
+  const fixedTokens = estimateTokens(options.systemPrompt) + estimateTokens(JSON.stringify(specs));
+  let ledger = "";
   let turns = 0;
   let softInjected = false;
   let lastText = "";
@@ -180,31 +191,50 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
       return finish("aborted");
     }
 
-    const outgoing = mask ? maskMessages(session) : { messages: session, mapping: {} };
     let content = "";
     let toolCalls: ParsedToolCall[] = [];
     let error: string | undefined;
-    for await (const event of streamCompletion(options.client, {
-      messages: [{ role: "system", content: options.systemPrompt }, ...outgoing.messages],
-      tools: specs.length ? specs : undefined,
-      model: options.model,
-      reasoningEffort: options.reasoningEffort,
-      signal: options.signal,
-    })) {
-      if (event.type === "text_delta") await emit({ type: "text_delta", text: event.text });
-      else if (event.type === "thinking_delta") await emit({ type: "thinking_delta", text: event.text });
-      else if (event.type === "done") {
-        const result = event.result;
-        // Restore complete text / arguments locally; streamed deltas stay masked.
-        content = restore(result.content, outgoing.mapping);
-        toolCalls = result.toolCalls.map((call) => {
-          const args = JSON.parse(restore(JSON.stringify(call.args), outgoing.mapping)) as Record<string, unknown>;
-          return { ...call, args, arguments: JSON.stringify(args) };
-        });
-        lastFinish = result.finishReason;
-        lastUsage = result.usage;
-        error = result.error;
+    for (let overflowRetry = 0; ; overflowRetry += 1) {
+      if (compaction) {
+        const compacted = compactSession(session, fixedTokens, compaction, overflowRetry > 0);
+        if (compacted.compacted) {
+          session.splice(0, session.length, ...compacted.messages);
+          ledger = compacted.ledger;
+          await emit({ type: "compaction", before: compacted.before, after: compacted.after, shrunk: compacted.shrunk, aggressive: overflowRetry > 0 });
+        }
       }
+      const outgoing = mask ? maskMessages(session) : { messages: session, mapping: {} };
+      const request = {
+        messages: [{ role: "system" as const, content: ledger ? `${options.systemPrompt}\n${ledger}` : options.systemPrompt }, ...outgoing.messages],
+        tools: specs.length ? specs : undefined,
+        model: options.model,
+        reasoningEffort: options.reasoningEffort,
+        signal: options.signal,
+      };
+      const stream = options.streamGuard === false
+        ? streamCompletion(options.client, request)
+        : guardedStream(options.client, request, options.streamGuard ?? DEFAULT_STREAM_GUARD, (info) => emit({ type: "stream_retry", ...info }));
+      let streamed = false;
+      for await (const event of stream) {
+        if (event.type === "text_delta" || event.type === "tool_call_delta") streamed = true;
+        if (event.type === "text_delta") await emit({ type: "text_delta", text: event.text });
+        else if (event.type === "thinking_delta") await emit({ type: "thinking_delta", text: event.text });
+        else if (event.type === "done") {
+          const result = event.result;
+          // Restore complete text / arguments locally; streamed deltas stay masked.
+          content = restore(result.content, outgoing.mapping);
+          toolCalls = result.toolCalls.map((call) => {
+            const args = JSON.parse(restore(JSON.stringify(call.args), outgoing.mapping)) as Record<string, unknown>;
+            return { ...call, args, arguments: JSON.stringify(args) };
+          });
+          lastFinish = result.finishReason;
+          lastUsage = result.usage;
+          error = result.error;
+        }
+      }
+      // Provider says the request is too long: compact harder and redo this turn once.
+      if (compaction && lastFinish === "error" && !streamed && overflowRetry === 0 && isContextOverflow(error)) continue;
+      break;
     }
     turns += 1;
     const assistant: ChatMessage = { role: "assistant", content };

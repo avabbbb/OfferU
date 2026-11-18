@@ -23,7 +23,7 @@ import {
   undoChange,
 } from "../operations";
 import { CoreError, type CoreContext, type CoreStore, type Json } from "../types";
-import { AgentHost, type PreparedAttachments, type ResolvedLlm, type RunOptions } from "./host";
+import { AgentHost, type AgentHostDeps, type PreparedAttachments, type ResolvedLlm, type RunOptions } from "./host";
 import type { AgentTool } from "./loop";
 import { AGENT_ACTOR, agentSystemPrompt, type MemoryArm } from "./prompt";
 import { AgentConversations, AgentRunState, type AgentRunStore } from "./run-state";
@@ -66,6 +66,9 @@ export interface AgentRuntimeDeps {
   extraTools?: () => AgentTool[];
   prepareAttachments?: (message: string, ids: string[]) => Promise<PreparedAttachments>;
   maxConcurrentRuns?: number;
+  /** Test hooks: stream timeouts / retries and context compaction policies (agent/host.ts). */
+  streamGuard?: AgentHostDeps["streamGuard"];
+  compaction?: AgentHostDeps["compaction"];
   memoryArm?: MemoryArm;
   now?: () => string;
 }
@@ -112,6 +115,8 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
     systemPrompt: ({ maxSteps, texts }) => agentSystemPrompt(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm, tools: toolNames(), skillTexts: texts }),
     prepareAttachments: deps.prepareAttachments,
     maxConcurrentRuns: deps.maxConcurrentRuns,
+    streamGuard: deps.streamGuard,
+    compaction: deps.compaction,
   });
 }
 

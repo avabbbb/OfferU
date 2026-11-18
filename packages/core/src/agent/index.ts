@@ -8,3 +8,5 @@ export * from "./tool-specs";
 export * from "./runtime";
 export * from "./skills";
 export * from "./discovery";
+export * from "./compaction";
+export * from "./stream-guard";

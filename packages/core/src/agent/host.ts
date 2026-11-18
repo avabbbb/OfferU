@@ -10,6 +10,8 @@ import { CoreError } from "../types";
 import type { ChatContentPart, ChatMessage, LlmClient } from "../llm";
 import { sanitizeLlmError } from "../llm";
 import { runAgentLoop, type AgentTool, type LoopEvent } from "./loop";
+import type { CompactionPolicy } from "./compaction";
+import type { StreamGuardPolicy } from "./stream-guard";
 import { MAX_STEPS } from "./prompt";
 import {
   AgentConversations,
@@ -27,6 +29,7 @@ export const RUNTIME_ID = "ts_agent";
 const SKILL_ID = "offeru";
 export const CONTEXT_WINDOW_TOKENS = 64000;
 export const CONTEXT_RESERVE_TOKENS = 8000;
+export const CONTEXT_KEEP_RECENT_TOKENS = 16000;
 const DELTA_FLUSH_CHARS = 512;
 
 export interface RunOptions {
@@ -67,6 +70,10 @@ export interface AgentHostDeps {
   /** User decisions on queued actions the Agent has not heard about (action_gate.take_decisions_for_agent). */
   takeDecisions?(runId: string, conversationId: string): Promise<string>;
   maxConcurrentRuns?: number;
+  /** Override the stream timeouts / retries (tests); default stream-guard DEFAULT_STREAM_GUARD. */
+  streamGuard?: StreamGuardPolicy | false;
+  /** Override context compaction (tests); default window CONTEXT_WINDOW_TOKENS, reserve CONTEXT_RESERVE_TOKENS. */
+  compaction?: CompactionPolicy | false;
 }
 
 export type StreamListener = (event: RawRunEvent) => void | Promise<void>;
@@ -189,7 +196,7 @@ export class AgentHost {
       session_scope: "one_session_per_agent_run",
       active_runs: this.active.size,
       max_concurrent_runs: this.maxConcurrentRuns(),
-      features: { persistent_sessions: true, compaction: false, steer: true, follow_up: false, registry_tools_only: true },
+      features: { persistent_sessions: true, compaction: true, steer: true, follow_up: false, registry_tools_only: true },
     };
   }
 
@@ -440,6 +447,8 @@ export class AgentHost {
         signal: activeRun.controller.signal,
         reasoningEffort: options.reasoning_effort || "",
         takeSteering: () => activeRun.steering.splice(0, activeRun.steering.length),
+        streamGuard: this.deps.streamGuard,
+        compaction: this.deps.compaction ?? { windowTokens: CONTEXT_WINDOW_TOKENS, reserveTokens: CONTEXT_RESERVE_TOKENS, keepRecentTokens: CONTEXT_KEEP_RECENT_TOKENS },
         onSavePoint: (messages) => state.store.putSession(runId, messages),
         emit: async (event) => {
           switch (event.type) {
@@ -462,6 +471,10 @@ export class AgentHost {
               return persistWorkerEvent("runtime.turn_completed", { context_usage: contextUsage(event) }, "kernel.turn_end");
             case "agent_end":
               return persistWorkerEvent("runtime.agent_settled", {}, "kernel.agent_end");
+            case "stream_retry":
+              return persistWorkerEvent("runtime.retry_started", { attempt: event.attempt, reason: event.reason, error: sanitizeLlmError(event.error, 300) }, "kernel.stream_retry");
+            case "compaction":
+              return persistWorkerEvent("runtime.compaction_completed", { before_tokens: event.before, after_tokens: event.after, shrunk_results: event.shrunk, aggressive: event.aggressive, estimated: true }, "kernel.compaction");
             case "tool_execution_start":
             case "tool_execution_end": {
               const started = event.type === "tool_execution_start";
