@@ -9,6 +9,7 @@
 
 import { desensitize, restore } from "../desensitize";
 import type { ReasoningEffort } from "../llm-reasoning";
+import { classifyToolError, toolFailure, unknownToolFailure, type ToolFailure } from "../tools/preflight";
 import { streamCompletion, type ChatMessage, type ChatToolCall, type LlmClient, type LlmUsage, type ParsedToolCall, type LlmToolSpec } from "../llm";
 
 export interface AgentToolContext {
@@ -133,8 +134,14 @@ function resultView(callId: string, name: string, result: AgentToolResult): Tool
   };
 }
 
+/** A failure the model reads as structured JSON (tools/preflight.ts). */
+function failed(failure: ToolFailure, terminate?: boolean): AgentToolResult {
+  return { text: JSON.stringify(failure), isError: true, details: failure, ...(terminate ? { terminate } : {}) };
+}
+
 function toolMessage(callId: string, name: string, result: AgentToolResult): ChatMessage {
-  const text = result.isError && !result.text.startsWith("ERROR:") ? `ERROR: ${result.text}` : result.text;
+  const structured = result.text.startsWith("{\"ok\":false");
+  const text = result.isError && !structured && !result.text.startsWith("ERROR:") ? `ERROR: ${result.text}` : result.text;
   return { role: "tool", tool_call_id: callId, name, content: text };
 }
 
@@ -218,18 +225,18 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
         await emit({ type: "tool_execution_start", tool_call_id: call.id, tool_name: call.name, args: call.args });
         let result: AgentToolResult;
         if (terminate) {
-          result = { text: "Skipped because the tool paused this Run", isError: true, terminate: true };
+          result = failed(toolFailure("aborted", "这一轮已暂停等用户回答，后面的工具没有执行", { suggestedAction: "等用户回答后再调。" }), true);
         } else {
           const tool = toolsByName.get(call.name);
-          if (!tool) result = { text: `Tool ${call.name} not found`, isError: true };
-          else if (options.signal?.aborted) result = { text: "Operation aborted", isError: true };
+          if (!tool) result = failed(unknownToolFailure(call.name, [...toolsByName.keys()]));
+          else if (options.signal?.aborted) result = failed(toolFailure("aborted", "已中止"));
           else if ("_raw" in call.args && Object.keys(call.args).length === 1) {
-            result = { text: `ERROR: 工具参数不是合法 JSON：${String(call.args._raw).slice(0, 200)}`, isError: true };
+            result = failed(toolFailure("invalid_args", `工具参数不是合法 JSON：${String(call.args._raw).slice(0, 200)}`, { tool: call.name, suggestedAction: "重新生成一个合法的 JSON 对象作为参数，再调一次。" }));
           } else {
             try {
               result = await tool.execute(call.args, { callId: call.id, signal: options.signal });
             } catch (cause) {
-              result = { text: `ERROR: ${cause instanceof Error ? cause.message : String(cause)}`, isError: true };
+              result = failed(classifyToolError(cause, call.name));
             }
           }
         }
