@@ -8,6 +8,7 @@
 // Pure TS: the LLM is an injected LlmClient, tools are plain async functions.
 
 import { desensitize, restore } from "../desensitize";
+import type { ReasoningEffort } from "../llm-reasoning";
 import { streamCompletion, type ChatMessage, type ChatToolCall, type LlmClient, type LlmUsage, type ParsedToolCall, type LlmToolSpec } from "../llm";
 
 export interface AgentToolContext {
@@ -63,7 +64,7 @@ export interface LoopOptions {
   /** Called after every turn with the full session (Python SAVE_POINT hook). */
   onSavePoint?: (messages: ChatMessage[]) => void | Promise<void>;
   model?: string;
-  reasoningEffort?: "" | "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
   /** Mask phone / email / id numbers before the request (default true, like Python). */
   maskPii?: boolean;
 }

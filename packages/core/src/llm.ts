@@ -19,6 +19,7 @@
 // backend/app/agent/provider.py LlmStreamProvider). `createLlmClient` builds a
 // client with every method from one resolved endpoint (llm-config.ts).
 
+import { buildReasoningParams, type ReasoningEffort } from "./llm-reasoning";
 import { CoreError } from "./types";
 
 export type LlmRole = "system" | "user" | "assistant";
@@ -418,7 +419,7 @@ export interface ChatRequest {
   maxTokens?: number;
   /** response_format json_object (ignored when the endpoint says it lacks json mode). */
   json?: boolean;
-  reasoningEffort?: "" | "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
   signal?: AbortSignal;
 }
 
@@ -619,7 +620,9 @@ function openAiBody(endpoint: LlmEndpoint, request: ChatRequest, stream: boolean
   if (stream) body.stream = true;
   if (full) {
     if (stream) body.stream_options = { include_usage: true };
-    if (request.reasoningEffort) body.reasoning_effort = request.reasoningEffort;
+    const reasoning = buildReasoningParams(request.reasoningEffort || "", endpoint);
+    Object.assign(body, reasoning.params);
+    if (reasoning.dropTemperature) delete body.temperature;
   }
   return body;
 }

@@ -63,7 +63,7 @@ import { ContextUsageRing } from "@/components/ui/agent/ContextUsageRing";
 import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";
-import { AgentComposerControls, useComposerOptions } from "./AgentComposerControls";
+import { AgentComposerControls, resolveComposerChoice, useComposerOptions, useModelCatalog } from "./AgentComposerControls";
 import { AgentOrb, AnimatedPlaceholder, ComposerGrip, useComposerWidth } from "./AgentComposerChrome";
 import { AgentOrbIcon, AgentWorkingOrb } from "./AgentWorkingOrb";
 import { agentOrbState } from "@/lib/agentWorkingOrb";
@@ -274,6 +274,8 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const [activeRun, setActiveRun] = useState<AgentRunRecord | null>(null);
   const [interruptedRunId, setInterruptedRunId] = useState<string | null>(null);
   const [composerOptions, setComposerOptions] = useComposerOptions();
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const modelCatalog = useModelCatalog(modelMenuOpen);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [hostedOpen, setHostedOpen] = useState(false);
@@ -502,13 +504,15 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
     ]);
     setError("");
 
+    const choice = resolveComposerChoice(modelCatalog, composerOptions);
     try {
       const runtimeResponse = await agentRuntimeApi.start(
         {
           message: content,
           conversation_id: currentConversationId,
-          llm_config_id: composerOptions.llmConfigId,
-          reasoning_effort: composerOptions.reasoningEffort,
+          llm_config_id: choice.service?.config_id ?? composerOptions.llmConfigId,
+          model: choice.modelId,
+          reasoning_effort: choice.reasoningEffort,
           approval_mode: composerOptions.approvalMode,
           attachments: sentAttachments.map((item) => item.id),
         },
@@ -1420,7 +1424,8 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
                 <span key={composerAttachments.items.length} className="agent-composer-badge">{composerAttachments.items.length}</span>
               )}
             </button>
-            <AgentComposerControls options={composerOptions} onChange={setComposerOptions} />
+            <AgentComposerControls options={composerOptions} onChange={setComposerOptions} services={modelCatalog}
+              modelOpen={modelMenuOpen} onModelOpenChange={setModelMenuOpen} />
             {contextUsage && (
               <ContextUsageRing used={contextUsage.used} limit={contextUsage.window}
                 nearAt={Math.round((contextUsage.compactAt / contextUsage.window) * 100)} />

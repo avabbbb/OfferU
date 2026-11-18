@@ -116,7 +116,7 @@ export function createLocalBackend(
     runtime: "browser",
     storage: "indexeddb",
     config,
-    llm: () => config.llm(),
+    llm: (choice) => config.llm(choice),
     llmFetch,
     fetch: (input, init) => baseFetch(input, init),
     files: indexedDbFileStore("offeru-local-files"),

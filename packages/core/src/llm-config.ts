@@ -57,6 +57,12 @@ export interface ResolvedLlmConfig {
   api_format: LlmApiFormat;
 }
 
+/** The Agent composer's per-run pick: a service (llm_api_configs id) and a model inside it. */
+export interface LlmChoice {
+  llmConfigId?: string;
+  model?: string;
+}
+
 export interface ResolveOptions {
   /** RunOptions.llm_config_id: the composer's per-run model choice. */
   llmConfigId?: string;

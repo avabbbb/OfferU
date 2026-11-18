@@ -1,50 +1,31 @@
 "use client";
 
+// 输入框底栏：模型胶囊（服务 › 模型 › 思考强度 三级级联）+ 模式胶囊。
+// 级联与强度判定移植自 avabbbb/Flovart@28c79bf:components/agent/AgentModelPicker.tsx（MIT）的
+// ThinkingSubmenu / supportedThinkingLevels；OfferU 里强度档位由后端
+// GET /api/agent/runtime/models 按服务 / 模型给出（packages/core/src/llm-reasoning.ts），这里不写死。
+// 外观沿用 OfferU 的 Menu（浅色玻璃、Radix 键盘：↑↓ 移动、→/Enter 展开、←/Esc 收回）。
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Hand, Settings, Sparkles, Zap } from "lucide-react";
 import { Menu, type MenuItem } from "@/components/ui";
-import { configApi } from "@/lib/api";
+import { agentRuntimeApi, type AgentModelService } from "@/lib/api";
 import { MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 
-export type ReasoningEffort = "" | "low" | "medium" | "high";
+export type ReasoningEffort = "" | "minimal" | "low" | "medium" | "high";
 export type ApprovalMode = "auto" | "ask";
 
 export interface ComposerOptions {
   llmConfigId: string;
+  /** Model id inside the chosen service; "" = the service's configured model. */
+  model: string;
   reasoningEffort: ReasoningEffort;
   approvalMode: ApprovalMode;
 }
 
-interface ModelOption {
-  id: string;
-  label: string;
-  model: string;
-  active: boolean;
-}
-
-/** One entry of llm_api_configs in the /api/config/ response. */
-interface LlmConfigItem {
-  id: string;
-  provider_id?: string;
-  service_name?: string;
-  model?: string;
-  is_active?: boolean;
-}
-
-function isLlmConfig(value: unknown): value is LlmConfigItem {
-  return typeof value === "object" && value !== null && "id" in value && typeof value.id === "string";
-}
-
 const STORAGE_KEY = "offeru.agent.composer";
-const DEFAULT_OPTIONS: ComposerOptions = { llmConfigId: "", reasoningEffort: "", approvalMode: "auto" };
-
-const EFFORTS: Array<{ id: ReasoningEffort; label: string; short: string }> = [
-  { id: "", label: "默认", short: "" },
-  { id: "low", label: "低", short: "更快" },
-  { id: "medium", label: "中", short: "多数任务" },
-  { id: "high", label: "高", short: "想得更深" },
-];
+const DEFAULT_OPTIONS: ComposerOptions = { llmConfigId: "", model: "", reasoningEffort: "", approvalMode: "auto" };
 
 const MODES: Array<{ id: ApprovalMode; label: string; hint: string }> = [
   { id: "ask", label: "询问", hint: "每一步写入都先问你" },
@@ -76,75 +57,102 @@ export function useComposerOptions() {
   return [options, update] as const;
 }
 
-function useModelOptions(refreshKey: boolean) {
-  const [models, setModels] = useState<ModelOption[]>([]);
+/** Services → models → efforts, re-read whenever the menu opens (settings may have changed). */
+export function useModelCatalog(refreshKey: unknown) {
+  const [services, setServices] = useState<AgentModelService[] | null>(null);
   useEffect(() => {
     let cancelled = false;
-    configApi
-      .get()
-      .then((config: unknown) => {
-        if (cancelled) return;
-        const record = typeof config === "object" && config !== null ? config : {};
-        const configs = "llm_api_configs" in record && Array.isArray(record.llm_api_configs) ? record.llm_api_configs : [];
-        const activeId = "active_llm_config_id" in record ? String(record.active_llm_config_id ?? "") : "";
-        setModels(
-          configs.filter(isLlmConfig).map((item) => ({
-            id: item.id,
-            label: item.service_name || item.provider_id || "模型",
-            model: item.model || "",
-            active: item.id === activeId || Boolean(item.is_active),
-          })),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setModels([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+    agentRuntimeApi
+      .models()
+      .then((result) => { if (!cancelled) setServices(result.services || []); })
+      .catch(() => { if (!cancelled) setServices([]); });
+    return () => { cancelled = true; };
   }, [refreshKey]);
-  return models;
+  return services;
+}
+
+/** What the next run actually uses: the chosen service / model, and an effort only if that model offers it. */
+export function resolveComposerChoice(services: AgentModelService[] | null, options: ComposerOptions) {
+  const list = services || [];
+  const service = list.find((item) => item.config_id === options.llmConfigId) || list.find((item) => item.active) || list[0];
+  const modelId = (service && options.llmConfigId === service.config_id && options.model) || service?.default_model || "";
+  const model = service?.models.find((item) => item.id === modelId);
+  const effort = model?.efforts.find((item) => item.id === options.reasoningEffort);
+  return { service, modelId, model, effort, reasoningEffort: (effort?.id || "") as ReasoningEffort };
+}
+
+/** The menu tree: service › model › effort (a model with no efforts is a leaf). */
+export function modelMenuItems(
+  services: AgentModelService[],
+  options: ComposerOptions,
+  onChange: (patch: Partial<ComposerOptions>) => void,
+  toSettings: () => void,
+): MenuItem[] {
+  const current = resolveComposerChoice(services, options);
+  if (!services.length) {
+    return [{ label: "还没有模型", description: "去设置里添加一个", icon: <Settings size={16} strokeWidth={1.75} />, onSelect: toSettings }];
+  }
+  const pick = (configId: string, model: string, reasoningEffort: ReasoningEffort) => onChange({ llmConfigId: configId, model, reasoningEffort });
+  return [
+    { heading: "服务" },
+    ...services.map((service): MenuItem => {
+      const serviceChosen = service.config_id === current.service?.config_id;
+      return {
+        label: service.service_name,
+        description: serviceChosen ? current.model?.name || current.modelId : service.default_model,
+        checked: serviceChosen,
+        testId: `agent-model-service-${service.config_id}`,
+        items: [
+          { heading: "模型" },
+          ...service.models.map((model): MenuItem => {
+            const modelChosen = serviceChosen && model.id === current.modelId;
+            const description = model.name !== model.id ? model.id : undefined;
+            if (!model.efforts.length) {
+              return { label: model.name, description, checked: modelChosen, onSelect: () => pick(service.config_id, model.id, "") };
+            }
+            return {
+              label: model.name,
+              description: modelChosen && current.effort ? `思考 · ${current.effort.label}` : description,
+              checked: modelChosen,
+              testId: `agent-model-${model.id}`,
+              items: [
+                { heading: "思考强度" },
+                { label: "默认", description: "不指定，由服务决定", checked: modelChosen && !current.effort, onSelect: () => pick(service.config_id, model.id, "") },
+                ...model.efforts.map((level): MenuItem => ({
+                  label: `${level.label} · ${level.hint}`,
+                  checked: modelChosen && current.effort?.id === level.id,
+                  onSelect: () => pick(service.config_id, model.id, level.id),
+                })),
+              ],
+            };
+          }),
+        ],
+      };
+    }),
+    "separator",
+    { label: "管理模型", icon: <Settings size={16} strokeWidth={1.75} />, onSelect: toSettings },
+  ];
 }
 
 export function AgentComposerControls({
   options,
   onChange,
+  services,
+  modelOpen,
+  onModelOpenChange,
 }: {
   options: ComposerOptions;
   onChange: (patch: Partial<ComposerOptions>) => void;
+  services: AgentModelService[] | null;
+  modelOpen: boolean;
+  onModelOpenChange: (open: boolean) => void;
 }) {
   // 模型 / 模式两个胶囊都是 components/ui 的 Menu（浅色玻璃、键盘、Esc、焦点归还交给 Radix），在输入框上方弹出。
-  const [modelOpen, setModelOpen] = useState(false);
   const router = useRouter();
-  const models = useModelOptions(modelOpen);
-
-  const current = models.find((model) => model.id === options.llmConfigId) || models.find((model) => model.active) || models[0];
-  const effort = EFFORTS.find((item) => item.id === options.reasoningEffort);
+  const toSettings = () => router.push(MODEL_SETTINGS_ROUTE);
+  const current = resolveComposerChoice(services, options);
   const mode = MODES.find((item) => item.id === options.approvalMode) || MODES[1];
   const ModeIcon = mode.id === "ask" ? Hand : Zap;
-  const toSettings = () => router.push(MODEL_SETTINGS_ROUTE);
-
-  const modelItems: MenuItem[] = models.length
-    ? [
-        { heading: "模型" },
-        ...models.map((model): MenuItem => ({
-          label: model.model || model.label,
-          description: model.label,
-          checked: model.id === current?.id,
-          onSelect: () => onChange({ llmConfigId: model.id }),
-        })),
-        "separator",
-        { heading: "思考强度" },
-        // 思考强度一行一个字 + 短说明，不放第二行，免得菜单太长。
-        ...EFFORTS.map((item): MenuItem => ({
-          label: item.short ? `${item.label} · ${item.short}` : item.label,
-          checked: options.reasoningEffort === item.id,
-          onSelect: () => onChange({ llmConfigId: current?.id ?? "", reasoningEffort: item.id }),
-        })),
-        "separator",
-        { label: "管理模型", icon: <Settings size={16} strokeWidth={1.75} />, onSelect: toSettings },
-      ]
-    : [{ label: "还没有模型", description: "去设置里添加一个", icon: <Settings size={16} strokeWidth={1.75} />, onSelect: toSettings }];
 
   const modeItems: MenuItem[] = MODES.map((item) => {
     const Icon = item.id === "ask" ? Hand : Zap;
@@ -159,14 +167,15 @@ export function AgentComposerControls({
 
   return (
     <div className="agent-composer-tools">
-      <Menu label="模型和思考强度" side="top" align="start" open={modelOpen} onOpenChange={setModelOpen} items={modelItems} trigger={
-        <button type="button" className="agent-composer-tool" title="模型和思考强度">
-          <Sparkles size={15} strokeWidth={1.75} />
-          <span className="truncate">{current ? current.model || current.label : "模型"}</span>
-          {options.reasoningEffort && <span className="agent-composer-tool-sub">{effort?.label}</span>}
-          <ChevronDown size={12} strokeWidth={2} />
-        </button>
-      } />
+      <Menu label="服务、模型和思考强度" side="top" align="start" open={modelOpen} onOpenChange={onModelOpenChange}
+        items={modelMenuItems(services || [], options, onChange, toSettings)} trigger={
+          <button type="button" className="agent-composer-tool" title="服务、模型和思考强度" data-testid="agent-model-trigger">
+            <Sparkles size={15} strokeWidth={1.75} />
+            <span className="truncate">{current.model?.name || current.modelId || "模型"}</span>
+            {current.effort && <span className="agent-composer-tool-sub">{current.effort.label}</span>}
+            <ChevronDown size={12} strokeWidth={2} />
+          </button>
+        } />
       <Menu label="模式" side="top" align="start" items={modeItems} trigger={
         <button type="button" className="agent-composer-tool" title={mode.hint}>
           <ModeIcon size={15} strokeWidth={1.75} />
