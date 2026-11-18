@@ -9,7 +9,7 @@ import { ToolExecutionList } from "./EmbeddedAgentStreamView";
 import { AgentAskPanel } from "./AgentAskPanel";
 import { AgentMarkdown } from "./AgentMarkdown";
 import { applyRuntimeToolEvent, createInitialAgentStreamState, type AgentStreamState } from "@/lib/embeddedAgentStream";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Button, Textarea } from "@heroui/react";
 import {
   Activity,
@@ -62,6 +62,9 @@ import { SHOWCASE } from "@/lib/showcase";
 import { getBridgeState, subscribeBridge } from "@/lib/bridge";
 import { DemoAgentPanel } from "./DemoAgentPanel";
 import { AgentHistoryList } from "./AgentHistoryList";
+import { AgentScrollToLatest, AgentTurnTimeline, smoothScrollTo, type TurnTimelineHandle } from "./AgentConversationNav";
+import { AgentCopyButton, AgentImageViewer } from "./AgentMessageActions";
+import { isAwayFromBottom, nextStickToBottom, splitConversationTurns, turnIndexByMessage } from "@/lib/agentConversationNav";
 import { AgentSlashMenu, useAgentSlash, type SlashAction } from "./AgentSlashMenu";
 import { contextUsageFromEvent, type AgentContextUsage } from "@/lib/agentContextUsage";
 import { ContextUsageRing } from "@/components/ui/agent/ContextUsageRing";
@@ -298,7 +301,12 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const dragDepthRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
   const composerAttachments = useComposerAttachments(agentRuntimeApi.uploadAttachment);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // 跟随底部：用户往上翻就停，回到底部（或点「回到最新」）再跟；流式输出不会把人拉回去。
+  const stickRef = useRef(true);
+  const lastScrollTopRef = useRef(0);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const timelineRef = useRef<TurnTimelineHandle>(null);
   const turnControllersRef = useRef<Map<string, AbortController>>(new Map());
   const lastSendRef = useRef<{ content: string; at: number } | null>(null);
   const turnSeqRef = useRef(0);
@@ -454,8 +462,38 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   }, [hostedOpen, hostedRefreshKey, selectedHostedSessionId]);
 
   useEffect(() => {
+    if (!stickRef.current) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, inFlightTurns]);
+
+  const onThreadScroll = () => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const metrics = { scrollTop: element.scrollTop, scrollHeight: element.scrollHeight, clientHeight: element.clientHeight };
+    stickRef.current = nextStickToBottom(stickRef.current, metrics, lastScrollTopRef.current);
+    lastScrollTopRef.current = element.scrollTop;
+    setAwayFromBottom(isAwayFromBottom(metrics));
+  };
+  const scrollToLatest = () => {
+    stickRef.current = true;
+    const element = scrollRef.current;
+    if (element) smoothScrollTo(element, element.scrollHeight);
+  };
+  // 每条用户消息是一轮的起点：刻度条据此定位。
+  const turns = useMemo(() => splitConversationTurns(messages.map((item) => ({ id: item.id, role: item.role, text: item.content }))), [messages]);
+  const turnIndexById = useMemo(() => turnIndexByMessage(messages.map((item) => ({ id: item.id, role: item.role, text: item.content }))), [messages]);
+  // 面板里的导航快捷键：Alt+PageUp / Alt+PageDown 逐轮跳，Alt+End 回到最新。
+  const onPanelKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key === "PageUp" || event.key === "PageDown") {
+      event.preventDefault();
+      stickRef.current = false;
+      timelineRef.current?.step(event.key === "PageUp" ? -1 : 1);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      scrollToLatest();
+    }
+  };
 
   /** 把等用户处理的 Run 收进"停放"条：状态已持久化，随时可回来处理，绝不隐式取消。 */
   const parkActiveRun = () => {
@@ -937,7 +975,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const guidanceMessageId = messages.reduce<string | undefined>((last, item) => (item.response ? item.id : last), undefined);
 
   return (
-    <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
+    <div className="offeru-agent-panel flex h-full min-h-0 flex-col" onKeyDown={onPanelKeyDown}>
       <div className="agent-head">
         <span className="agent-head-mark" aria-hidden><Sparkles size={14} strokeWidth={2} /></span>
         <button
@@ -1176,10 +1214,12 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
 
 
       {/* 消息流 */}
-      <div ref={scrollRef} className="agent-thread custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3.5 py-4">
+      <div className="agent-thread-wrap">
+      <div ref={scrollRef} onScroll={onThreadScroll} className="agent-thread custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3.5 py-4">
         <div className="space-y-4">
           {messages.map((message) => (
             <PanelMessageBubble key={message.id} message={message} showGuidance={message.id === guidanceMessageId} onSuggestion={sendMessage}
+              turnIndex={message.role === "user" ? turnIndexById.get(message.id) : undefined}
               alone={messages.length === 1 && inFlightTurns.length === 0} />
           ))}
           {inFlightTurns.map((turn) => (
@@ -1203,6 +1243,10 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
             <AgentRunPill text={progressText} />
           )}
         </div>
+      </div>
+      <AgentTurnTimeline ref={timelineRef} scrollerRef={scrollRef} turns={turns} onJump={() => { stickRef.current = false; }} />
+      <AgentScrollToLatest visible={awayFromBottom} onClick={scrollToLatest} />
+      <AgentImageViewer />
       </div>
 
       {interruptedRunId && (
@@ -1451,11 +1495,14 @@ function PanelMessageBubble({
   message,
   showGuidance,
   onSuggestion,
+  turnIndex,
   alone = false,
 }: {
   message: PanelMessage;
   showGuidance: boolean;
   onSuggestion: (prompt: string) => void;
+  /** 用户消息是第几轮的开头（刻度条定位用）。 */
+  turnIndex?: number;
   /** 对话里只有这条欢迎语：画成完整的空状态（问候 + 建议胶囊）。 */
   alone?: boolean;
 }) {
@@ -1467,7 +1514,7 @@ function PanelMessageBubble({
   }
 
   return (
-    <div className={isUser ? "flex justify-end pl-10" : "flex justify-start"}>
+    <div className={isUser ? "flex justify-end pl-10" : "flex justify-start"} data-message-row="" data-turn-index={turnIndex}>
       <div className={isUser ? "min-w-0 max-w-full" : "w-full min-w-0"}>
         {isUser && message.attachments && message.attachments.length > 0 && (
           <AgentMessageAttachments attachments={message.attachments} imageUrl={agentRuntimeApi.attachmentUrl} />
@@ -1475,6 +1522,11 @@ function PanelMessageBubble({
         <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"}>
           {isUser ? message.content : <AgentMarkdown text={message.content} />}
         </div>
+        {message.content.trim() && (
+          <div className="agent-msg-actions" data-align={isUser ? "end" : undefined} role="toolbar" aria-label="消息操作">
+            <AgentCopyButton text={message.content} label={isUser ? "复制这条消息" : "复制回答（Markdown）"} />
+          </div>
+        )}
         {response && (
           <div className="mt-2 space-y-2 text-left">
             {showGuidance && response.alerts && response.alerts.length > 0 && <AlertList alerts={response.alerts} />}
