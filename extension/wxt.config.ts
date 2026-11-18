@@ -2,6 +2,8 @@ import path from "node:path";
 
 import { defineConfig } from "wxt";
 
+import { llmRelayHostPermissions } from "./src/background/llm-relay";
+
 export default defineConfig({
   webExt: {
     // Development must never open the system default browser or Edge.
@@ -24,7 +26,8 @@ export default defineConfig({
     name: "OfferU 简历购物车助手",
     description: "一键存为岗位 + 智能填写网申表单",
     permissions: ["storage", "activeTab", "tabs", "scripting", "contextMenus", "clipboardWrite", "offscreen"],
-    host_permissions: ["http://127.0.0.1/*", "http://localhost/*"],
+    // 本机 OfferU 服务 + 模型直连白名单（与 Worker /llm-proxy 完全一致，见 src/background/llm-relay.ts），不开放通配。
+    host_permissions: ["http://127.0.0.1/*", "http://localhost/*", ...llmRelayHostPermissions()],
     // 招聘站点权限按需申请（见 docs/04-module-job-workspace.md），
     // 仅限常见招聘站点；用户连接对应站点登录态时才逐站申请，不再开放通配所有 http/https。
     optional_host_permissions: [

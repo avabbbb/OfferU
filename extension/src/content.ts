@@ -23,6 +23,7 @@ import {
   type PageSnapshot,
   type SavePageResult,
 } from "./background/save-page-job.js";
+import { installLlmBridge } from "./content/llm-bridge.js";
 
 const OFFERU_TOAST_ID = "offeru-ext-toast";
 const FLOATING_DOCK_ID = "offeru-ext-floating-dock";
@@ -2135,4 +2136,15 @@ if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
   init();
+}
+
+// OfferU web page only: carry its model calls through the extension instead of the Worker relay.
+try {
+  installLlmBridge(window, {
+    connect: (info) => chrome.runtime.connect(info),
+    sendMessage: (message, callback) => chrome.runtime.sendMessage(message, callback),
+    lastError: () => chrome.runtime.lastError,
+  });
+} catch {
+  // extension context gone (reloaded); the page keeps using its own fallback
 }

@@ -8,8 +8,10 @@
 //   files        IndexedDB file stores (uploads, Agent attachments, named backups)
 //   config       /api/config model settings, keys encrypted at rest (config.ts)
 //   agentRuns    IndexedDB (agentRuns.ts)
-//   llmFetch     direct to the provider; falls back to the Worker's /llm-proxy when the
-//                provider sends no CORS headers
+//   llmFetch     direct to the provider; when the provider sends no CORS headers, through the
+//                OfferU browser extension if it is installed and capable (extensionLlm.ts),
+//                otherwise (or when the extension fails before the first byte) the Worker's
+//                /llm-proxy
 // Companion-only capabilities (local files, Playwright PDF, poppler, BOSS login, Agent board,
 // MCP) are simply not wired, so their routes answer 501 like on any runtime without them.
 // Nothing here may import node:* (scripts/check-browser-bundle.mjs guards the build).
@@ -24,6 +26,9 @@ import { BrowserDemoStore } from "@/lib/demo/store";
 import { IndexedDbAgentRunStore } from "./agentRuns";
 import { indexedDbConfigStore, indexedDbConsentStore } from "./config";
 import { indexedDbBackupFiles, indexedDbFileStore } from "./files";
+import { getExtensionLlmTransport, getExtensionPromptStore } from "./llmTransport";
+import { isRelayQuotaResponse, rememberRelayHost } from "./extensionPrompt";
+import { ExtensionUnavailableError, type ExtensionLlmTransport } from "./extensionLlm";
 
 type Fetch = typeof globalThis.fetch;
 
@@ -31,15 +36,49 @@ const LOCAL_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/i;
 
 /**
  * Model calls from the page. Most providers allow browser CORS; for those that do not, the
- * Worker relays (POST /llm-proxy, target in X-OfferU-LLM-URL). The first CORS failure per
- * host switches that host to the relay for the rest of the session.
+ * OfferU extension carries the call when it is installed and allows the host (no Worker quota
+ * spent), else the Worker relays (POST /llm-proxy, target in X-OfferU-LLM-URL). The first CORS
+ * failure per host switches that host off the direct path for the rest of the session. An
+ * extension failure before the first response byte falls back to the Worker relay; once the
+ * response has started, errors surface as-is (the call is not replayed).
  */
-export function createLlmFetch(baseFetch: Fetch, relayPath = "/llm-proxy"): (input: string, init?: RequestInit) => Promise<Response> {
+export interface LlmRelayObserver {
+  /** A host failed CORS and moves off the direct path for this session. */
+  relayHost?(host: string): void;
+  /** A call is about to go through the Worker's /llm-proxy. */
+  workerRelay?(host: string): void;
+  /** The Worker's answer (status / headers only; the body is untouched). */
+  workerResponse?(response: Response): void;
+}
+
+export function createLlmFetch(
+  baseFetch: Fetch,
+  relayPath = "/llm-proxy",
+  extension: ExtensionLlmTransport | null = null,
+  observer: LlmRelayObserver = {},
+): (input: string, init?: RequestInit) => Promise<Response> {
   const viaRelay = new Set<string>();
-  const relay = (url: string, init?: RequestInit) => {
+  const notify = (fn: () => void) => { try { fn(); } catch { /* observers never break a call */ } };
+  const workerRelay = async (url: string, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     headers.set("X-OfferU-LLM-URL", url);
-    return baseFetch(relayPath, { ...init, headers });
+    notify(() => observer.workerRelay?.(new URL(url).host));
+    const response = await baseFetch(relayPath, { ...init, headers });
+    notify(() => observer.workerResponse?.(response));
+    return response;
+  };
+  const relay = async (url: string, init?: RequestInit) => {
+    if (extension) {
+      const caps = extension.current() ?? await extension.detect();
+      if (caps && extension.supports(new URL(url), caps)) {
+        try {
+          return await extension.fetch(url, init);
+        } catch (cause) {
+          if (init?.signal?.aborted || !(cause instanceof ExtensionUnavailableError)) throw cause;
+        }
+      }
+    }
+    return workerRelay(url, init);
   };
   return async (input, init) => {
     const url = new URL(input);
@@ -50,6 +89,7 @@ export function createLlmFetch(baseFetch: Fetch, relayPath = "/llm-proxy"): (inp
     } catch (cause) {
       if (init?.signal?.aborted) throw cause;
       viaRelay.add(url.host);
+      notify(() => observer.relayHost?.(url.host));
       return relay(input, init);
     }
   };
@@ -60,8 +100,12 @@ export interface LocalBackend {
   fetch: (request: Request) => Promise<Response>;
 }
 
-export function createLocalBackend(baseFetch: Fetch = globalThis.fetch.bind(globalThis)): LocalBackend {
-  const llmFetch = createLlmFetch(baseFetch);
+export function createLocalBackend(
+  baseFetch: Fetch = globalThis.fetch.bind(globalThis),
+  extension: ExtensionLlmTransport | null = null,
+  observer: LlmRelayObserver = {},
+): LocalBackend {
+  const llmFetch = createLlmFetch(baseFetch, "/llm-proxy", extension, observer);
   const config = new ConfigRuntime(indexedDbConfigStore(), llmFetch);
   void config.get().catch(() => undefined);
   const logoBase = new URL("school-logos/", globalThis.location?.href ?? "http://localhost/").toString();
@@ -98,7 +142,14 @@ let installed: LocalBackend | null = null;
 export function installLocalBackend(): LocalBackend {
   if (installed) return installed;
   const original = globalThis.fetch.bind(globalThis);
-  const backend = createLocalBackend(original);
+  const extension = getExtensionLlmTransport();
+  void extension?.detect();
+  const prompt = getExtensionPromptStore();
+  const backend = createLocalBackend(original, extension, {
+    relayHost: (host) => rememberRelayHost(host),
+    workerRelay: () => prompt.report("relay"),
+    workerResponse: (response) => { if (isRelayQuotaResponse(response)) prompt.report("quota"); },
+  });
   const origin = globalThis.location.origin;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input), globalThis.location.href);

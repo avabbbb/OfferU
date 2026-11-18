@@ -32,6 +32,7 @@ import {
   DEFAULT_OFFERU_SERVER_URL,
   normalizeOfferUServerUrl,
 } from "./background/server-url.js";
+import { handleRelayPort, isOfferUOrigin, relayCapabilities, type RelayPort } from "./background/llm-relay.js";
 import { safeExtensionDebugPayload, safeExtensionError } from "./lib/safe-error.js";
 import {
   buildSmartFillProfileFieldValues,
@@ -1446,6 +1447,8 @@ chrome.runtime.onMessage.addListener(
         return true;
 
       default:
+        // 模型直连握手由下方单独的监听器回答
+        if ((message as { type?: string }).type === "OFFERU_LLM_HELLO") return false;
         sendResponse({ error: "Unknown message type" });
     }
   }
@@ -1475,4 +1478,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   await chrome.scripting
     .executeScript({ target: { tabId: tab.id }, func: showToast, args: [result.message] })
     .catch(() => undefined);
+});
+
+// ---- 模型直连（OfferU 网页 → 扩展 → 模型服务商，代替 Worker /llm-proxy）----
+chrome.runtime.onConnect.addListener((port) => {
+  handleRelayPort(port as unknown as RelayPort, { fetch: (input, init) => fetch(input, init), extensionId: chrome.runtime.id });
+});
+
+chrome.runtime.onMessage.addListener((message: { type?: string } | null, sender, sendResponse) => {
+  if (message?.type !== "OFFERU_LLM_HELLO") return undefined;
+  const origin = sender.origin || (sender.url ? new URL(sender.url).origin : "");
+  if (sender.id !== chrome.runtime.id || !isOfferUOrigin(origin)) {
+    sendResponse({ ok: false });
+    return undefined;
+  }
+  sendResponse({ ok: true, capabilities: relayCapabilities(chrome.runtime.getManifest().version) });
+  return undefined;
 });

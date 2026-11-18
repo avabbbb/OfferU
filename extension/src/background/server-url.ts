@@ -1,6 +1,8 @@
 export const DEFAULT_OFFERU_SERVER_URL = "http://127.0.0.1:8766";
 export const DEFAULT_OFFERU_FRONTEND_PORT = "7410";
 export const DEFAULT_OFFERU_FRONTEND_URL = `http://127.0.0.1:${DEFAULT_OFFERU_FRONTEND_PORT}`;
+/** 网页版 OfferU（Cloudflare 部署），扩展 popup 的「打开 OfferU」按钮打开它。 */
+export const OFFERU_WEB_APP_URL = "https://offeru.avabbbb.com/";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "tauri.localhost"]);
 

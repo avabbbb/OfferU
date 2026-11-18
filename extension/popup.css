@@ -187,6 +187,32 @@ input {
   padding: 0;
 }
 
+.open-web-button {
+  position: absolute;
+  left: 8px;
+  top: 9px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid #c6d9ff;
+  background: #edf3ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.open-web-button:hover {
+  background: #dbe7ff;
+}
+
+:root[data-theme="dark"] .open-web-button {
+  background: #1e293b;
+  border-color: #334155;
+  color: #93c5fd;
+}
+
 .open-button:hover {
   background: #edf3ff;
   border-color: #c6d9ff;

@@ -48,6 +48,8 @@ import {
   type PrivacyHygieneStatus,
 } from "@/lib/api";
 import { resolveApiBase } from "@/lib/apiBase";
+import { LOCAL_WEB } from "@/lib/local/mode";
+import { useLlmTransportMode } from "@/lib/local/llmTransport";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
 import { useConfig, updateConfig } from "@/lib/hooks";
@@ -963,6 +965,7 @@ export default function SettingsPage() {
   const agentStatus = agentState.connection?.connection_verified && agentState.connection.status === "ready"
     ? agentState.connection.name + " · 已验证"
     : "未连接";
+  const llmTransport = useLlmTransportMode(LOCAL_WEB);
   const modelStatus = config?.active_llm_summary
     ? config.active_llm_summary.service_name + " · " + config.active_llm_summary.model
     : "未连接";
@@ -1322,6 +1325,11 @@ export default function SettingsPage() {
             <p className="text-xs font-medium text-[var(--foreground-muted)]">内置 Agent</p>
             <h2 className="mt-1 text-xl font-semibold">模型连接</h2>
             <p className="mt-2 text-sm text-[var(--foreground-muted)]">连接模型服务，获取可用模型。右侧内置 Agent 使用当前激活的配置。</p>
+            {LOCAL_WEB && (
+              <p className="mt-1 text-xs text-[var(--foreground-muted)]" data-testid="llm-transport-mode" title={llmTransport === "extension" ? "不支持跨域的模型服务由 OfferU 浏览器扩展直接请求" : "不支持跨域的模型服务经 OfferU 服务器转发（不保存内容）；安装 OfferU 浏览器扩展可直连"}>
+                跨域通道：{llmTransport === "extension" ? "直连（扩展）" : "代理"}
+              </p>
+            )}
           </div>
           <Button onPress={openCreateEditor} startContent={<Plus size={16} />} className="rounded-lg bg-[var(--foreground)] text-[var(--surface)]">添加模型服务</Button>
         </div>

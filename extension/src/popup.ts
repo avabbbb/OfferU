@@ -8,6 +8,7 @@ import type {
 import {
   DEFAULT_OFFERU_FRONTEND_PORT,
   DEFAULT_OFFERU_FRONTEND_URL,
+  OFFERU_WEB_APP_URL,
   DEFAULT_OFFERU_SERVER_URL,
   normalizeOfferUFrontendPort,
   normalizeOfferUServerUrl,
@@ -136,6 +137,7 @@ const checkUpdateBtn = document.getElementById("checkUpdateBtn") as HTMLButtonEl
 const updateStatusTextEl = document.getElementById("updateStatusText") as HTMLParagraphElement;
 
 const openServerBtn = document.getElementById("openServerBtn") as HTMLButtonElement;
+const openWebAppBtn = document.getElementById("openWebAppBtn") as HTMLButtonElement | null;
 const openDesktopFooterBtn = document.getElementById("openDesktopFooterBtn") as HTMLButtonElement;
 
 const desktopModeDockerRadio = document.getElementById("desktopModeDocker") as HTMLInputElement;
@@ -524,6 +526,15 @@ async function openOfferUFrontend(): Promise<void> {
     }
   } finally {
     openingOfferUFrontend = false;
+  }
+}
+
+/** 网页版 OfferU：固定的线上地址，新标签页打开。 */
+async function openOfferUWebApp(): Promise<void> {
+  try {
+    await chrome.tabs.create({ url: OFFERU_WEB_APP_URL });
+  } catch {
+    window.open(OFFERU_WEB_APP_URL, "_blank", "noopener");
   }
 }
 
@@ -2101,6 +2112,10 @@ function bindGlobalEvents(): void {
     if (uiSettings.theme === "system") {
       applyThemeToDocument();
     }
+  });
+
+  openWebAppBtn?.addEventListener("click", () => {
+    void openOfferUWebApp();
   });
 
   if (EMBED_MODE) {

@@ -11,6 +11,21 @@ OfferU 浏览器插件用于在招聘网站页面手动采集岗位信息，并�
 - 默认后端地址为 `http://127.0.0.1:8766`；网页端口固定为 `7410`，不要把 `8080` 等模型服务端口当作网页入口。
 - 扩展顶部的“打开 OfferU 网页”只在用户点击且 `7410` 前端健康检查通过后打开 `http://127.0.0.1:7410`；服务未启动时只显示提示，不创建无法连接的浏览器标签。后端 `8766` 只用于 API 通信。
 
+## 模型直连（代替 Worker /llm-proxy）
+网页版（https://offeru.avabbbb.com，及 localhost 开发页）调用不支持浏览器跨域的模型服务时，原本经 Cloudflare Worker 的 `/llm-proxy` 转发，会消耗 Workers 每日共享额度。装了本扩展后，这类请求改由扩展后台直接发给模型服务：
+- 只接受 OfferU 网页（`https://offeru.avabbbb.com`、`http://localhost:*`、`http://127.0.0.1:*`）的顶层页面请求：内容脚本 `src/content/llm-bridge.ts` 只在这些来源安装，后台 `src/background/llm-relay.ts` 再按端口 sender.origin 校验一次。
+- 目标白名单与 Worker 完全一致（内置模型服务商的 https 域名 + OpenCode 的 `/zen/`、`/inference/` 路径），不是开放代理；`host_permissions` 由同一份列表生成，只列这些域名。单测会读 `packages/core/src/llm-presets.ts` 和 `backend-ts/src/worker.ts` 校验两边一致——新增服务商时两边一起改。
+- 流式：每个请求一条长连接 port，响应以文本块逐段回传（SSE 可边到边显示），页面关闭/取消会中止上游请求；只转发固定的几个请求头/响应头，不跟随重定向，请求体 ≤ 8 MB，不记录 URL 参数、Key 或请求体。
+- 网页端（`frontend/src/lib/local/extensionLlm.ts`）先握手确认扩展能力；扩展不在、不支持该域名或在首字节前出错时，自动回退 `/llm-proxy`，行为与以前相同。设置 → 模型服务里显示当前通道「直连（扩展）」或「代理」。
+- 网页在需要转发但没检测到扩展时（已知需转发的服务商、即将走 `/llm-proxy`、或代理返回额度用尽的 429）会弹出可关闭的安装提示（可选「不再提醒」）。上架后把商店地址填进 `frontend/src/lib/local/extensionPrompt.ts` 的 `EXTENSION_STORE_URL`；未填时提示指向本 README。
+
+## 安装（未上架商店前）
+1. 在 `extension` 目录执行 `npm ci && npm run build`（或从 GitHub Release 下载打好的 zip 并解压）。
+2. 打开 `chrome://extensions`（Edge：`edge://extensions`），启用开发者模式，「加载已解压的扩展程序」，选择 `extension` 目录（或解压后的目录）。
+3. 刷新 OfferU 网页，设置 → 模型服务显示「跨域通道：直连（扩展）」即生效。
+
+商店上传包：`npm run zip`，产物在 `.output/offeru-job-collector-<version>-chrome.zip`（Chrome Web Store 与 Edge Add-ons 用同一个包）。
+
 ## 技术栈
 - WXT
 - TypeScript
