@@ -141,6 +141,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 系统提示词只有三件事：今天日期和 overview 摘要、工具说明、规则（不编造经历；对外的事只写草稿；长任务调用 handoff）。
 - 工具说明渐进披露（`packages/core/src/tools/catalog.ts`，借 Flovart `workflow.node.tool.list`）：每轮只给模型一行简述（`TOOL_BRIEFS`）+ 去掉 title / 长描述的精简 schema（校验仍用工具表原 schema），系统提示里放分组工具索引；要完整字段和规则时模型调只读的 `tool_manual(names=[…])`，常用流程（`role.research` / `evidence.map` / `resume.tailor` / `interview.prepare`）用 `tool_manual(capability=…)` 取步骤，流程只是现有工具的调用顺序，不新增业务逻辑。HTTP / MCP / CLI 仍列完整说明。
 - 工具报错结构化（`packages/core/src/tools/preflight.ts`）：内置 Agent 拿到的失败一律是 `{ok:false, error:{code, message, retryable, suggestedAction}}`（code：invalid_args / invalid / not_found / conflict / forbidden / unsupported / unknown_tool / upstream_unavailable / aborted / internal；只有 upstream_unavailable 可重试），不再是 `ERROR: …` 文本。执行前先过 schema 校验和预检（引用的岗位 / 记录 / 改动是否存在、简历 id 是不是 resume、改动是否已撤销），预检失败不执行，回修复建议（比如最近几条可用的 id）。HTTP / MCP / CLI 的报错形状不变。
+- Skill 渐进加载（`packages/core/src/agent/skills.ts`，借 Flovart `agentSkills.ts`）：系统提示只放通用规则（`CORE_RULES`）+ 技能索引；`interview-practice` / `role-research` / `resume-tailoring` / `job-evaluation` / `email-writing` 的方法按需用 `skill_read(id)` 读。用户这条消息或最近 6 条对话命中技能的触发词（如「模拟面试」「第 N 题」「调研」「简历」）时，该技能正文直接放进系统提示，经过评测的模拟面试 / 调研规则（DOGFOOD 2026-11-07，v4）原文搬过去、不改写。技能只是现有工具的用法，不新增业务逻辑。
 - 没配模型时，Ctrl+K 只做本地解析不了的提示：「先在设置里填模型，或者在 Codex 里说这句话」。
 
 ## 9. 后台 Codex 交接（PR5）

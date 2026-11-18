@@ -99,7 +99,7 @@ describe("POST /api/agent/runtime/runs", () => {
     expect(seen[0].tools?.map((tool) => tool.name)).toEqual([
       "overview", "search", "list", "get", "save", "delete", "undo", "changes",
       "web_search", "fetch_page", "split_resume", "add_job", "evaluate_jobs", "apply_answer", "draft_email", "reconcile_memory",
-      "export_data", "tool_manual", "request_user_input",
+      "export_data", "tool_manual", "skill_read", "request_user_input",
     ]);
 
     // user-only guard: the Agent may not confirm a memory; the error goes back to the model

@@ -60,7 +60,8 @@ export interface AgentHostDeps {
   resolveLlm(options: RunOptions): Promise<ResolvedLlm>;
   /** Core tools bound to the Agent actor. */
   tools(): AgentTool[];
-  systemPrompt(options: { maxSteps: number }): Promise<string>;
+  /** `texts`: the user's message + recent conversation, for auto-loading matching skills. */
+  systemPrompt(options: { maxSteps: number; texts?: string[] }): Promise<string>;
   /** Read uploaded attachments; absent means attachments are unsupported here. */
   prepareAttachments?(message: string, ids: string[]): Promise<PreparedAttachments>;
   /** User decisions on queued actions the Agent has not heard about (action_gate.take_decisions_for_agent). */
@@ -427,7 +428,8 @@ export class AgentHost {
       await state.store.putSession(runId, session);
 
       activeRun.promptActive = true;
-      const systemPrompt = await this.deps.systemPrompt({ maxSteps });
+      const recent = (input.contextMessages || []).slice(-6).map((item) => String(item.content || ""));
+      const systemPrompt = await this.deps.systemPrompt({ maxSteps, texts: [goal, ...recent] });
       const result = await runAgentLoop({
         client: llm.client,
         systemPrompt,
