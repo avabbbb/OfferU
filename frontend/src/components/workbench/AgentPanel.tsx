@@ -20,11 +20,13 @@ import {
   ChevronRight,
   ChevronUp,
   ArrowUp,
+  Hand,
   History,
   ListTodo,
   Loader2,
   Mail,
   MoreHorizontal,
+  Paperclip,
   PenLine,
   Plus,
   RefreshCw,
@@ -33,6 +35,7 @@ import {
   Trash2,
   Wrench,
   X,
+  Zap,
 } from "lucide-react";
 import { Menu } from "@/components/ui";
 import {
@@ -58,6 +61,8 @@ import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { SHOWCASE } from "@/lib/showcase";
 import { getBridgeState, subscribeBridge } from "@/lib/bridge";
 import { DemoAgentPanel } from "./DemoAgentPanel";
+import { AgentHistoryList } from "./AgentHistoryList";
+import { AgentSlashMenu, useAgentSlash, type SlashAction } from "./AgentSlashMenu";
 import { contextUsageFromEvent, type AgentContextUsage } from "@/lib/agentContextUsage";
 import { ContextUsageRing } from "@/components/ui/agent/ContextUsageRing";
 import Link from "next/link";
@@ -289,6 +294,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   // 输入框附件：拖入、粘贴或点 + 号添加，选中即上传
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const composerWidth = useComposerWidth();
+  const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const dragDepthRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
   const composerAttachments = useComposerAttachments(agentRuntimeApi.uploadAttachment);
@@ -330,6 +336,24 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
 
   const latestMode = latestResponse?.mode || "ready";
   const latestStage = latestResponse?.user_stage || "unknown";
+
+  // 「/」命令：对话、输入和快捷任务；选中后 "/xx" 从输入框里拿掉再执行。快捷任务只填进输入框，Enter 再发。
+  const fillComposer = (text: string) => {
+    setInput(text);
+    window.requestAnimationFrame(() => composerInputRef.current?.focus());
+  };
+  const slashCommands: SlashAction[] = [
+    { id: "new", label: "新对话", description: "清空当前窗格，开一个新对话", group: "对话", hint: "/new", keywords: ["new", "clear", "清空"], icon: <Plus size={15} />, run: () => startNewConversation() },
+    { id: "history", label: "历史对话", description: "↑↓ 选择，Enter 打开", group: "对话", hint: "/history", keywords: ["history", "切换", "对话"], icon: <History size={15} />, run: () => { void refreshConversations(); setHistoryOpen(true); } },
+    { id: "model", label: "切换模型", description: "服务 › 模型 › 思考强度", group: "输入", hint: "/model", keywords: ["model", "模型", "思考", "强度", "effort"], icon: <Sparkles size={15} />, run: () => setModelMenuOpen(true) },
+    { id: "ask", label: "模式 · 询问", description: "每一步写入都先问你", group: "输入", hint: "/ask", keywords: ["mode", "模式"], icon: <Hand size={15} />, run: () => setComposerOptions({ approvalMode: "ask" }) },
+    { id: "auto", label: "模式 · 自动", description: "可撤销的直接做，不可撤销的才问你", group: "输入", hint: "/auto", keywords: ["mode", "模式"], icon: <Zap size={15} />, run: () => setComposerOptions({ approvalMode: "auto" }) },
+    { id: "attach", label: "添加附件", description: "图片、PDF 或 PPT", group: "输入", hint: "/attach", keywords: ["file", "image", "附件", "图片", "文件"], icon: <Paperclip size={15} />, run: () => attachmentInputRef.current?.click() },
+    ...[...quickActionsForStage(latestStage), ...EMPTY_SUGGESTIONS.map((item) => ({ label: item.label, prompt: item.prompt }))].map((action, index): SlashAction => ({
+      id: `quick-${index}`, label: action.label, description: action.prompt, group: "快捷任务", keywords: [action.prompt], icon: <ListTodo size={15} />, run: () => fillComposer(action.prompt),
+    })),
+  ];
+  const slash = useAgentSlash({ input, setInput, inputRef: composerInputRef, commands: slashCommands });
 
 
   const refreshConversations = async () => {
@@ -947,54 +971,14 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
       {historyOpen && (
         <>
         <div className="fixed inset-0 z-20" aria-hidden onClick={() => setHistoryOpen(false)} />
-        <div className="agent-history">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="px-1 text-[length:var(--agent-fs-xs)] font-medium text-[var(--foreground-muted)]">历史对话</p>
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={startNewConversation}
-                className="ou-button ou-button-secondary ou-button-sm"
-              >
-                <Plus size={12} />
-                新建
-              </button>
-            </div>
-          </div>
-          <div className="max-h-40 space-y-1 overflow-y-auto">
-            {conversations.length === 0 && (
-              <p className="rounded-md px-2 py-1.5 text-[12px] text-[var(--foreground-muted)]">暂无历史对话</p>
-            )}
-            {conversations.map((conversation) => (
-              <div
-                key={conversation.id}
-                className="agent-history-row"
-                data-current={conversation.id === conversationId || undefined}
-              >
-                <button
-                  type="button"
-                  onClick={() => loadConversation(conversation.id)}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <p className="truncate text-[12px] font-medium text-[var(--foreground)]">
-                    {conversation.title || "历史对话"}
-                  </p>
-                  <p className="mt-0.5 truncate text-[11px] text-[var(--foreground-muted)]">
-                    {conversation.message_count} 条 / {conversation.last_message}
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  aria-label="删除历史对话"
-                  onClick={() => removeConversation(conversation.id)}
-                  className="rounded p-1 text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--status-blush)] hover:text-[var(--primary-red)]"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <AgentHistoryList
+          conversations={conversations}
+          currentId={conversationId}
+          onOpen={(id) => { void loadConversation(id); }}
+          onDelete={(id) => { void removeConversation(id); }}
+          onNew={startNewConversation}
+          onClose={() => { setHistoryOpen(false); composerInputRef.current?.focus(); }}
+        />
         </>
       )}
 
@@ -1331,6 +1315,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
           className={dragActive ? "agent-composer is-drag-active" : "agent-composer"}
           style={composerWidth.width === null ? undefined : { width: composerWidth.width }}
           data-testid="agent-composer"
+          data-ou-listbox-anchor=""
           data-mode={composerOptions.approvalMode}
           data-working={working || undefined}
           data-has-input={input ? "" : undefined}
@@ -1388,7 +1373,13 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
               event.preventDefault();
               composerAttachments.addFiles(files);
             }}
+            ref={composerInputRef}
+            onSelect={slash.syncCaret}
+            onKeyUp={slash.syncCaret}
+            onClick={slash.syncCaret}
+            onInput={slash.syncCaret}
             onKeyDown={(event) => {
+              if (slash.onKeyDown(event)) return;
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 sendFromComposer();
@@ -1396,7 +1387,9 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
             }}
           />
           </div>
-          <AgentAttachmentTray items={composerAttachments.items} onRemove={composerAttachments.remove} />
+          <AgentAttachmentTray items={composerAttachments.items} onRemove={composerAttachments.remove}
+            onExit={() => composerInputRef.current?.focus()} />
+          <AgentSlashMenu slash={slash} anchorRef={composerWidth.ref} />
           {dragActive && <span className="agent-drop-hint" aria-hidden>松开即可添加图片、PDF 或 PPT</span>}
           <div className="agent-composer-controls">
             <input

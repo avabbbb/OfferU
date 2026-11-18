@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import { FileText, Loader2, Presentation, X } from "lucide-react";
 import { attachmentExtension, formatAttachmentSize, type AgentAttachmentKind } from "@/lib/agentAttachments";
 import { useApiAssetUrl } from "@/lib/apiAsset";
@@ -22,12 +23,40 @@ function statusLine(item: ComposerAttachment): string {
 
 // 输入框附件（参考 Inspora「composer mockup」）：图片排成拼贴——1 张铺满、2 张对半、3 张左一大右两小、4 张田字；
 // 文档是下面一排小胶囊。悬停图片右上角出圆形 ×。
+/**
+ * 附件托盘的键盘：焦点在某个附件的「×」上时，←/→/↑/↓ 在附件之间移动、Delete / Backspace 移除并把焦点给相邻那个、
+ * Esc 回到输入框。从输入框 Tab 进来即可，不用鼠标。
+ */
+export function attachmentTrayKeyDown(event: KeyboardEvent<HTMLElement>, onExit?: () => void) {
+  const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".agent-attachment-remove"));
+  const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+  if (index < 0) return;
+  const focus = (next: number) => { event.preventDefault(); buttons[(next + buttons.length) % buttons.length]?.focus(); };
+  if (event.key === "ArrowRight" || event.key === "ArrowDown") focus(index + 1);
+  else if (event.key === "ArrowLeft" || event.key === "ArrowUp") focus(index - 1);
+  else if (event.key === "Home") focus(0);
+  else if (event.key === "End") focus(buttons.length - 1);
+  else if (event.key === "Delete" || event.key === "Backspace") {
+    event.preventDefault();
+    const neighbour = buttons[index + 1] || buttons[index - 1];
+    buttons[index].click();
+    if (neighbour) window.requestAnimationFrame(() => neighbour.focus());
+    else onExit?.();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    onExit?.();
+  }
+}
+
 export function AgentAttachmentTray({
   items,
   onRemove,
+  onExit,
 }: {
   items: ComposerAttachment[];
   onRemove: (localId: string) => void;
+  /** Esc / 删完最后一个时把焦点还给输入框。 */
+  onExit?: () => void;
 }) {
   if (items.length === 0) return null;
   const images = items.filter((item) => item.kind === "image" && item.previewUrl && item.status !== "error");
@@ -38,7 +67,8 @@ export function AgentAttachmentTray({
     </button>
   );
   return (
-    <div className="agent-attachment-tray" aria-label="附件" data-testid="agent-attachment-tray">
+    <div className="agent-attachment-tray" aria-label="附件（←→ 切换，Delete 移除，Esc 回到输入框）" data-testid="agent-attachment-tray"
+      onKeyDown={(event) => attachmentTrayKeyDown(event, onExit)}>
       {images.length > 0 && (
         <ul className="agent-mosaic" data-count={Math.min(images.length, 4)}>
           {images.slice(0, 4).map((item) => (
