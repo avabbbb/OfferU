@@ -28,7 +28,7 @@ import type { AgentTool } from "./loop";
 import { AGENT_ACTOR, agentSystemPrompt, type MemoryArm } from "./prompt";
 import { AgentConversations, AgentRunState, type AgentRunStore } from "./run-state";
 import { CORE_TOOL_SPECS, coreToolSpecs, registrySpecs } from "./tool-specs";
-import { toolManualTool } from "./discovery";
+import { skillReadTool, toolManualTool } from "./discovery";
 import { TOOL_MANUAL_NAME, preflightTool, toolSpec, type ToolSpec } from "../tools";
 import { bindAgentTools } from "./tools";
 
@@ -106,9 +106,10 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
       const extra = deps.extraTools?.() ?? [];
       const names = new Set(record.map((tool) => tool.name));
       const manual = toolManualTool(() => [...manualSpecs, ...extraSpecs().filter((spec) => !names.has(spec.name))]);
-      return [...record, ...extra.filter((tool) => !names.has(tool.name) && tool.name !== TOOL_MANUAL_NAME), manual];
+      const kernel = new Set([TOOL_MANUAL_NAME, "skill_read"]);
+      return [...record, ...extra.filter((tool) => !names.has(tool.name) && !kernel.has(tool.name)), manual, skillReadTool()];
     },
-    systemPrompt: ({ maxSteps }) => agentSystemPrompt(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm, tools: toolNames() }),
+    systemPrompt: ({ maxSteps, texts }) => agentSystemPrompt(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm, tools: toolNames(), skillTexts: texts }),
     prepareAttachments: deps.prepareAttachments,
     maxConcurrentRuns: deps.maxConcurrentRuns,
   });

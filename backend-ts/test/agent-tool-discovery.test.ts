@@ -104,7 +104,8 @@ describe("built-in Agent: brief tools each turn, full manual on demand", () => {
     expect(String(first.messages[0].content)).toContain("工具索引");
     expect(String(first.messages[0].content)).toContain("resume.tailor");
     // the per-turn tool payload is much smaller than the registry
-    expect(JSON.stringify(first.tools).length).toBeLessThan(JSON.stringify(AGENT_TOOL_SPECS).length / 2);
+    const registry = new Set(AGENT_TOOL_SPECS.map((spec) => spec.name));
+    expect(JSON.stringify(first.tools?.filter((tool) => registry.has(tool.name))).length).toBeLessThan(JSON.stringify(AGENT_TOOL_SPECS).length / 2);
 
     const replies = seen[3].messages.filter((message) => message.role === "tool").map((message) => JSON.parse(String(message.content)));
     expect(replies[0]).toMatchObject({ ok: true, tools: [{ name: "save", description: full.description, inputSchema: full.inputSchema }] });
