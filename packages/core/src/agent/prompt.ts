@@ -5,6 +5,7 @@
 
 import { MEMORY_KIND } from "../labels";
 import { overview } from "../operations";
+import { capabilityIndex } from "../tools/catalog";
 import type { CoreContext, CoreStore, MemoryKind, StoredRecord } from "../types";
 
 export const AGENT_ACTOR = "助手";
@@ -70,6 +71,8 @@ export async function preferenceRules(store: CoreStore): Promise<string> {
 export interface PromptOptions {
   maxSteps?: number;
   memoryArm?: MemoryArm;
+  /** Tool names this run has; adds the capability index (tools/catalog.ts). */
+  tools?: readonly string[];
 }
 
 export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, options: PromptOptions = {}): Promise<string> {
@@ -93,6 +96,7 @@ export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, opti
   return `你是 OfferU 里的求职助手。今天是 ${view.today}。\n`
     + `用户现在的情况（overview 摘要）：${pyJson(summary)}\n`
     + memory
+    + (options.tools?.length ? capabilityIndex(options.tools) : "")
     + RULES
     + `- 最多调用 ${options.maxSteps || MAX_STEPS} 轮工具，先用 overview / search / get 查清楚再写。`;
 }
