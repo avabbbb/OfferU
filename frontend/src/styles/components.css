@@ -92,6 +92,10 @@
 .ou-menu .ou-menu-item[data-highlighted] .ou-menu-arrow { opacity: var(--ou-alpha-muted); transform: none; }
 .ou-menu .ou-menu-item[data-danger] .ou-menu-text, .ou-menu .ou-menu-item[data-danger] .ou-menu-icon { color: var(--ou-tone-red-text); opacity: 1; }
 .ou-menu .ou-menu-item[data-disabled] { opacity: var(--ou-alpha-faint); }
+/* 级联子菜单的触发行：右侧固定一个 ›；展开时保持高亮（白胶囊），键盘 → 进入、← 退出。 */
+.ou-menu-caret { display: inline-flex; flex: none; color: var(--ou-text-primary); opacity: var(--ou-alpha-faint); }
+.ou-menu .ou-menu-subtrigger[data-state="open"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+.ou-menu .ou-menu-subtrigger[data-state="open"] .ou-menu-text { opacity: 1; }
 .ou-menu-heading { padding: var(--ou-space-2) var(--ou-space-3) var(--ou-space-1); font-size: var(--ou-type-xs); color: var(--ou-text-primary); opacity: var(--ou-alpha-faint); }
 @keyframes ou-menu-in { from { opacity: 0; transform: scale(0.96) translateY(-4px); } to { opacity: 1; transform: none; } }
 .ou-menu { animation: ou-menu-in var(--ou-motion-slow) var(--ou-ease-spring-soft); }

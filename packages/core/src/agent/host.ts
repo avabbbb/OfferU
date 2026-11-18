@@ -19,6 +19,7 @@ import {
   type AgentRunEvent,
 } from "./run-state";
 import type { Json } from "../types";
+import type { ReasoningEffort } from "../llm-reasoning";
 import type { RawRunEvent } from "./events";
 
 export const PROTOCOL_VERSION = "offeru.ts-agent.v1";
@@ -30,7 +31,9 @@ const DELTA_FLUSH_CHARS = 512;
 
 export interface RunOptions {
   llm_config_id?: string;
-  reasoning_effort?: "" | "low" | "medium" | "high";
+  /** Model id inside that service; "" = the service's configured model. */
+  model?: string;
+  reasoning_effort?: ReasoningEffort;
   approval_mode?: "auto" | "ask";
   max_steps?: number;
   journey_id?: string;

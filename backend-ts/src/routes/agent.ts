@@ -18,6 +18,9 @@ import {
   agentActionUndoPreview,
   agentActions,
   canonicalAgentRunEvent,
+  isReasoningEffort,
+  llmModelCatalog,
+  type ReasoningEffort,
   createAgentRuntime,
   randomHex,
   runtimeResponseFromRun,
@@ -48,7 +51,7 @@ export function agentHost(deps: AppDeps): AgentHost {
     host = createAgentRuntime({
       store: deps.store,
       runs: deps.agentRuns ?? new MemoryAgentRunStore(),
-      llm: () => deps.llm?.() ?? null,
+      llm: (options) => deps.llm?.({ llmConfigId: options.llm_config_id, model: options.model }) ?? null,
       // Every registry tool this runtime can run (search / fetch / model tools, companion files).
       toolDeps: () => ({
         store: deps.store,
@@ -88,7 +91,8 @@ export interface RunRequest {
   run_id: string | null;
   runtime_provider: string;
   llm_config_id: string;
-  reasoning_effort: "" | "low" | "medium" | "high";
+  model: string;
+  reasoning_effort: ReasoningEffort;
   approval_mode: "auto" | "ask";
   attachments: string[];
 }
@@ -107,7 +111,7 @@ export function parseRunRequest(raw: unknown): RunRequest {
   const provider = str(body.runtime_provider || "embedded");
   if (provider.length > 40 || !PROVIDER_ID.test(provider)) throw new CoreError("runtime_provider 格式不对", "invalid");
   const effort = str(body.reasoning_effort);
-  if (!["", "low", "medium", "high"].includes(effort)) throw new CoreError("reasoning_effort 只能是 low / medium / high", "invalid");
+  if (!isReasoningEffort(effort)) throw new CoreError("reasoning_effort 只能是 minimal / low / medium / high", "invalid");
   const approval = str(body.approval_mode || "auto");
   if (approval !== "auto" && approval !== "ask") throw new CoreError("approval_mode 只能是 auto / ask", "invalid");
   const attachments = body.attachments === undefined ? [] : body.attachments;
@@ -116,6 +120,8 @@ export function parseRunRequest(raw: unknown): RunRequest {
   if (skill.length > 120) throw new CoreError("skill_id 太长", "invalid");
   const llmConfig = str(body.llm_config_id);
   if (llmConfig.length > 64) throw new CoreError("llm_config_id 太长", "invalid");
+  const model = str(body.model).trim();
+  if (model.length > 200) throw new CoreError("model 太长", "invalid");
   return {
     message,
     max_steps: maxSteps,
@@ -126,7 +132,8 @@ export function parseRunRequest(raw: unknown): RunRequest {
     run_id: runId,
     runtime_provider: provider,
     llm_config_id: llmConfig,
-    reasoning_effort: effort as RunRequest["reasoning_effort"],
+    model,
+    reasoning_effort: effort,
     approval_mode: approval as RunRequest["approval_mode"],
     attachments: attachments.map(String),
   };
@@ -135,6 +142,7 @@ export function parseRunRequest(raw: unknown): RunRequest {
 function runOptions(body: RunRequest): RunOptions {
   return {
     llm_config_id: body.llm_config_id,
+    model: body.model,
     reasoning_effort: body.reasoning_effort,
     approval_mode: body.approval_mode,
     max_steps: body.max_steps,
@@ -248,6 +256,13 @@ export function registerAgent(app: Hono<AppEnv>): void {
   });
 
   app.get("/api/agent/runtime/providers/health", (c) => c.json({ providers: [] }));
+
+  // The composer's model picker: services → models → reasoning levels, all decided here (core/llm-reasoning).
+  app.get("/api/agent/runtime/models", async (c) => {
+    const config = c.get("deps").config;
+    if (!config) throw new CoreError("这个运行环境没有模型设置", "unsupported");
+    return c.json({ services: llmModelCatalog(await config.get()) });
+  });
 
   // ---- runs ----
 

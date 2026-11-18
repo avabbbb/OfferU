@@ -23,3 +23,4 @@ export * from "./interview";
 export * from "./interview-api";
 export * from "./data-safety";
 export * from "./agent-runtime-compat";
+export * from "./llm-reasoning";

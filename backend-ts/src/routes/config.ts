@@ -12,6 +12,7 @@ import {
   resolveLlmClientConfig,
   type ConfigStore,
   type HttpFetch,
+  type LlmChoice,
   type LlmClient,
   type StoredConfig,
 } from "@offeru/core";
@@ -49,15 +50,18 @@ export class ConfigRuntime {
   }
 
   /** AppDeps.llm: null when nothing usable is configured (or not loaded yet). */
-  llm(): LlmClient | null {
+  llm(choice: LlmChoice = {}): LlmClient | null {
     if (!this.cached) {
       void this.get().catch(() => undefined);
       return null;
     }
     try {
-      const client = createLlmClient(endpointFromSettings(this.cached, "standard", { env: this.env }), { fetch: this.fetchFn as never });
+      const options = { env: this.env, llmConfigId: choice.llmConfigId || undefined };
+      const endpoint = endpointFromSettings(this.cached, "standard", options);
+      if (choice.model) endpoint.model = choice.model;
+      const client = createLlmClient(endpoint, { fetch: this.fetchFn as never });
       // runtime() for /api/interviews/runtime, transcribe() for interview-review audio.
-      return configureLlm(client, this.cached, { fetch: this.fetchFn as never, env: this.env });
+      return configureLlm(client, this.cached, { fetch: this.fetchFn as never, ...options });
     } catch {
       return null;
     }

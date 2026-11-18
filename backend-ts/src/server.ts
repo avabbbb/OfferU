@@ -41,7 +41,7 @@ export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDe
     runtime: "node",
     storage: "sqlite",
     // The model comes from the user's saved settings (/api/config); OFFERU_LLM_* env vars are a dev fallback only.
-    llm: () => config.llm() ?? llmFromEnv(),
+    llm: (choice) => config.llm(choice) ?? llmFromEnv(),
     config,
     search,
     fetch,

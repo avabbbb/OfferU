@@ -57,6 +57,8 @@
 
 可选 `checked`：单选组（Agent 输入框的模型 / 思考强度 / 模式）里当前那一项，行尾一个对勾，读屏读作 `menuitemradio`；带 `description` 的两行项上下各留 4px。
 
+级联子菜单：一项写成 `{ label, items, description?, checked? }` 就是 Radix `Sub`——行尾固定一个 `›`（`.ou-menu-caret`），→ / Enter 展开、← / Esc 收回，展开的那一行保持白胶囊（`.ou-menu-subtrigger[data-state=open]`）；子面板是同一块玻璃，可以再套一层。例：Agent 输入框的模型胶囊是「服务 › 模型 › 思考强度」三级，强度档位由后端 `GET /api/agent/runtime/models` 按服务 / 模型给出，前端不写死；模型没有可调强度时它就是叶子项。
+
 可选 `side`，以及受控的 `open / onOpenChange`：调用方自己决定何时打开。例：简历要点的「⋮⋮」把手——按下后移动是拖动排序，没移动松手才开菜单；触发器的 `onPointerDown` 里 `preventDefault()` 就能跳过 Radix 默认的「按下即开」，键盘 Enter / Space 仍由 Radix 打开。可选 `onCloseAutoFocus`：某一项要把焦点放到别处（如「在下面加一条」后的新块）时在这里 `preventDefault()`，否则关菜单会把焦点还给触发器。
 
 ## Popover（Radix Popover）

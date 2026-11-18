@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type ConsentStore, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type SearchClient, type FileStore, type AgentRunStore, type BackupFiles, type PageRenderer } from "@offeru/core";
+import { isCoreError, type ConsentStore, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type LlmChoice, type SearchClient, type FileStore, type AgentRunStore, type BackupFiles, type PageRenderer } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
 import type { AgentBoardService } from "./routes/agent-board";
@@ -22,8 +22,11 @@ export interface AppDeps {
   /** node = desktop companion, worker = Cloudflare Worker (stateless), browser = the in-page backend of the web build. */
   runtime: "node" | "worker" | "browser";
   storage: "sqlite" | "none" | "indexeddb";
-  /** The user's configured model (BYOK); called per request so a changed key applies at once. Absent/null = no model. */
-  llm?: () => LlmClient | null;
+  /**
+   * The user's configured model (BYOK); called per request so a changed key applies at once. Absent/null = no model.
+   * `choice` is the Agent composer's per-run pick (service + model); absent = the active service's model.
+   */
+  llm?: (choice?: LlmChoice) => LlmClient | null;
   /** Web search (Bocha / Tavily / Serper) built from the user's keys; absent/null = not configured. */
   search?: () => SearchClient | null;
   /** Outbound fetch for fetch_page / add_job (global fetch on Node and Workers). */

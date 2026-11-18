@@ -1153,7 +1153,20 @@ export interface AgentViewSnapshot {
   context: Record<string, unknown>;
 }
 
+/** GET /api/agent/runtime/models: the composer's service › model › reasoning-effort tree (decided by the backend). */
+export interface AgentModelEffort { id: "minimal" | "low" | "medium" | "high"; label: string; hint: string }
+export interface AgentModelChoice { id: string; name: string; efforts: AgentModelEffort[] }
+export interface AgentModelService {
+  config_id: string;
+  service_name: string;
+  provider_id: string;
+  active: boolean;
+  default_model: string;
+  models: AgentModelChoice[];
+}
+
 export const agentRuntimeApi = {
+  models: () => request<{ services: AgentModelService[] }>("/api/agent/runtime/models"),
   connections: () => request<AgentConnectionsSnapshot>("/api/agent/runtime/connections", {
     signal: AbortSignal.timeout(20000),
   }),
@@ -1201,7 +1214,8 @@ export const agentRuntimeApi = {
     task_id?: string | null;
     runtime_provider?: string;
     llm_config_id?: string;
-    reasoning_effort?: "" | "low" | "medium" | "high";
+    model?: string;
+    reasoning_effort?: "" | "minimal" | "low" | "medium" | "high";
     approval_mode?: "auto" | "ask";
     attachments?: string[];
   }, onEvent?: (event: string, data: any) => void, signal?: AbortSignal) => {
