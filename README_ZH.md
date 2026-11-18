@@ -49,24 +49,33 @@
   <em>Internal Beta —— 源码可用，签名安装包尚未发布。详见 <a href="./docs/KNOWN_ISSUES.md">已知问题</a>。</em>
 </p>
 
+<h3 align="center" id="screenshots">界面一览</h3>
+
+<p align="center">
+  <img src="./asset/screenshots/01-today-workbench.png" alt="OfferU 今天：下一步与投递看板" width="960" /><br/>
+  <sub><strong>今天</strong>：最该做的一件事放在最上面，下面是所有投递的看板。</sub>
+</p>
+
 <table>
   <tr>
-    <td width="50%"><img src="./asset/screenshots/01-today-workbench.png" alt="OfferU 工作台" /></td>
-    <td width="50%"><img src="./asset/screenshots/04-job-detail.png" alt="岗位详情与岗位情报" /></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/04-job-detail.png" alt="岗位详情与结构化 JD" /><br/><strong>岗位详情</strong><br/><sub>JD 拆成本质、硬性要求、关键词和协作对象，旁边是这个岗位的事项。</sub></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/02-pipeline-board.png" alt="岗位看板视图" /><br/><strong>投递看板</strong><br/><sub>按阶段排好每个岗位，卡片上有下一个截止、标签和匹配分。</sub></td>
   </tr>
   <tr>
-    <td align="center"><strong>工作台：岗位、证据与下一步</strong></td>
-    <td align="center"><strong>岗位详情：研究、缺口与准备</strong></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/08-resume-optimize.png" alt="简历编辑器" /><br/><strong>简历工作区</strong><br/><sub>模块化编辑 + 一页实时预览；选一个目标岗位就能按岗位改写。</sub></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/05-profile.png" alt="职业档案" /><br/><strong>职业档案</strong><br/><sub>教育、实习、项目和技能：简历和网申都从这里取证据。</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="./asset/screenshots/02-pipeline-board.png" alt="投递 Pipeline" /></td>
-    <td width="50%"><img src="./asset/screenshots/08-resume-optimize.png" alt="简历工作区" /></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/06-calendar.png" alt="岗位日历视图" /><br/><strong>日历</strong><br/><sub>所有岗位的面试、笔试和截止放在一周视图里。</sub></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/03-jobs-list.png" alt="岗位表格视图" /><br/><strong>岗位多维表</strong><br/><sub>表格、看板、甘特、日历、画廊共用一份岗位数据。</sub></td>
   </tr>
   <tr>
-    <td align="center"><strong>Pipeline：阶段、时间线与下一动作</strong></td>
-    <td align="center"><strong>简历：基于证据的定制</strong></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/09-agent-connect.png" alt="连接你自己的 Agent" /><br/><strong>使用我的 Agent</strong><br/><sub>把一段提示词贴进 Claude Code、Codex 等 Agent，它就能和你一起用 OfferU。</sub></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/07-settings.png" alt="模型服务设置" /><br/><strong>模型服务</strong><br/><sub>接入任意 OpenAI 兼容接口；密钥保存在本机。</sub></td>
   </tr>
 </table>
+
+<p align="center"><sub>截图使用虚构的演示数据：公司、候选人和链接均为编造。截自网页版，1440×900。</sub></p>
 
 ---
 

@@ -1,0 +1,553 @@
+{
+ "version": 1,
+ "nextRecordId": 23,
+ "nextChangeId": 1,
+ "records": [
+  {
+   "id": 1,
+   "type": "profile",
+   "job_id": null,
+   "created_at": "2026-10-19T09:00:00",
+   "updated_at": "2026-11-16T09:00:00",
+   "name": "林沐",
+   "school": "浙江大学",
+   "major": "计算机科学与技术",
+   "degree": "本科",
+   "grad_year": "2027",
+   "phone": "138-0000-0000",
+   "email": "linmu@example.com",
+   "city": "杭州",
+   "target": "后端 / AI 应用开发",
+   "stage": "applying",
+   "about": "做过后端和 Agent 工具链，想去业务里把模型能力落到真实流程。"
+  },
+  {
+   "id": 2,
+   "type": "job",
+   "job_id": null,
+   "created_at": "2026-10-29T09:00:00",
+   "updated_at": "2026-11-17T09:00:00",
+   "company": "星辰科技",
+   "title": "AI 应用后端实习生",
+   "status": "interview",
+   "url": "https://example.com/jobs/xingchen-ai-backend",
+   "city": "杭州",
+   "jd": "【岗位职责】\n1. 负责大模型应用平台的服务端开发，包括工具调用、会话管理与评测流水线；\n2. 与算法、产品协作，把模型能力接入客服与运营等业务场景；\n3. 参与服务的性能优化与稳定性建设。\n\n【任职要求】\n1. 2027 届本科及以上，计算机相关专业；\n2. 熟悉 Python 或 Go，理解 HTTP、数据库与缓存；\n3. 有 LLM / Agent / RAG 项目经验者优先；\n4. 每周实习 4 天以上，持续 3 个月以上。",
+   "notes": "二面准备：讲清楚评测流水线怎么设计、为什么用消息队列做异步。",
+   "applied_at": "2026-11-06",
+   "score": 86,
+   "reasons": [
+    "技术栈匹配（Python / TypeScript）",
+    "有 Agent 工具链项目",
+    "城市匹配"
+   ],
+   "tags": [
+    "AI",
+    "后端",
+    "实习"
+   ],
+   "auto_tags": [
+    "AI",
+    "后端"
+   ],
+   "posting": {
+    "hire_type": "日常实习",
+    "team": "大模型应用平台部",
+    "education": "本科及以上",
+    "years": "2027 届",
+    "salary": "300–400 元/天",
+    "posted_at": "2026-10-27",
+    "essence": "把模型能力做成稳定的后端服务：工具调用、评测、业务接入。",
+    "responsibilities": [
+     "大模型应用平台服务端开发（工具调用、会话、评测流水线）",
+     "把模型能力接入客服与运营业务",
+     "服务性能优化与稳定性建设"
+    ],
+    "hard_reqs": [
+     "2027 届本科及以上，计算机相关专业",
+     "熟悉 Python 或 Go，理解 HTTP / 数据库 / 缓存",
+     "每周 4 天、持续 3 个月以上"
+    ],
+    "soft_reqs": [
+     "LLM / Agent / RAG 项目经验",
+     "做过评测或可观测性"
+    ],
+    "keywords": [
+     "Python",
+     "Go",
+     "LLM",
+     "Agent",
+     "RAG",
+     "评测",
+     "高并发"
+    ],
+    "collaborators": [
+     "算法工程师",
+     "产品经理"
+    ],
+    "evidence": [
+     {
+      "req": "LLM / Agent 项目经验",
+      "need": "项目里工具调用和可撤销写入的设计"
+     },
+     {
+      "req": "评测经验",
+      "need": "补一个评测指标和对比结果"
+     }
+    ]
+   }
+  },
+  {
+   "id": 3,
+   "type": "job",
+   "job_id": null,
+   "created_at": "2026-11-03T09:00:00",
+   "updated_at": "2026-11-15T09:00:00",
+   "company": "云帆数据",
+   "title": "数据平台开发实习生",
+   "status": "test",
+   "url": "https://example.com/jobs/yunfan-data-platform",
+   "city": "杭州",
+   "jd": "参与数据平台调度与元数据服务开发；要求熟悉 Java / Python 与 SQL，了解 Spark / Flink 优先。",
+   "notes": "笔试前把 SQL 窗口函数和并发复习一遍。",
+   "applied_at": "2026-11-11",
+   "score": 78,
+   "reasons": [
+    "方向匹配",
+    "需要补大数据组件经验"
+   ],
+   "tags": [
+    "数据",
+    "后端",
+    "实习"
+   ]
+  },
+  {
+   "id": 4,
+   "type": "job",
+   "job_id": null,
+   "created_at": "2026-11-09T09:00:00",
+   "updated_at": "2026-11-16T09:00:00",
+   "company": "极光互动",
+   "title": "服务端开发实习生",
+   "status": "applied",
+   "url": "https://example.com/jobs/jiguang-server",
+   "city": "上海",
+   "jd": "社区业务服务端开发，要求熟悉 Go / Java，理解高可用与存储。",
+   "notes": "已网申，等测评通知。",
+   "applied_at": "2026-11-15",
+   "score": 74,
+   "reasons": [
+    "业务感兴趣",
+    "城市需要确认"
+   ],
+   "tags": [
+    "社区",
+    "服务端",
+    "实习"
+   ]
+  },
+  {
+   "id": 5,
+   "type": "job",
+   "job_id": null,
+   "created_at": "2026-11-12T09:00:00",
+   "updated_at": "2026-11-17T09:00:00",
+   "company": "青禾智能",
+   "title": "Agent 工程师（校招）",
+   "status": "saved",
+   "url": "https://example.com/jobs/qinghe-agent",
+   "city": "深圳",
+   "jd": "负责企业 Agent 平台：工具协议（MCP）、长任务编排、评测与回放。要求扎实的 TypeScript / Python 工程能力。",
+   "notes": "简历还没按岗位改；截止前投。",
+   "score": 81,
+   "reasons": [
+    "Agent 方向高度相关",
+    "需要展示长任务编排经验"
+   ],
+   "tags": [
+    "AI",
+    "Agent",
+    "校招"
+   ]
+  },
+  {
+   "id": 6,
+   "type": "job",
+   "job_id": null,
+   "created_at": "2026-11-14T09:00:00",
+   "updated_at": "2026-11-17T09:00:00",
+   "company": "蓝鲸云",
+   "title": "后端开发工程师（校招）",
+   "status": "saved",
+   "url": "https://example.com/jobs/lanjing-backend",
+   "city": "杭州",
+   "jd": "云产品控制台与计费服务开发，要求熟悉 Go，有分布式系统基础。",
+   "score": 70,
+   "reasons": [
+    "技术栈部分匹配"
+   ],
+   "tags": [
+    "云",
+    "后端",
+    "校招"
+   ]
+  },
+  {
+   "id": 7,
+   "type": "job",
+   "job_id": null,
+   "created_at": "2026-10-24T09:00:00",
+   "updated_at": "2026-11-08T09:00:00",
+   "company": "晨曦游戏",
+   "title": "后台开发实习生",
+   "status": "rejected",
+   "url": "https://example.com/jobs/chenxi-backend",
+   "city": "广州",
+   "jd": "游戏后台服务开发。",
+   "notes": "一面后没有推进：并发题答得不够细。",
+   "applied_at": "2026-10-31",
+   "score": 62,
+   "reasons": [
+    "岗位匹配一般"
+   ],
+   "tags": [
+    "游戏",
+    "后台"
+   ]
+  },
+  {
+   "id": 8,
+   "type": "job",
+   "job_id": null,
+   "created_at": "2026-10-19T09:00:00",
+   "updated_at": "2026-11-13T09:00:00",
+   "company": "远山科技",
+   "title": "AI 平台实习生",
+   "status": "offer",
+   "url": "https://example.com/jobs/yuanshan-ai",
+   "city": "杭州",
+   "jd": "AI 平台工具链开发。",
+   "notes": "口头 offer，等书面；周五前答复。",
+   "applied_at": "2026-10-23",
+   "score": 83,
+   "reasons": [
+    "方向匹配",
+    "团队氛围好"
+   ],
+   "tags": [
+    "AI",
+    "实习"
+   ]
+  },
+  {
+   "id": 9,
+   "type": "event",
+   "job_id": 2,
+   "created_at": "2026-11-17T09:00:00",
+   "updated_at": "2026-11-17T09:00:00",
+   "title": "星辰科技 二面",
+   "kind": "interview",
+   "at": "2026-11-19T14:00",
+   "done": false,
+   "notes": "线上视频，提前 10 分钟进会议。"
+  },
+  {
+   "id": 10,
+   "type": "event",
+   "job_id": 3,
+   "created_at": "2026-11-16T09:00:00",
+   "updated_at": "2026-11-16T09:00:00",
+   "title": "云帆数据 在线笔试",
+   "kind": "test",
+   "at": "2026-11-18T15:30",
+   "done": false,
+   "notes": "90 分钟，SQL + 算法。"
+  },
+  {
+   "id": 11,
+   "type": "event",
+   "job_id": 5,
+   "created_at": "2026-11-16T09:00:00",
+   "updated_at": "2026-11-16T09:00:00",
+   "title": "青禾智能 网申截止",
+   "kind": "deadline",
+   "at": "2026-11-22T17:00",
+   "done": false
+  },
+  {
+   "id": 12,
+   "type": "event",
+   "job_id": 8,
+   "created_at": "2026-11-15T09:00:00",
+   "updated_at": "2026-11-15T09:00:00",
+   "title": "答复远山科技 offer",
+   "kind": "deadline",
+   "at": "2026-11-20T12:00",
+   "done": false
+  },
+  {
+   "id": 13,
+   "type": "event",
+   "job_id": 2,
+   "created_at": "2026-11-14T09:00:00",
+   "updated_at": "2026-11-14T09:00:00",
+   "title": "补充评测项目的指标",
+   "kind": "todo",
+   "at": "2026-11-18T11:30",
+   "done": false,
+   "notes": "把评测那段的准确率和延迟补上。"
+  },
+  {
+   "id": 14,
+   "type": "event",
+   "job_id": 5,
+   "created_at": "2026-11-15T09:00:00",
+   "updated_at": "2026-11-15T09:00:00",
+   "title": "按青禾智能 JD 改一版简历",
+   "kind": "todo",
+   "at": null,
+   "done": false
+  },
+  {
+   "id": 15,
+   "type": "event",
+   "job_id": 2,
+   "created_at": "2026-11-12T09:00:00",
+   "updated_at": "2026-11-16T09:00:00",
+   "title": "准备自我介绍",
+   "kind": "todo",
+   "at": "2026-11-16T16:00",
+   "done": true
+  },
+  {
+   "id": 16,
+   "type": "memory",
+   "job_id": null,
+   "created_at": "2026-10-21T09:00:00",
+   "updated_at": "2026-10-21T09:00:00",
+   "kind": "education",
+   "title": "浙江大学",
+   "body": "计算机科学与技术 · 本科",
+   "start": "2023-09",
+   "end": "2027-06",
+   "mode": "全日制",
+   "source": "user",
+   "confirmed": true
+  },
+  {
+   "id": 17,
+   "type": "memory",
+   "job_id": null,
+   "created_at": "2026-10-21T09:00:00",
+   "updated_at": "2026-10-21T09:00:00",
+   "kind": "experience",
+   "title": "远航网络 · 后端开发实习",
+   "body": "负责活动服务接口，把批量查询从 1.2s 降到 300ms；补了 30+ 个回归用例。",
+   "start": "2025-06",
+   "end": "2025-09",
+   "mode": "实习",
+   "source": "resume",
+   "confirmed": true
+  },
+  {
+   "id": 18,
+   "type": "memory",
+   "job_id": null,
+   "created_at": "2026-10-21T09:00:00",
+   "updated_at": "2026-10-21T09:00:00",
+   "kind": "project",
+   "title": "本地优先求职工具",
+   "body": "把岗位、投递、邮件回执和面试复盘收进一套工具；核心是 5 种记录和可撤销写入。",
+   "start": "2026-03",
+   "end": "至今",
+   "source": "user",
+   "confirmed": true
+  },
+  {
+   "id": 19,
+   "type": "memory",
+   "job_id": null,
+   "created_at": "2026-10-21T09:00:00",
+   "updated_at": "2026-10-21T09:00:00",
+   "kind": "project",
+   "title": "RAG 评测小工具",
+   "body": "为课程问答机器人搭了评测集和自动打分，回答准确率从 61% 提到 78%。",
+   "start": "2025-11",
+   "end": "2026-01",
+   "source": "user",
+   "confirmed": true
+  },
+  {
+   "id": 20,
+   "type": "memory",
+   "job_id": null,
+   "created_at": "2026-10-21T09:00:00",
+   "updated_at": "2026-10-21T09:00:00",
+   "kind": "skill",
+   "title": "技术栈",
+   "body": "Python / TypeScript / Go（基础）/ SQLite / PostgreSQL / React / Playwright",
+   "source": "user",
+   "confirmed": true
+  },
+  {
+   "id": 21,
+   "type": "memory",
+   "job_id": null,
+   "created_at": "2026-10-29T09:00:00",
+   "updated_at": "2026-10-29T09:00:00",
+   "kind": "award",
+   "title": "ACM-ICPC 区域赛铜奖",
+   "body": "",
+   "start": "2025-10",
+   "source": "user",
+   "confirmed": true
+  },
+  {
+   "id": 22,
+   "type": "doc",
+   "job_id": null,
+   "created_at": "2026-11-04T09:00:00",
+   "updated_at": "2026-11-17T09:00:00",
+   "title": "主简历",
+   "kind": "resume",
+   "style": {
+    "template": "kami"
+   },
+   "resume": {
+    "version": 1,
+    "basics": {
+     "name": "林沐",
+     "target": "后端 / AI 应用开发",
+     "contacts": [
+      {
+       "label": "电话",
+       "value": "138-0000-0000"
+      },
+      {
+       "label": "邮箱",
+       "value": "linmu@example.com"
+      },
+      {
+       "label": "城市",
+       "value": "杭州"
+      }
+     ]
+    },
+    "sections": [
+     {
+      "id": "sedu0001",
+      "type": "education",
+      "title": "教育经历",
+      "hidden": false,
+      "items": [
+       {
+        "id": "iedu0001",
+        "title": "浙江大学",
+        "subtitle": "计算机科学与技术 · 本科",
+        "date": "2023.09 – 2027.06",
+        "location": "杭州",
+        "bullets": [
+         "GPA 3.7/4.0，主修课程：数据结构、操作系统、数据库系统、机器学习"
+        ],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "id": "sint0001",
+      "type": "internship",
+      "title": "实习经历",
+      "hidden": false,
+      "items": [
+       {
+        "id": "iint0001",
+        "title": "远航网络",
+        "subtitle": "后端开发实习生",
+        "date": "2025.06 – 2025.09",
+        "location": "杭州",
+        "bullets": [
+         "负责活动服务接口，通过批量查询与缓存把 P95 延迟从 1.2s 降到 300ms",
+         "补齐 30+ 个回归用例，上线后同类问题减少约 40%",
+         "参与消息队列异步化改造，峰值吞吐提升 2 倍"
+        ],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "id": "sprj0001",
+      "type": "project",
+      "title": "项目经历",
+      "hidden": false,
+      "items": [
+       {
+        "id": "iprj0001",
+        "title": "本地优先求职工具",
+        "subtitle": "独立开发",
+        "date": "2026.03 – 至今",
+        "location": "",
+        "bullets": [
+         "用 TypeScript 设计统一工具层，岗位、投递、事件等 5 类记录的所有写入都可撤销",
+         "浏览器内运行 Hono 后端 + IndexedDB，数据不出本机"
+        ],
+        "text": ""
+       },
+       {
+        "id": "iprj0002",
+        "title": "RAG 评测小工具",
+        "subtitle": "负责人",
+        "date": "2025.11 – 2026.01",
+        "location": "",
+        "bullets": [
+         "为课程问答机器人搭建 200 题评测集与自动打分",
+         "调整切块与重排策略，回答准确率从 61% 提升到 78%"
+        ],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "id": "sskl0001",
+      "type": "skills",
+      "title": "技能证书",
+      "hidden": false,
+      "items": [
+       {
+        "id": "iskl0001",
+        "title": "",
+        "subtitle": "",
+        "date": "",
+        "location": "",
+        "bullets": [
+         "语言：Python、TypeScript、Go（基础）、SQL",
+         "工程：React、Hono、PostgreSQL、Redis、Playwright",
+         "英语：CET-6 560"
+        ],
+        "text": ""
+       }
+      ]
+     },
+     {
+      "id": "sawd0001",
+      "type": "awards",
+      "title": "荣誉奖项",
+      "hidden": false,
+      "items": [
+       {
+        "id": "iawd0001",
+        "title": "ACM-ICPC 亚洲区域赛铜奖",
+        "subtitle": "区域赛",
+        "date": "2025.10",
+        "location": "",
+        "bullets": [],
+        "text": ""
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "changes": []
+}

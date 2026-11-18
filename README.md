@@ -49,24 +49,33 @@
   <em>Internal Beta — source available, signed installer not yet released. See <a href="./docs/KNOWN_ISSUES.md">Known issues</a>.</em>
 </p>
 
+<h3 align="center" id="screenshots">Screenshots</h3>
+
+<p align="center">
+  <img src="./asset/screenshots/01-today-workbench.png" alt="OfferU Today workbench: next step and application board" width="960" /><br/>
+  <sub><strong>Today</strong> — the one next step that matters, with every application on a board below it.</sub>
+</p>
+
 <table>
   <tr>
-    <td width="50%"><img src="./asset/screenshots/01-today-workbench.png" alt="OfferU workbench" /></td>
-    <td width="50%"><img src="./asset/screenshots/04-job-detail.png" alt="Job detail with role intelligence" /></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/04-job-detail.png" alt="Job detail with structured posting" /><br/><strong>Job detail</strong><br/><sub>The posting broken into essence, hard requirements, keywords and collaborators, next to the job's events.</sub></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/02-pipeline-board.png" alt="Jobs board view" /><br/><strong>Pipeline board</strong><br/><sub>Every job by stage, with its next deadline, tags and match score on the card.</sub></td>
   </tr>
   <tr>
-    <td align="center"><strong>Today: jobs, evidence and next actions</strong></td>
-    <td align="center"><strong>Job detail: research, gaps, preparation</strong></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/08-resume-optimize.png" alt="Resume editor" /><br/><strong>Résumé workspace</strong><br/><sub>Module editor and live one-page preview; pick a target job and tailor it.</sub></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/05-profile.png" alt="Career profile" /><br/><strong>Career profile</strong><br/><sub>Education, internships, projects and skills: the evidence résumés and applications draw from.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="./asset/screenshots/02-pipeline-board.png" alt="Application pipeline" /></td>
-    <td width="50%"><img src="./asset/screenshots/08-resume-optimize.png" alt="Resume workspace" /></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/06-calendar.png" alt="Jobs calendar view" /><br/><strong>Calendar</strong><br/><sub>Interviews, tests and deadlines from every job on one week view.</sub></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/03-jobs-list.png" alt="Jobs table view" /><br/><strong>Jobs table</strong><br/><sub>A multi-view job table: table, board, Gantt, calendar and gallery share one dataset.</sub></td>
   </tr>
   <tr>
-    <td align="center"><strong>Pipeline: stages, timeline, next action</strong></td>
-    <td align="center"><strong>Resume: tailoring with evidence check</strong></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/09-agent-connect.png" alt="Connect your own Agent" /><br/><strong>Bring your own Agent</strong><br/><sub>Copy one prompt into Claude Code, Codex or another agent and it works on OfferU with you.</sub></td>
+    <td width="50%" valign="top"><img src="./asset/screenshots/07-settings.png" alt="Model service settings" /><br/><strong>Model service</strong><br/><sub>Connect any OpenAI-compatible endpoint; the key is stored on your device.</sub></td>
   </tr>
 </table>
+
+<p align="center"><sub>Fictional demo workspace — companies, candidate and links are made up. Captured from the web app at 1440×900.</sub></p>
 
 ---
 
