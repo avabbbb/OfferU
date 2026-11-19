@@ -17,6 +17,7 @@ import { pyStr, truthy } from "./py";
 import { resumeDocHtml, type FileSource } from "./render";
 import { REVIEW_PROMPT, REVIEW_RETRY, TAILOR_PROMPT } from "./tailor-prompts";
 import { checkResumeFacts, omittedMemories, retainedFacts, type CheckLine, type DroppedFacts } from "./verify";
+import { buildJobEvidenceLedger, validateTailoredResume, type LedgerIssue } from "../research/evidence-ledger";
 
 export const ROUNDS = 1; // 2026-11-05 由 2 轮砍到 1 轮
 export const CATEGORIES = ["grounding", "keyword", "depth", "length", "tone"] as const;
@@ -34,7 +35,7 @@ export type TailorRound = {
   round: number; pages: number | null; applied: TailorEdit[]; skipped: TailorEdit[];
   seconds: Record<string, number>; error?: string;
 };
-export type TailorChecks = { block: CheckLine[]; warn: CheckLine[]; unchecked: string; dropped: DroppedFacts[]; omitted: string[] };
+export type TailorChecks = { block: CheckLine[]; warn: CheckLine[]; unchecked: string; dropped: DroppedFacts[]; omitted: string[]; ledger?: LedgerIssue[] };
 export type TailorEvent =
   | { type: "start"; job: string }
   | { type: "delta"; text: string }
@@ -437,6 +438,10 @@ export async function* runTailor(deps: TailorDeps, docId: number, jobId?: number
     const sources = ((await tailorFacts(store)) + "\n\n" + origin).trim();
     const memories = await store.all("memory");
     const checks: TailorChecks = { ...checkResumeFacts(body, sources), dropped: retainedFacts(body, memories), omitted: omittedMemories(body, memories) };
+    // Evidence ledger (research/evidence-ledger.ts): new claims need confirmed evidence, confirmed facts stay,
+    // model scores are not achievements, the evaluation matches the current JD. Advisory, like the checks above.
+    const ledger = await buildJobEvidenceLedger(store, job.id);
+    if (ledger) checks.ledger = await validateTailoredResume({ ledger, job, before: str(doc.body), after: body, memories });
     timings.verify = since(mark);
     if (aborted()) return; // 客户端断开 = 取消，不写库
     mark = Date.now();
