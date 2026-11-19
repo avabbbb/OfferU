@@ -1711,6 +1711,100 @@ body {
   background: var(--surface);
 }
 
+/* 工具报错卡片：中性色 = Agent 自己会处理；橙色（data-tone="urgent"）= 要用户本人处理（只读、权限、本机不支持）。只用 --ou-* token。 */
+.offeru-agent-panel .agent-tool-errors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ou-space-1);
+  margin: var(--ou-space-1) 0 var(--ou-space-1) var(--ou-space-4);
+}
+
+.offeru-agent-panel .agent-tool-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ou-space-1);
+  margin: 0;
+  padding: var(--ou-space-2) var(--ou-space-3);
+  border: 1px solid var(--ou-color-border);
+  border-radius: var(--ou-radius-control);
+  background: var(--ou-tone-gray-bg);
+  color: var(--ou-text-primary);
+  font-size: var(--ou-type-sm);
+  line-height: var(--ou-line-body);
+}
+
+.offeru-agent-panel .agent-tool-error[data-tone="urgent"] {
+  border-color: var(--ou-tone-orange-border);
+  background: var(--ou-tone-orange-bg);
+  color: var(--ou-tone-orange-text);
+}
+
+.offeru-agent-panel .agent-tool-error--plain {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--ou-space-2);
+}
+
+.offeru-agent-panel .agent-tool-error__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ou-space-2);
+}
+
+.offeru-agent-panel .agent-tool-error__icon {
+  flex-shrink: 0;
+  margin-top: 0.15em;
+  color: var(--ou-text-secondary);
+}
+
+.offeru-agent-panel .agent-tool-error[data-tone="urgent"] .agent-tool-error__icon {
+  color: var(--ou-tone-orange-dot);
+}
+
+.offeru-agent-panel .agent-tool-error__message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.offeru-agent-panel .agent-tool-error__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ou-space-1) var(--ou-space-2);
+  font-size: var(--ou-type-xs);
+  color: var(--ou-text-secondary);
+}
+
+.offeru-agent-panel .agent-tool-error__tool {
+  font-family: var(--ou-font-mono);
+  color: var(--ou-text-tertiary);
+}
+
+.offeru-agent-panel .agent-tool-error__code,
+.offeru-agent-panel .agent-tool-error__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ou-space-1);
+  padding: 0 var(--ou-space-2);
+  border-radius: var(--ou-radius-pill);
+  background: var(--ou-bg-control);
+}
+
+.offeru-agent-panel .agent-tool-error__retry[data-retryable] {
+  color: var(--ou-text-primary);
+}
+
+.offeru-agent-panel .agent-tool-error__action {
+  margin: 0;
+  font-size: var(--ou-type-xs);
+  color: var(--ou-text-secondary);
+}
+
+.offeru-agent-panel .agent-tool-error[data-tone="urgent"] .agent-tool-error__meta,
+.offeru-agent-panel .agent-tool-error[data-tone="urgent"] .agent-tool-error__action {
+  color: var(--ou-tone-orange-text);
+}
+
 .offeru-agent-panel .agent-tool-summary {
   display: flex;
   width: 100%;

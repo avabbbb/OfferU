@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, ChevronRight, XCircle } from "lucide-react";
 import type { ToolExecutionState } from "@/lib/embeddedAgentStream";
 import { AgentOrbIcon } from "./AgentWorkingOrb";
+import { AgentToolError } from "./AgentToolErrorCard";
 
 // 一组工具从首个开始到最后结束的秒数；运行中的工具按 now 计。
 export function toolGroupSeconds(rows: ToolExecutionState[], now: number): number {
@@ -68,6 +69,14 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
           className={"shrink-0 text-[var(--foreground-muted)] transition-transform duration-[var(--dur-quick)] " + (open ? "rotate-90" : "")}
         />
       </button>
+      {/* 出错的工具折叠时也露出错误卡片：用户不必展开就知道哪步失败、要不要自己处理。 */}
+      {rows.some((tool) => tool.status === "error") && (
+        <div className="agent-tool-errors" data-testid="agent-tool-errors">
+          {rows.filter((tool) => tool.status === "error").map((tool) => (
+            <AgentToolError key={tool.id} result={tool.result} toolName={tool.toolName} />
+          ))}
+        </div>
+      )}
       {open && (
         <div className="agent-tool-list" role="list" aria-label="工具调用">
           {rows.map((tool) => {
