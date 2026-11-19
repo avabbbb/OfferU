@@ -445,6 +445,16 @@ export function registerAgent(app: Hono<AppEnv>): void {
     return c.json(conversation);
   });
 
+  // 从某条消息分叉：复制前 upto 条消息成一个新对话（原对话不动，不复制 Run）。
+  app.post("/api/agent/conversations/:id/branch", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { upto?: unknown; content?: unknown; role?: unknown };
+    const branched = await agentHost(c.get("deps")).conversations.branch(c.req.param("id"), Number(body.upto), {
+      content: typeof body.content === "string" ? body.content : undefined,
+      role: body.role === "user" || body.role === "assistant" ? body.role : undefined,
+    });
+    return c.json(branched);
+  });
+
   app.delete("/api/agent/conversations/:id", async (c) => {
     const id = c.req.param("id");
     return c.json({ ok: await agentHost(c.get("deps")).conversations.delete(id), conversation_id: id });

@@ -1556,6 +1556,12 @@ export const agentSupportApi = {
     request<{ ok: boolean }>(`/api/agent/conversations/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
+  /** 从某条消息分叉：前 upto 条消息复制成新对话；content / role 用来校正下标。 */
+  branchConversation: (id: string, data: { upto: number; content?: string; role?: "user" | "assistant" }) =>
+    request<AgentConversationDetail & { message_count: number; branched_from: string }>(
+      `/api/agent/conversations/${encodeURIComponent(id)}/branch`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
 };
 
 export interface UserDataExport {

@@ -178,6 +178,8 @@ Notion 式：整张表放在 20px 圆角的实白纸上（`.ou-jobs-sheet`，L2 
 - **对话导航**（`AgentConversationNav.tsx` + `lib/agentConversationNav.ts`，移植自 Flovart@28c79bf）：两轮以上时消息区右缘每轮一道短刻度，当前可视轮墨黑、悬停 / 聚焦变紫并弹出这一轮的问答预览（`--ou-glass-menu`），指针靠近时刻度按距离放大（磁吸）；点刻度平滑滚过去。键盘：刻度上 ↑↓ / Home / End，面板里 Alt+PageUp / Alt+PageDown 逐轮跳、Alt+End 回到最新。
 - **跟随底部**：只在用户没往上翻时自动滚到最新；往上翻就停（流式输出不会把人拉回去），离底超过 1/3 屏时输入框上方出圆形「↓ 回到最新」胶囊（`--ou-capsule-*`），点它或回到底部恢复跟随。
 - **消息操作**（`.agent-msg-actions`）：悬停 / 键盘聚焦某条消息时气泡下方出小图标钮，现在是「复制」（回答复制 Markdown 原文，成功后一瞬变紫勾）。
+- **引用**（`lib/agentQuote.ts`，`AgentQuoteChip`）：消息操作里的「引用」把整条消息（选区落在这条消息里时只取选中部分）放进输入框上方的引用条（紫色左线、`--ou-tone-purple-*`），× 或空输入时 Esc 取消；发送时以 Markdown 引用块放在正文前，用户气泡里拆回成顶部的引用块 `.agent-msg-quote`。
+- **分叉**（`lib/agentMessageBranch.ts`，`POST /api/agent/conversations/:id/branch`）：从某条已保存的消息「分叉」成新对话（复制这条及之前的消息，原对话不动、不复制 Run）并直接打开。欢迎语和本地提示（`assistant-abort-*`）不算消息条数、也没有分叉按钮；Run 进行中按钮禁用。
 - **图片**：用户发的图按张数排（1 张大图、2 张对半、3 张以上两列方格，`[data-images]`）；回答里的 Markdown 图片圆角、可点。任意图片点开是 `Dialog` 大图（`AgentImageViewer`），同一条消息里多张时 ←→ 切换、Esc 关闭。
 
 看：任意页点右上角 bot 钮（1440 宽约在 (1408, 32)），再在输入框里打字。

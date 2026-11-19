@@ -151,6 +151,46 @@ describe("POST /api/agent/runtime/runs", () => {
     expect((await call("DELETE", "/api/agent/conversations/nope")).body.ok).toBe(false);
   });
 
+  it.each(["sqlite", "memory"] as const)("branches a conversation from a message (%s run store)", async (runs) => {
+    const { call, seen } = setup([{ text: "你好！" }, { text: "第二轮" }, { text: "分叉后的回答" }], { runs });
+    const first = await call("POST", "/api/agent/runtime/runs", { message: "嗨" });
+    const sourceId = first.body.conversation_id as string;
+    await call("POST", "/api/agent/runtime/runs", { message: "再来", conversation_id: sourceId });
+
+    // 分叉到第 2 条（含）：新对话只有前两条，原对话不动
+    const branched = await call("POST", `/api/agent/conversations/${sourceId}/branch`, { upto: 2, content: "你好！", role: "assistant" });
+    expect(branched.status).toBe(200);
+    expect(branched.body).toMatchObject({ message_count: 2, branched_from: sourceId, title: "嗨 · 分叉" });
+    expect(branched.body.id).not.toBe(sourceId);
+    expect(branched.body.messages.map((m: any) => m.content)).toEqual(["嗨", "你好！"]);
+    expect((await call("GET", `/api/agent/conversations/${sourceId}`)).body.messages).toHaveLength(4);
+    // Run 不复制
+    expect((await call("GET", `/api/agent/runs?conversation_id=${branched.body.id}`)).body.runs).toHaveLength(0);
+
+    // 下标偏了（界面多出本地提示）：按 content + role 校正到真正那条
+    const corrected = await call("POST", `/api/agent/conversations/${sourceId}/branch`, { upto: 3, content: "  你好！ ", role: "assistant" });
+    expect(corrected.body.messages.map((m: any) => m.content)).toEqual(["嗨", "你好！"]);
+    // upto 超出时截到末尾
+    expect((await call("POST", `/api/agent/conversations/${sourceId}/branch`, { upto: 99 })).body.message_count).toBe(4);
+
+    // 错误：不存在 / upto 非法 / 内容对不上
+    expect((await call("POST", "/api/agent/conversations/nope/branch", { upto: 1 })).status).toBe(404);
+    expect((await call("POST", `/api/agent/conversations/${sourceId}/branch`, { upto: 0 })).status).toBe(400);
+    expect((await call("POST", `/api/agent/conversations/${sourceId}/branch`, {})).status).toBe(400);
+    const conflict = await call("POST", `/api/agent/conversations/${sourceId}/branch`, { upto: 2, content: "从没说过的话" });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.code).toBe("conflict");
+
+    // 新对话像普通续聊一样接着跑：模型看到的是分叉前的消息
+    const next = await call("POST", "/api/agent/runtime/runs", { message: "换个方向", conversation_id: branched.body.id });
+    expect(next.body).toMatchObject({ ok: true, assistant_message: "分叉后的回答", conversation_id: branched.body.id });
+    const history = seen.at(-1)!.messages.filter((m) => m.role === "user" || m.role === "assistant").map((m) => String(m.content));
+    expect(history.some((text) => text.includes("再来"))).toBe(false);
+    expect(history.some((text) => text.includes("嗨"))).toBe(true);
+    expect((await call("GET", `/api/agent/conversations/${branched.body.id}`)).body.messages.map((m: any) => m.content))
+      .toEqual(["嗨", "你好！", "换个方向", "分叉后的回答"]);
+  });
+
   it("re-posting an existing run_id returns the stored run instead of running again", async () => {
     const { call, seen } = setup([{ text: "一次" }]);
     const runId = "run_0123456789abcdef";
