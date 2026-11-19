@@ -1337,6 +1337,12 @@ export const agentRuntimeApi = {
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/resume`,
       { method: "POST" }
     ),
+  /** 插话：把一句话交给正在跑的 Run，下一步之前送到模型；Run 已不在跑时返回 not_running。 */
+  steer: (runId: string, message: string) =>
+    request<{ ok: boolean; disposition: "steered" | "not_running" | string }>(
+      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/steer`,
+      { method: "POST", body: JSON.stringify({ message }) }
+    ),
   abort: (runId: string) =>
     request<{ ok: boolean; run: AgentRunRecord }>(
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/abort`,

@@ -51,12 +51,12 @@ afterEach(() => {
   stores = [];
 });
 
-function setup(turns: Turn[], options: { llm?: boolean; runs?: "sqlite" | "memory" } = {}) {
+function setup(turns: Turn[], options: { llm?: boolean; runs?: "sqlite" | "memory"; client?: LlmClient } = {}) {
   const store = new SqliteCoreStore(":memory:");
   stores.push(store);
   const agentRuns: AgentRunStore = options.runs === "memory" ? new MemoryAgentRunStore() : new SqliteAgentRunStore(store);
   const seen: ChatRequest[] = [];
-  const llm = scriptedLlm(turns, seen);
+  const llm = options.client ?? scriptedLlm(turns, seen);
   const deps: AppDeps = { store, runtime: "node", storage: "sqlite", agentRuns, llm: () => (options.llm === false ? null : llm) };
   const app = createApp(deps);
   const call = async (method: string, path: string, body?: unknown) => {
@@ -286,6 +286,47 @@ describe("SSE", () => {
     const events = await call("GET", "/api/agent/runs/run_dddddddddddddddd/events?after_sequence=0");
     expect(events.body.events.some((event: any) => event.type === "reasoning.delta" || event.provider_event === "reasoning.delta")).toBe(false);
     expect(JSON.stringify(events.body.events)).not.toContain("先看看岗位要求");
+  });
+
+  it("steers a live run: the message reaches the model before its next step and is saved in the conversation", async () => {
+    const seen: ChatRequest[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    let call = 0;
+    const client: LlmClient = {
+      provider: "fake", model: "fake-1",
+      async chat() { return null; },
+      async *completeStream(request: ChatRequest): AsyncIterable<LlmStreamEvent> {
+        seen.push(request);
+        call += 1;
+        const usage = { input_tokens: 10, output_tokens: 5, total_tokens: 15, estimated: false };
+        if (call === 1) {
+          entered();
+          await gate;
+          const toolCalls: ParsedToolCall[] = [{ id: "call_0", name: "overview", arguments: "{}", args: {} }];
+          yield { type: "done", result: { provider: "fake", model: "fake-1", content: "", reasoning: "", toolCalls, finishReason: "tool_calls", usage } };
+          return;
+        }
+        yield { type: "text_delta", text: "按你说的只看上海" };
+        yield { type: "done", result: { provider: "fake", model: "fake-1", content: "按你说的只看上海", reasoning: "", toolCalls: [], finishReason: "stop", usage } };
+      },
+    };
+    const { call: request } = setup([], { client });
+    const running = request("POST", "/api/agent/runtime/runs", { message: "帮我找岗位", run_id: "run_eeeeeeeeeeeeeeee" });
+    await started;
+    const steered = await request("POST", "/api/agent/runtime/runs/run_eeeeeeeeeeeeeeee/steer", { message: "只看上海" });
+    expect(steered.body).toEqual({ ok: true, disposition: "steered" });
+    release();
+    const done = await running;
+    expect(done.body).toMatchObject({ ok: true, assistant_message: "按你说的只看上海" });
+    const second = seen[1].messages.map((message) => `${message.role}:${typeof message.content === "string" ? message.content : ""}`);
+    expect(second.some((line) => line === "user:只看上海")).toBe(true);
+    const conversation = await request("GET", `/api/agent/conversations/${done.body.conversation_id}`);
+    expect(conversation.body.messages.map((m: any) => m.content)).toEqual(["帮我找岗位", "只看上海", "按你说的只看上海"]);
+    // 结束后再插话：not_running（前端据此放回队列）
+    expect((await request("POST", "/api/agent/runtime/runs/run_eeeeeeeeeeeeeeee/steer", { message: "再加北京" })).body).toEqual({ ok: true, disposition: "not_running" });
   });
 
   it("steer / abort / resume on a finished run", async () => {

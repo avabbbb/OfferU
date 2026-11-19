@@ -82,6 +82,11 @@ import { useComposerAttachments, type ComposerAttachment } from "./useComposerAt
 import { AGENT_ATTACHMENT_ACCEPT, ATTACHMENT_ONLY_MESSAGE, hasDraggedFiles } from "@/lib/agentAttachments";
 import { createFrameBatcher, partialReplyFrom } from "@/lib/agentStreaming";
 import { AgentThinkingBlock } from "./AgentThinkingBlock";
+import { AgentQueueTray } from "./AgentQueueTray";
+import {
+  composerKeyIntent, enqueue, enqueueFront, loadQueue, nextArmed, queuedFor, rebindConversation, removeQueued, saveQueue,
+  type QueuedMessage,
+} from "@/lib/agentSteerQueue";
 
 interface PanelMessage {
   id: string;
@@ -93,6 +98,16 @@ interface PanelMessage {
   thinking?: { text: string; ms: number };
   /** Run 中断 / 失败前已经流出的半截回答：本地保留，不在服务端对话里。 */
   partial?: "cancelled" | "failed";
+  /** Run 在跑时用 Enter 插进去的话（服务端也存进了对话）。 */
+  steered?: boolean;
+}
+
+function browserStorage(): Storage | null {
+  try {
+    return typeof window !== "undefined" ? window.localStorage : null;
+  } catch {
+    return null;
+  }
 }
 
 interface ResumeCandidate {
@@ -334,8 +349,13 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   // 当前 Run 在等用户回答 Ask 或可恢复。这只决定"新消息开新一轮前先把它停放"，
   // 从不禁用输入。待确认的不可逆操作不挡 Run：它们在全局待确认列表里。
   const runNeedsUser = Boolean(interruptedRunId) || reviewPending > 0;
-  // 每次发送都开一个新 Run，可与其他 Run 并发；超过设置里的并发上限时后端直接报错。
+  // 同一时间只跑一个 Run：在跑时 Enter 是插话（/steer），Tab 是排队（托盘，这一轮结束后依次发）。
   const loading = inFlightTurns.length > 0 || runActionPending;
+  const busyRef = useRef(loading);
+  busyRef.current = loading;
+  const [queue, setQueue] = useState<QueuedMessage[]>(() => loadQueue(browserStorage()));
+  useEffect(() => { saveQueue(browserStorage(), queue); }, [queue]);
+  const visibleQueue = queuedFor(queue, conversationId);
   // 输入框：能发就是「发送」胶囊；正在跑又没东西可发时，发送键收成一个小像素格加载（参考 Inspora「composer mockup」）。
   const canSend = (Boolean(input.trim()) || composerAttachments.readyCount > 0) && !composerAttachments.uploading;
   const working = loading;
@@ -554,9 +574,73 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
     setInterruptedRunId(null);
   };
 
+  /** Run 在跑时把一句话交给它（Enter / 发送键 / 托盘里的「插话」）。没送到就放回队首，不丢。 */
+  const steerActiveRun = async (content: string) => {
+    const runId = activeRunId;
+    const conversationAtSteer = conversationId;
+    if (!runId) {
+      setQueue((current) => enqueueFront(current, content, conversationAtSteer));
+      return;
+    }
+    const messageId = "user-steer-" + Date.now() + "-" + ++turnSeqRef.current;
+    setMessages((prev) => [...prev, { id: messageId, role: "user", content, steered: true }]);
+    const putBack = () => {
+      setMessages((prev) => prev.filter((message) => message.id !== messageId));
+      setQueue((current) => enqueueFront(current, content, conversationAtSteer));
+    };
+    try {
+      const result = await agentRuntimeApi.steer(runId, content);
+      if (result.disposition !== "steered") putBack();
+    } catch (err: any) {
+      putBack();
+      setError(safeClientErrorMessage(err, "插话没送到，已放回队列"));
+    }
+  };
+
+  /** Tab：排到这一轮之后。 */
+  const queueFromComposer = () => {
+    const text = withQuote(input.trim(), quote);
+    if (!input.trim()) return;
+    setQueue((current) => enqueue(current, text, conversationId));
+    setInput("");
+    setQuote(null);
+  };
+
+  const sendQueued = (id: string) => {
+    const item = queue.find((entry) => entry.id === id);
+    if (!item) return;
+    setQueue((current) => removeQueued(current, id));
+    if (busyRef.current) void steerActiveRun(item.text);
+    else void startTurn(item.text, [], { fromQueue: true });
+  };
+
+  const editQueued = (id: string) => {
+    const item = queue.find((entry) => entry.id === id);
+    if (!item) return;
+    setQueue((current) => removeQueued(current, id));
+    setInput((current) => (current.trim() ? current + "\n" + item.text : item.text));
+    window.requestAnimationFrame(() => composerInputRef.current?.focus());
+  };
+
   const sendMessage = async (text?: string) => {
     const typed = (text ?? input).trim();
     const fromComposer = text === undefined;
+    if (busyRef.current) {
+      // 不并发第二个 Run：输入框里的话插进正在跑的这一轮，别处来的（建议胶囊等）排队。
+      if (!typed) {
+        if (fromComposer && composerAttachments.readyCount > 0) setError("这一轮还在跑：附件等它结束再发，文字可以先插话（Enter）或排队（Tab）。");
+        return;
+      }
+      if (!fromComposer) {
+        setQueue((current) => enqueue(current, typed, conversationId));
+        return;
+      }
+      const steered = withQuote(typed, quote);
+      setInput("");
+      setQuote(null);
+      await steerActiveRun(steered);
+      return;
+    }
     // 附件还在上传时不发，免得模型看不到它们
     if (fromComposer && composerAttachments.uploading) return;
     const withAttachments = fromComposer && composerAttachments.readyCount > 0;
@@ -574,12 +658,13 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const startTurn = async (
     content: string,
     attachments: ComposerAttachment[] = [],
+    options: { fromQueue?: boolean } = {},
   ) => {
     if (!content) return;
-    // 双击 / 连按回车防重：同一段文字 800ms 内只开一轮。
+    // 双击 / 连按回车防重：同一段文字 800ms 内只开一轮（队列里的不算重复）。
     const now = Date.now();
     const last = lastSendRef.current;
-    if (last && last.content === content && now - last.at < 800) {
+    if (!options.fromQueue && last && last.content === content && now - last.at < 800) {
       composerAttachments.restore(attachments);
       return;
     }
@@ -697,6 +782,8 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
       if (response.conversation_id) {
         currentConvRef.current = response.conversation_id;
         setConversationId(response.conversation_id);
+        // 新对话第一次保存：排在「新对话」下的消息跟过去。
+        if (!currentConversationId) setQueue((current) => rebindConversation(current, null, response.conversation_id!));
       }
       if (response.conversation_title) setConversationTitle(response.conversation_title);
       setActiveRunId(runtimeResponse.run.id);
@@ -729,13 +816,24 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     const take = () => {
       for (const request of drainAgentCompose()) {
-        void startTurnRef.current(request.message);
+        // 同一时间只跑一个 Run：在跑就排队，这一轮结束后自动发。
+        if (busyRef.current) setQueue((current) => enqueue(current, request.message, currentConvRef.current));
+        else void startTurnRef.current(request.message);
       }
     };
     take();
     window.addEventListener(AGENT_COMPOSE_EVENT, take);
     return () => window.removeEventListener(AGENT_COMPOSE_EVENT, take);
   }, []);
+
+  // 这一轮结束（且不在等用户、没有报错）→ 发队列里下一条本次排的消息。
+  useEffect(() => {
+    if (loading || runNeedsUser || error) return;
+    const next = nextArmed(queue, conversationId);
+    if (!next) return;
+    setQueue((current) => removeQueued(current, next.id));
+    void startTurnRef.current(next.text, [], { fromQueue: true });
+  }, [loading, runNeedsUser, error, queue, conversationId]);
 
   const restoreParkedRun = async (id: string) => {
     if (loading) return;
@@ -1443,6 +1541,8 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
 
       {/* 输入区 */}
       <footer className="agent-foot">
+        <AgentQueueTray items={visibleQueue} busy={loading} paused={Boolean(error) || runNeedsUser} onSend={sendQueued} onEdit={editQueued}
+          onRemove={(id) => setQueue((current) => removeQueued(current, id))} />
         <div
           ref={composerWidth.ref}
           className={dragActive ? "agent-composer is-drag-active" : "agent-composer"}
@@ -1486,16 +1586,18 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
           <div className="agent-composer-main">
           <AgentOrb working={working} state={composerOrbState} />
           {quote && <AgentQuoteChip quote={quote} onClear={() => { setQuote(null); composerInputRef.current?.focus(); }} />}
-          {!input && !runNeedsUser && !quote && <AnimatedPlaceholder />}
+          {!input && !runNeedsUser && !quote && !working && <AnimatedPlaceholder />}
           <Textarea
             value={input}
             onValueChange={setInput}
             minRows={3}
             maxRows={6}
             placeholder={
-              runNeedsUser
-                ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
-                : ""
+              working
+                ? "Enter 插话，交给正在跑的这一轮 · Tab 排到这一轮之后"
+                : runNeedsUser
+                  ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
+                  : ""
             }
             aria-label="问 OfferU"
             variant="flat"
@@ -1519,9 +1621,16 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
                 setQuote(null);
                 return;
               }
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              const intent = composerKeyIntent(
+                { key: event.key, shiftKey: event.shiftKey, altKey: event.altKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey, isComposing: event.nativeEvent.isComposing },
+                { busy: loading, hasText: Boolean(input.trim()) },
+              );
+              if (intent === "send" || intent === "steer") {
                 event.preventDefault();
                 sendFromComposer();
+              } else if (intent === "queue") {
+                event.preventDefault();
+                queueFromComposer();
               }
             }}
           />
@@ -1564,7 +1673,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
             )}
             <button
               type="button"
-              aria-label={working && !canSend ? "OfferU 正在处理" : "发送"}
+              aria-label={working && !canSend ? "OfferU 正在处理" : working ? "插话（Enter）" : "发送"}
               onClick={() => sendFromComposer()}
               disabled={!canSend}
               data-working={working && !canSend ? "" : undefined}
@@ -1574,7 +1683,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
                 <PixelLoader />
               ) : (
                 <>
-                  <span className="agent-composer-send-label">发送</span>
+                  <span className="agent-composer-send-label">{working ? "插话" : "发送"}</span>
                   <ArrowUp size={15} strokeWidth={2.2} aria-hidden />
                 </>
               )}
@@ -1627,6 +1736,7 @@ function PanelMessageBubble({
         {!isUser && message.thinking && (
           <AgentThinkingBlock text={message.thinking.text} startedAt={0} endedAt={message.thinking.ms} />
         )}
+        {isUser && message.steered && <span className="agent-msg-steer-tag" data-testid="agent-steer-tag">插话</span>}
         <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"} data-partial={message.partial}>
           {isUser && quoted.quote && <blockquote className="agent-msg-quote">{quotePreview(quoted.quote)}</blockquote>}
           {isUser ? quoted.body : <AgentMarkdown text={message.content} />}
