@@ -63,7 +63,9 @@ import { getBridgeState, subscribeBridge } from "@/lib/bridge";
 import { DemoAgentPanel } from "./DemoAgentPanel";
 import { AgentHistoryList } from "./AgentHistoryList";
 import { AgentScrollToLatest, AgentTurnTimeline, smoothScrollTo, type TurnTimelineHandle } from "./AgentConversationNav";
-import { AgentCopyButton, AgentImageViewer } from "./AgentMessageActions";
+import { AgentCopyButton, AgentImageViewer, AgentQuoteBranchActions, AgentQuoteChip } from "./AgentMessageActions";
+import { quotePreview, splitQuote, withQuote } from "@/lib/agentQuote";
+import { branchUpto, canBranchFrom, isWelcomeMessage } from "@/lib/agentMessageBranch";
 import { isAwayFromBottom, nextStickToBottom, splitConversationTurns, turnIndexByMessage } from "@/lib/agentConversationNav";
 import { AgentSlashMenu, useAgentSlash, type SlashAction } from "./AgentSlashMenu";
 import { contextUsageFromEvent, type AgentContextUsage } from "@/lib/agentContextUsage";
@@ -298,6 +300,9 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const composerWidth = useComposerWidth();
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  // 引用回复：整条消息或选中的一段，发送时以 Markdown 引用块放在正文前（lib/agentQuote）。
+  const [quote, setQuote] = useState<string | null>(null);
+  const [branching, setBranching] = useState(false);
   const dragDepthRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
   const composerAttachments = useComposerAttachments(agentRuntimeApi.uploadAttachment);
@@ -363,6 +368,35 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   ];
   const slash = useAgentSlash({ input, setInput, inputRef: composerInputRef, commands: slashCommands });
 
+
+  const quoteIntoComposer = (text: string) => {
+    if (!text.trim()) return;
+    setQuote(text);
+    window.requestAnimationFrame(() => composerInputRef.current?.focus());
+  };
+
+  /** 从这条消息分叉：服务端复制前面的消息成新对话（原对话不动），然后打开它接着聊。 */
+  const branchFromMessage = async (message: PanelMessage) => {
+    if (!conversationId || branching) return;
+    setBranching(true);
+    setError("");
+    try {
+      const upto = branchUpto(messages, message.id);
+      if (upto < 1) throw new Error("这条消息还没保存，不能分叉");
+      const branched = await agentSupportApi.branchConversation(conversationId, {
+        upto,
+        content: message.content,
+        role: message.role,
+      });
+      await loadConversation(branched.id);
+      void refreshConversations();
+      window.requestAnimationFrame(() => composerInputRef.current?.focus());
+    } catch (err: any) {
+      setError(safeClientErrorMessage(err, "分叉失败"));
+    } finally {
+      setBranching(false);
+    }
+  };
 
   const refreshConversations = async () => {
     try {
@@ -518,8 +552,9 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
     const withAttachments = fromComposer && composerAttachments.readyCount > 0;
     if (!typed && !withAttachments) return;
     const attachments = withAttachments ? composerAttachments.takeForSend() : [];
-    if (fromComposer) setInput("");
-    await startTurn(typed || ATTACHMENT_ONLY_MESSAGE, attachments);
+    const quoted = fromComposer ? quote : null;
+    if (fromComposer) { setInput(""); setQuote(null); }
+    await startTurn(withQuote(typed || ATTACHMENT_ONLY_MESSAGE, quoted), attachments);
   };
 
   const patchTurn = (turnId: string, patch: (turn: InFlightTurn) => InFlightTurn) => {
@@ -1220,6 +1255,9 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
           {messages.map((message) => (
             <PanelMessageBubble key={message.id} message={message} showGuidance={message.id === guidanceMessageId} onSuggestion={sendMessage}
               turnIndex={message.role === "user" ? turnIndexById.get(message.id) : undefined}
+              onQuote={quoteIntoComposer}
+              onBranch={conversationId && canBranchFrom(message) ? () => { void branchFromMessage(message); } : undefined}
+              branchDisabled={branching || inFlightTurns.length > 0}
               alone={messages.length === 1 && inFlightTurns.length === 0} />
           ))}
           {inFlightTurns.map((turn) => (
@@ -1396,7 +1434,8 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
             onKeyDown={(event) => composerWidth.onGripKey("right", event)} />
           <div className="agent-composer-main">
           <AgentOrb working={working} state={composerOrbState} />
-          {!input && !runNeedsUser && <AnimatedPlaceholder />}
+          {quote && <AgentQuoteChip quote={quote} onClear={() => { setQuote(null); composerInputRef.current?.focus(); }} />}
+          {!input && !runNeedsUser && !quote && <AnimatedPlaceholder />}
           <Textarea
             value={input}
             onValueChange={setInput}
@@ -1424,6 +1463,11 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
             onInput={slash.syncCaret}
             onKeyDown={(event) => {
               if (slash.onKeyDown(event)) return;
+              if (event.key === "Escape" && quote && !input && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                setQuote(null);
+                return;
+              }
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 sendFromComposer();
@@ -1496,6 +1540,9 @@ function PanelMessageBubble({
   showGuidance,
   onSuggestion,
   turnIndex,
+  onQuote,
+  onBranch,
+  branchDisabled,
   alone = false,
 }: {
   message: PanelMessage;
@@ -1503,28 +1550,38 @@ function PanelMessageBubble({
   onSuggestion: (prompt: string) => void;
   /** 用户消息是第几轮的开头（刻度条定位用）。 */
   turnIndex?: number;
+  /** 引用到输入框：有选中文字且选区在这条消息里就引用选中的部分，否则引用整条。 */
+  onQuote?: (text: string) => void;
+  /** 从这里分叉（新对话，含这条及之前的消息）；没有已保存的对话时不给。 */
+  onBranch?: () => void;
+  branchDisabled?: boolean;
   /** 对话里只有这条欢迎语：画成完整的空状态（问候 + 建议胶囊）。 */
   alone?: boolean;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const quoted = message.role === "user" ? splitQuote(message.content) : { body: message.content };
   const isUser = message.role === "user";
   const response = message.response;
 
-  if (!isUser && message.id.startsWith("welcome")) {
+  if (!isUser && isWelcomeMessage(message)) {
     return alone ? <AgentEmptyState note={message.content} onSuggestion={onSuggestion} /> : <p className="agent-welcome-note">{message.content}</p>;
   }
 
   return (
-    <div className={isUser ? "flex justify-end pl-10" : "flex justify-start"} data-message-row="" data-turn-index={turnIndex}>
+    <div ref={rowRef} className={isUser ? "flex justify-end pl-10" : "flex justify-start"} data-message-row="" data-turn-index={turnIndex}>
       <div className={isUser ? "min-w-0 max-w-full" : "w-full min-w-0"}>
         {isUser && message.attachments && message.attachments.length > 0 && (
           <AgentMessageAttachments attachments={message.attachments} imageUrl={agentRuntimeApi.attachmentUrl} />
         )}
         <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"}>
-          {isUser ? message.content : <AgentMarkdown text={message.content} />}
+          {isUser && quoted.quote && <blockquote className="agent-msg-quote">{quotePreview(quoted.quote)}</blockquote>}
+          {isUser ? quoted.body : <AgentMarkdown text={message.content} />}
         </div>
         {message.content.trim() && (
           <div className="agent-msg-actions" data-align={isUser ? "end" : undefined} role="toolbar" aria-label="消息操作">
             <AgentCopyButton text={message.content} label={isUser ? "复制这条消息" : "复制回答（Markdown）"} />
+            <AgentQuoteBranchActions rowRef={rowRef} fallbackText={isUser ? quoted.body : message.content}
+              onQuote={onQuote} onBranch={onBranch} branchDisabled={branchDisabled} />
           </div>
         )}
         {response && (

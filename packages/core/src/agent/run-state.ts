@@ -550,6 +550,40 @@ export class AgentConversations {
   delete(id: string): Promise<boolean> {
     return this.store.transaction(() => this.store.deleteConversation(String(id)));
   }
+
+  /**
+   * 从某条消息分叉：把原对话前 `upto` 条消息复制成一个新对话（原对话不动）。只是多一行对话记录，
+   * 不改表结构；Run / Session 不复制——新对话下一轮像普通续聊一样从这些消息重建上下文。
+   * `content` 是界面上那条消息的原文：给了就用它校正下标（界面列表可能多出欢迎语或失败提示），
+   * 找不到同角色同内容的消息时报 conflict，不猜。
+   */
+  async branch(id: string, upto: number, options: { content?: string; role?: string } = {}): Promise<Conversation & { message_count: number; branched_from: string }> {
+    const source = await this.get(id);
+    if (!source) throw new CoreError("Conversation not found", "not_found");
+    const messages = source.messages;
+    let end = Math.trunc(Number(upto));
+    if (!Number.isFinite(end) || end < 1) throw new CoreError("upto 必须是 ≥ 1 的消息条数", "invalid");
+    end = Math.min(end, messages.length);
+    const wanted = typeof options.content === "string" ? options.content.trim().slice(0, 8000) : "";
+    if (wanted) {
+      const matches = (index: number) => String(messages[index]?.content ?? "").trim().slice(0, 8000) === wanted && (!options.role || messages[index]?.role === options.role);
+      if (!matches(end - 1)) {
+        let found = -1;
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+          if (matches(index)) { found = index; break; }
+        }
+        if (found < 0) throw new CoreError("找不到要分叉的那条消息（对话可能已经变了），刷新后再试", "conflict");
+        end = found + 1;
+      }
+    }
+    if (end < 1) throw new CoreError("这个对话还没有消息，不能分叉", "conflict");
+    const kept = messages.slice(0, end);
+    const now = this.now();
+    const title = `${(source.title || "新对话").slice(0, MAX_TITLE_LENGTH - 5)} · 分叉`;
+    const next: Conversation = { id: `conv_${randomHex(12)}`, title, created_at: now, updated_at: now, messages: kept };
+    await this.store.transaction(() => this.store.putConversation(next));
+    return { ...next, message_count: kept.length, branched_from: source.id };
+  }
 }
 
 // ---- in-memory store (browser default, tests) ----

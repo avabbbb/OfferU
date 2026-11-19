@@ -94,6 +94,7 @@ Python 后端（FastAPI，`backend/`）已在 `chore/remove-python` 删除，最
 | DELETE | `/api/agent/context` | ✅ |
 | GET | `/api/agent/conversations` | ✅ |
 | GET | `/api/agent/conversations/{conversation_id}` | ✅ |
+| POST | `/api/agent/conversations/{conversation_id}/branch` | ✅ |
 | DELETE | `/api/agent/conversations/{conversation_id}` | ✅ |
 | GET | `/api/agent/data/export` | ✅ |
 | GET | `/api/agent/diagnostics/bundle` | ✅ |

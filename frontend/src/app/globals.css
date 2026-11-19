@@ -2848,3 +2848,12 @@ body {
 .ou-image-viewer-bar { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: var(--ou-space-2); font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
 @media (prefers-reduced-motion: reduce) { .offeru-agent-panel .agent-turn-rail__tick, .offeru-agent-panel .agent-message-image, .offeru-agent-panel .agent-md .agent-md-image { transition: none; } }
 .ou-dialog.ou-dialog-media { width: min(56rem, calc(100vw - 2 * var(--ou-gutter))); }
+
+/* 引用回复：输入框上方的引用条（可 Esc / × 取消），发出去后用户气泡顶部的引用块。 */
+.offeru-agent-panel .agent-quote-chip { position: absolute; bottom: 100%; left: 0; right: 0; z-index: var(--ou-layer-sticky); display: flex; align-items: center; gap: var(--ou-space-1); min-width: 0; margin-bottom: var(--ou-space-1); padding: var(--ou-space-1) var(--ou-space-1) var(--ou-space-1) var(--ou-space-2); border-left: 2px solid var(--ou-tone-purple-border); border-radius: var(--ou-radius-check); background: var(--ou-tone-purple-bg); font-size: var(--ou-type-xs); color: var(--ou-tone-purple-text); animation: ou-menu-in var(--ou-motion-slow) var(--ou-ease-spring-soft); }
+.offeru-agent-panel .agent-quote-chip__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ou-text-secondary); }
+.offeru-agent-panel .agent-quote-chip__close { display: grid; flex: none; width: 1.25rem; height: 1.25rem; place-items: center; border: 0; border-radius: var(--ou-radius-pill); background: transparent; color: var(--ou-text-tertiary); cursor: pointer; transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-quote-chip__close:hover { background: var(--ou-capsule-bg); color: var(--ou-text-primary); }
+.offeru-agent-panel .agent-quote-chip__close:focus-visible { outline: none; box-shadow: var(--ou-ring-agent); color: var(--ou-text-primary); }
+.offeru-agent-panel .agent-msg-quote { margin: 0 0 var(--ou-space-1); padding-left: var(--ou-space-2); border-left: 2px solid var(--ou-tone-purple-border); font-size: var(--ou-type-xs); color: var(--ou-text-secondary); white-space: normal; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .offeru-agent-panel .agent-quote-chip { animation: none; } }
