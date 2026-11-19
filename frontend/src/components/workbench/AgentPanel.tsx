@@ -6,6 +6,8 @@
 // =============================================
 
 import { ToolExecutionList } from "./EmbeddedAgentStreamView";
+import { AgentToolError } from "./AgentToolErrorCard";
+import { isToolFailure } from "@/lib/agentToolError";
 import { AgentAskPanel } from "./AgentAskPanel";
 import { AgentMarkdown } from "./AgentMarkdown";
 import { applyRuntimeToolEvent, createInitialAgentStreamState, type AgentStreamState } from "@/lib/embeddedAgentStream";
@@ -218,15 +220,6 @@ function shortTime(value?: string | null) {
         hour: "2-digit",
         minute: "2-digit",
       });
-}
-
-function previewJson(value: unknown) {
-  try {
-    const text = JSON.stringify(value, null, 2);
-    return text.length > 260 ? `${text.slice(0, 260)}...` : text;
-  } catch {
-    return String(value);
-  }
 }
 
 /** Irreversible steps the Agent queued for the user; the Run itself already finished. */
@@ -1968,8 +1961,10 @@ function ToolCallRows({ calls }: { calls: AgentResponse["tool_calls"] }) {
     <div className="agent-tool-group" role="list" aria-label="本轮工具调用">
       {calls.map((call, index) => {
         const presentation = presentAgentToolCall(call);
+        // 结果是给模型看的：出错时画错误卡片 / 一句话，成功时只留人话摘要，不再露 JSON 原文。
+        const failed = isToolFailure(call.result);
         return (
-          <details key={call.tool + "-" + index} role="listitem" className="group ou-enter" style={{ ["--i" as string]: index }}>
+          <details key={call.tool + "-" + index} role="listitem" className="group ou-enter" data-status={failed ? "error" : undefined} open={failed || undefined} style={{ ["--i" as string]: index }}>
             <summary className="agent-tool-row cursor-pointer list-none">
               <span className="agent-tool-node" aria-hidden>
                 <Wrench size={9} strokeWidth={2} />
@@ -1987,9 +1982,11 @@ function ToolCallRows({ calls }: { calls: AgentResponse["tool_calls"] }) {
               {presentation && (
                 <p className="text-[11.5px] leading-5 text-[var(--foreground-soft)]">{presentation}</p>
               )}
-              <pre className="custom-scrollbar max-h-28 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1.5 font-mono text-[10.5px] leading-4 text-[var(--foreground-soft)]">
-                {previewJson(call.result)}
-              </pre>
+              {failed ? (
+                <AgentToolError result={call.result} />
+              ) : (
+                !presentation && <p className="text-[length:var(--agent-fs-xs)] leading-5 text-[var(--foreground-muted)]">已完成</p>
+              )}
             </div>
           </details>
         );
