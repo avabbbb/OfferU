@@ -2878,3 +2878,21 @@ body {
 /* Run 中断 / 失败时保留下来的半截回答：气泡照常，下面一行说明没写完。 */
 .offeru-agent-panel .agent-msg-partial-note { margin-top: var(--ou-space-1); font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
 @media (prefers-reduced-motion: reduce) { .offeru-agent-panel .agent-md[data-streaming="true"] *::after, .offeru-agent-panel .agent-thinking__body { animation: none; } }
+
+/* 排队托盘：Run 在跑时 Tab 排进来的消息，贴在输入框上方；这一轮结束后依次发出。插话的用户消息上方一个紫色小标。 */
+.offeru-agent-panel .agent-queue-tray { margin: 0 auto var(--ou-space-1); padding: var(--ou-space-1) var(--ou-space-2); border-radius: var(--ou-radius-card); background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); animation: agent-chip-in var(--ou-motion-slow) var(--ou-ease-spring-soft); }
+.offeru-agent-panel .agent-queue-tray__head { display: flex; align-items: baseline; gap: var(--ou-space-2); padding: 0 var(--ou-space-1); font-size: var(--ou-type-xs); font-weight: 600; color: var(--ou-tone-purple-text); }
+.offeru-agent-panel .agent-queue-tray__hint { font-weight: 400; color: var(--ou-text-tertiary); }
+.offeru-agent-panel .agent-queue-tray__list { display: grid; gap: 1px; max-height: 8.5rem; overflow-y: auto; margin: var(--ou-space-1) 0 0; padding: 0; list-style: none; }
+.offeru-agent-panel .agent-queue-tray__row { display: flex; align-items: center; gap: var(--ou-space-1); min-width: 0; padding: 0 0 0 var(--ou-space-1); border-radius: var(--ou-radius-check); font-size: var(--ou-type-xs); color: var(--ou-text-secondary); transition: background-color var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-queue-tray__row:hover, .offeru-agent-panel .agent-queue-tray__row:focus-within { background: var(--ou-tone-purple-bg); }
+.offeru-agent-panel .agent-queue-tray__row:not([data-armed]) { color: var(--ou-text-tertiary); }
+.offeru-agent-panel .agent-queue-tray__icon { flex: none; color: var(--ou-tone-purple-text); }
+.offeru-agent-panel .agent-queue-tray__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.offeru-agent-panel .agent-queue-tray__btn { display: grid; flex: none; width: 1.5rem; height: 1.5rem; place-items: center; border: 0; border-radius: var(--ou-radius-pill); background: transparent; color: var(--ou-text-tertiary); cursor: pointer; opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-queue-tray__row:hover .agent-queue-tray__btn, .offeru-agent-panel .agent-queue-tray__row:focus-within .agent-queue-tray__btn { opacity: 1; }
+.offeru-agent-panel .agent-queue-tray__btn:hover { color: var(--ou-text-primary); }
+.offeru-agent-panel .agent-queue-tray__btn:focus-visible { outline: none; opacity: 1; box-shadow: var(--ou-ring-agent); color: var(--ou-text-primary); }
+.offeru-agent-panel .agent-msg-steer-tag { display: block; margin-bottom: 2px; text-align: right; font-size: var(--ou-type-xs); color: var(--ou-tone-purple-text); }
+@media (hover: none) { .offeru-agent-panel .agent-queue-tray__btn { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .offeru-agent-panel .agent-queue-tray { animation: none; } }
