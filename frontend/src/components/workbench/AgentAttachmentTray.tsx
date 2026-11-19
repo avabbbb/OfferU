@@ -3,6 +3,7 @@ import { FileText, Loader2, Presentation, X } from "lucide-react";
 import { attachmentExtension, formatAttachmentSize, type AgentAttachmentKind } from "@/lib/agentAttachments";
 import { useApiAssetUrl } from "@/lib/apiAsset";
 import type { ComposerAttachment } from "./useComposerAttachments";
+import { openAgentImage } from "./AgentMessageActions";
 
 /** What a sent user message keeps of its attachments. */
 export interface SentAttachment {
@@ -112,13 +113,22 @@ export function AgentAttachmentTray({
 }
 
 // 网页版 /api/* 由页面内后端回答，<a>/<img> 不走 fetch，所以先读成 blob: URL（见 lib/apiAsset）。
-function MessageImage({ attachment, url }: { attachment: SentAttachment; url: string }) {
+// 点开看大图（AgentImageViewer，←→ 切换同一条消息里的图）；拼贴按张数排版，见 globals.css 的 [data-images]。
+function MessageImage({ attachment, url, onOpen }: { attachment: SentAttachment; url: string; onOpen: () => void }) {
   const src = useApiAssetUrl(url);
   return (
-    <a href={src} target="_blank" rel="noreferrer" className="agent-message-image" title={attachment.name}>
+    <button type="button" className="agent-message-image" title={`${attachment.name}（点开看大图）`} aria-label={`看大图：${attachment.name}`} onClick={onOpen}>
       {src ? <img src={src} alt={attachment.name} /> : null}
-    </a>
+    </button>
   );
+}
+
+/** 图片拼贴的排版档：1 张大图、2 张对半、3 张及以上两列方格。 */
+export function imageCollageLayout(count: number): "1" | "2" | "many" | undefined {
+  if (count <= 0) return undefined;
+  if (count === 1) return "1";
+  if (count === 2) return "2";
+  return "many";
 }
 
 export function AgentMessageAttachments({
@@ -129,11 +139,14 @@ export function AgentMessageAttachments({
   imageUrl: (id: string) => string;
 }) {
   if (attachments.length === 0) return null;
+  const images = attachments.filter((attachment) => attachment.kind === "image");
+  const gallery = images.map((attachment) => ({ src: imageUrl(attachment.id), name: attachment.name }));
   return (
-    <div className="agent-message-attachments" data-testid="agent-message-attachments">
+    <div className="agent-message-attachments" data-testid="agent-message-attachments" data-images={imageCollageLayout(images.length)}>
       {attachments.map((attachment) =>
         attachment.kind === "image" ? (
-          <MessageImage key={attachment.id} attachment={attachment} url={imageUrl(attachment.id)} />
+          <MessageImage key={attachment.id} attachment={attachment} url={imageUrl(attachment.id)}
+            onOpen={() => openAgentImage({ images: gallery, index: images.indexOf(attachment) })} />
         ) : (
           <span key={attachment.id} className="agent-message-file" title={attachment.name}>
             <DocumentIcon name={attachment.name} />

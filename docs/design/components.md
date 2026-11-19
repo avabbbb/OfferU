@@ -175,6 +175,11 @@ Notion 式：整张表放在 20px 圆角的实白纸上（`.ou-jobs-sheet`，L2 
 - **输入框**（`.agent-composer`，`data-testid="agent-composer"`）：一张 `--ou-radius-composer`（26px）浅色玻璃卡、`--ou-elev-composer`；从上到下 正文 → 附件 → 底栏（方形「+」附件钮、模型 / 模式胶囊——点开是 `Menu`（`side="top"`，模型 + 思考强度一张、模式一张，当前项打勾）、右侧墨黑「发送 ↑」胶囊，没东西可发时 32% 透明度）。聚焦是整卡 `--ou-ring-composer`；拖入文件是整卡紫环 `--ou-ring-agent` + 一行「松开即可添加…」，不用虚线框。回车发送（输入法选词时不发），Shift+Enter 换行。发送时整卡轻压（`data-sent`）；正在跑且没东西可发时，发送键收成 5×5 像素格加载（`.agent-pixel`，格子圆角 `--ou-radius-pixel`，`steps()`，reduced-motion 下静止）。
 - **附件**（`AgentAttachmentTray`）：图片按 1 → 2 → 1+2 → 田字拼贴（`.agent-mosaic`，`--ou-radius-swatch`），悬停出删除钮，超过 4 张显示「+N」；文档是小胶囊，出错时红色内环 `--ou-ring-error`。
 
+- **对话导航**（`AgentConversationNav.tsx` + `lib/agentConversationNav.ts`，移植自 Flovart@28c79bf）：两轮以上时消息区右缘每轮一道短刻度，当前可视轮墨黑、悬停 / 聚焦变紫并弹出这一轮的问答预览（`--ou-glass-menu`），指针靠近时刻度按距离放大（磁吸）；点刻度平滑滚过去。键盘：刻度上 ↑↓ / Home / End，面板里 Alt+PageUp / Alt+PageDown 逐轮跳、Alt+End 回到最新。
+- **跟随底部**：只在用户没往上翻时自动滚到最新；往上翻就停（流式输出不会把人拉回去），离底超过 1/3 屏时输入框上方出圆形「↓ 回到最新」胶囊（`--ou-capsule-*`），点它或回到底部恢复跟随。
+- **消息操作**（`.agent-msg-actions`）：悬停 / 键盘聚焦某条消息时气泡下方出小图标钮，现在是「复制」（回答复制 Markdown 原文，成功后一瞬变紫勾）。
+- **图片**：用户发的图按张数排（1 张大图、2 张对半、3 张以上两列方格，`[data-images]`）；回答里的 Markdown 图片圆角、可点。任意图片点开是 `Dialog` 大图（`AgentImageViewer`），同一条消息里多张时 ←→ 切换、Esc 关闭。
+
 看：任意页点右上角 bot 钮（1440 宽约在 (1408, 32)），再在输入框里打字。
 
 ## Agent 运行（参考 Inspora · Jessy Barret「agent dashboard」，Minimal / Rounded）

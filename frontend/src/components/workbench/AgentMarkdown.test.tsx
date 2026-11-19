@@ -30,3 +30,16 @@ describe("AgentMarkdown", () => {
     expect(html(link("岗位", "/jobs/1"))).toContain('target="_blank"');
   });
 });
+
+describe("AgentMarkdown images", () => {
+  const img = (alt: string, src: string) => "!" + link(alt, src);
+  it("wraps markdown images in a zoom button and lists them in order", async () => {
+    const { markdownImages } = await import("./AgentMarkdown");
+    const text = img("图一", "https://a/1.png") + "\n\n" + img("", "https://a/2.png");
+    expect(markdownImages(text)).toEqual([{ src: "https://a/1.png", name: "图一" }, { src: "https://a/2.png", name: "" }]);
+    const out = html(text);
+    expect(out).toContain('class="agent-md-image"');
+    expect(out).toContain('aria-label="看大图：图一"');
+    expect(out).toContain('src="https://a/1.png"');
+  });
+});

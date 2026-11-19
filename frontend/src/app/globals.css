@@ -2800,3 +2800,51 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ou-gallery-frame, .ou-gallery-detail { transition: none; animation: none; }
 }
+
+/* ── Agent 对话导航（轮次刻度 + 回到最新）、消息操作、图片消息 ──
+   功能移植自 Flovart@28c79bf（AgentConversationNav / AgentCopyButton / AgentMediaTiles），外观只用 OfferU 的 --ou-* Token。 */
+.offeru-agent-panel .agent-thread-wrap { position: relative; display: flex; min-height: 0; flex: 1; flex-direction: column; }
+.offeru-agent-panel .agent-turn-rail { position: absolute; top: 50%; right: var(--ou-space-1); z-index: var(--ou-layer-sticky); display: flex; max-height: 70%; flex-direction: column; align-items: flex-end; gap: var(--ou-space-2); padding: var(--ou-space-1) 0; transform: translateY(-50%); }
+.offeru-agent-panel .agent-turn-rail::before { content: ""; position: absolute; inset: calc(-1 * var(--ou-space-3)) calc(-1 * var(--ou-space-1)) calc(-1 * var(--ou-space-3)) calc(-1 * var(--ou-space-4)); }
+.offeru-agent-panel .agent-turn-rail__item { position: relative; display: flex; align-items: center; justify-content: flex-end; }
+.offeru-agent-panel .agent-turn-rail__tick { position: relative; display: block; width: calc(0.5rem + 0.875rem * var(--mag, 0)); height: 2px; padding: 0; border: 0; border-radius: var(--ou-radius-pill); background: var(--ou-text-tertiary); opacity: calc(0.45 + 0.4 * var(--mag, 0)); cursor: pointer; transition: width var(--ou-motion-fast) var(--ou-ease-standard), background-color var(--ou-motion-fast) var(--ou-ease-standard), opacity var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-turn-rail__tick::before { content: ""; display: block; height: 0.625rem; margin-top: -0.25rem; }
+.offeru-agent-panel .agent-turn-rail.is-magnet .agent-turn-rail__tick { transition: width var(--ou-motion-fast) var(--ou-ease-spring-soft), background-color var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-turn-rail__tick:hover, .offeru-agent-panel .agent-turn-rail__tick:focus-visible { background: var(--ou-tone-purple-dot); opacity: 1; outline: none; }
+.offeru-agent-panel .agent-turn-rail__tick:focus-visible { width: 1.125rem; }
+.offeru-agent-panel .agent-turn-rail__tick.is-active { width: max(0.75rem, calc(0.5rem + 0.875rem * var(--mag, 0))); background: var(--ou-text-primary); opacity: 1; }
+.offeru-agent-panel .agent-turn-rail__preview { position: absolute; top: 50%; right: 1.875rem; z-index: var(--ou-layer-popover); display: grid; width: 15.5rem; gap: var(--ou-space-1); padding: var(--ou-space-2) var(--ou-space-3); border-radius: var(--ou-radius-card); background: var(--ou-glass-menu); -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur-heavy)); backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur-heavy)); box-shadow: var(--ou-glass-highlight), var(--ou-elev-menu); color: var(--ou-text-primary); transform: translateY(-50%); pointer-events: none; }
+.offeru-agent-panel .agent-turn-rail__preview strong { display: -webkit-box; overflow: hidden; font-size: var(--ou-type-xs); font-weight: 600; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.offeru-agent-panel .agent-turn-rail__preview p { display: -webkit-box; margin: 0; overflow: hidden; font-size: var(--ou-type-xs); line-height: 1.55; color: var(--ou-text-secondary); -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.offeru-agent-panel .agent-turn-rail__preview small { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.offeru-agent-panel .agent-scroll-latest { position: absolute; right: 0; bottom: var(--ou-space-2); left: 0; z-index: var(--ou-layer-sticky); display: flex; justify-content: center; pointer-events: none; }
+.offeru-agent-panel .agent-scroll-latest__btn { display: grid; width: 1.875rem; height: 1.875rem; place-items: center; border: 0; border-radius: var(--ou-radius-pill); background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); cursor: pointer; pointer-events: auto; animation: ou-menu-in var(--ou-motion-slow) var(--ou-ease-spring-soft); }
+.offeru-agent-panel .agent-scroll-latest__btn:focus-visible { outline: none; box-shadow: var(--ou-capsule-shadow), var(--ou-ring-agent); }
+
+/* 消息操作：悬停 / 键盘聚焦这条消息时出现在气泡下方（复制、引用、分叉）。 */
+.offeru-agent-panel .agent-msg-actions { display: flex; gap: var(--ou-space-1); margin-top: var(--ou-space-1); opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-msg-actions[data-align="end"] { justify-content: flex-end; }
+.offeru-agent-panel [data-message-row]:hover .agent-msg-actions, .offeru-agent-panel [data-message-row]:focus-within .agent-msg-actions { opacity: 1; }
+.offeru-agent-panel .agent-msg-action { display: inline-flex; height: 1.5rem; min-width: 1.5rem; align-items: center; justify-content: center; gap: var(--ou-space-1); padding: 0 var(--ou-space-1); border: 0; border-radius: var(--ou-radius-pill); background: transparent; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); cursor: pointer; transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-msg-action:hover:not(:disabled) { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+.offeru-agent-panel .agent-msg-action:focus-visible { outline: none; box-shadow: var(--ou-ring-agent); color: var(--ou-text-primary); }
+.offeru-agent-panel .agent-msg-action:disabled { cursor: default; opacity: var(--ou-alpha-faint); }
+.offeru-agent-panel .agent-msg-action.is-done { color: var(--ou-tone-purple-text); }
+
+/* 图片消息：用户发的图按张数排成拼贴（1 张大图、2 张对半、3+ 张两列方格），点开看大图；回答里的 Markdown 图片圆角、可点开。 */
+.offeru-agent-panel .agent-message-attachments[data-images="1"] .agent-message-image { width: min(15rem, 100%); height: auto; aspect-ratio: 4 / 3; }
+.offeru-agent-panel .agent-message-attachments[data-images="2"] .agent-message-image { width: 7.5rem; height: 7.5rem; }
+.offeru-agent-panel .agent-message-image { padding: 0; cursor: zoom-in; transition: transform var(--ou-motion-base) var(--ou-ease-spring-soft), box-shadow var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-message-image:hover { transform: translateY(-1px) scale(1.02); }
+.offeru-agent-panel .agent-message-image:focus-visible { outline: none; box-shadow: var(--ou-swatch-rim), var(--ou-ring-agent); }
+.offeru-agent-panel .agent-message-attachments[data-images="many"] { display: grid; grid-template-columns: repeat(2, 6rem); justify-content: end; }
+.offeru-agent-panel .agent-message-attachments[data-images="many"] .agent-message-file { grid-column: 1 / -1; justify-self: end; }
+.offeru-agent-panel .agent-md .agent-md-image { display: block; max-width: 100%; margin: var(--ou-space-2) 0; padding: 0; border: 0; border-radius: var(--ou-radius-swatch); background: transparent; cursor: zoom-in; transition: transform var(--ou-motion-base) var(--ou-ease-spring-soft); }
+.offeru-agent-panel .agent-md .agent-md-image:hover { transform: translateY(-1px); }
+.offeru-agent-panel .agent-md .agent-md-image:focus-visible { outline: none; box-shadow: var(--ou-ring-agent); }
+.offeru-agent-panel .agent-md img { display: block; max-width: 100%; height: auto; border-radius: var(--ou-radius-swatch); box-shadow: var(--ou-swatch-rim), var(--ou-capsule-shadow); }
+.ou-image-viewer { display: grid; gap: var(--ou-space-3); justify-items: center; }
+.ou-image-viewer img { max-width: 100%; max-height: 70vh; border-radius: var(--ou-radius-card); object-fit: contain; }
+.ou-image-viewer-bar { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: var(--ou-space-2); font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
+@media (prefers-reduced-motion: reduce) { .offeru-agent-panel .agent-turn-rail__tick, .offeru-agent-panel .agent-message-image, .offeru-agent-panel .agent-md .agent-md-image { transition: none; } }
+.ou-dialog.ou-dialog-media { width: min(56rem, calc(100vw - 2 * var(--ou-gutter))); }
