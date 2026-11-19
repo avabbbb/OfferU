@@ -69,6 +69,9 @@ export interface AgentRuntimeDeps {
   /** Test hooks: stream timeouts / retries and context compaction policies (agent/host.ts). */
   streamGuard?: AgentHostDeps["streamGuard"];
   compaction?: AgentHostDeps["compaction"];
+  /** Context window per run / default step budget from settings (agent/host.ts). */
+  contextWindow?: AgentHostDeps["contextWindow"];
+  defaultMaxSteps?: AgentHostDeps["defaultMaxSteps"];
   memoryArm?: MemoryArm;
   now?: () => string;
 }
@@ -117,6 +120,8 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
     maxConcurrentRuns: deps.maxConcurrentRuns,
     streamGuard: deps.streamGuard,
     compaction: deps.compaction,
+    contextWindow: deps.contextWindow,
+    defaultMaxSteps: deps.defaultMaxSteps,
   });
 }
 

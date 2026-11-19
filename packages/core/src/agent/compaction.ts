@@ -11,6 +11,7 @@
 // old results — all can be read again with get / fetch_page.
 
 import type { ChatMessage } from "../llm";
+import { DEFAULT_CONTEXT_WINDOW_TOKENS } from "../llm-context";
 
 export interface CompactionPolicy {
   /** Model context window, tokens. */
@@ -21,7 +22,26 @@ export interface CompactionPolicy {
   keepRecentTokens: number;
 }
 
-export const DEFAULT_COMPACTION: CompactionPolicy = { windowTokens: 64_000, reserveTokens: 8_000, keepRecentTokens: 16_000 };
+/** Reserve and keep-recent as shares of the window (the old 64k / 8k / 16k ratios). */
+export const COMPACTION_RESERVE_RATIO = 0.125;
+export const COMPACTION_KEEP_RECENT_RATIO = 0.25;
+
+/**
+ * Policy for a window: compaction starts at window − 12.5% (reserve for the
+ * reply and tool calls) and keeps the newest 25% of the window verbatim, so
+ * the trigger scales with the model's window (256K → 229,376; 128K → 114,688).
+ */
+export function compactionPolicyFor(windowTokens: number): CompactionPolicy {
+  const window = Math.max(1, Math.trunc(windowTokens));
+  return {
+    windowTokens: window,
+    reserveTokens: Math.round(window * COMPACTION_RESERVE_RATIO),
+    keepRecentTokens: Math.round(window * COMPACTION_KEEP_RECENT_RATIO),
+  };
+}
+
+/** Default: the 256K window (llm-context DEFAULT_CONTEXT_WINDOW_TOKENS). */
+export const DEFAULT_COMPACTION: CompactionPolicy = compactionPolicyFor(DEFAULT_CONTEXT_WINDOW_TOKENS);
 
 /** Rough token count: ~4 ASCII chars per token, ~0.7 token per CJK / other char. */
 export function estimateTokens(text: string): number {

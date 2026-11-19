@@ -86,7 +86,7 @@ describe("GET /api/agent/runtime/models", () => {
     expect(res.status).toBe(200);
     const [deepseek, openai] = res.body.services;
     expect(deepseek).toMatchObject({ config_id: "ds", service_name: "DeepSeek", active: true, default_model: "deepseek-v4-flash" });
-    expect(deepseek.models[0]).toEqual({ id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", efforts: [] });
+    expect(deepseek.models[0]).toEqual({ id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", efforts: [], context_limit: 1_048_576, context_window: 262_144 });
     expect(deepseek.models.find((model: { id: string }) => model.id === "deepseek-v4-pro").efforts.map((level: { id: string }) => level.id)).toEqual(["low", "medium", "high"]);
     expect(openai).toMatchObject({ config_id: "oa", active: false });
     expect(openai.models[0].efforts[0]).toEqual({ id: "minimal", label: "极简", hint: "几乎不思考，最快" });

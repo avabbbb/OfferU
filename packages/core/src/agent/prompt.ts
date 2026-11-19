@@ -7,10 +7,12 @@ import { MEMORY_KIND } from "../labels";
 import { overview } from "../operations";
 import { capabilityIndex } from "../tools/catalog";
 import { CORE_RULES, matchSkills, skillPrompt } from "./skills";
+import { MAX_STEPS } from "./limits";
+
+export { MAX_STEPS } from "./limits";
 import type { CoreContext, CoreStore, MemoryKind, StoredRecord } from "../types";
 
 export const AGENT_ACTOR = "助手";
-export const MAX_STEPS = 6;
 const INDEX_LINES = 60;
 const INDEX_CHARS = 3000;
 export type MemoryArm = "none" | "index" | "full";

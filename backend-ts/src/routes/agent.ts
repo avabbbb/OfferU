@@ -18,7 +18,9 @@ import {
   agentActionUndoPreview,
   agentActions,
   canonicalAgentRunEvent,
+  agentContextWindow,
   isReasoningEffort,
+  normalizeMaxSteps,
   llmModelCatalog,
   type ReasoningEffort,
   createAgentRuntime,
@@ -61,6 +63,9 @@ export function agentHost(deps: AppDeps): AgentHost {
         readFile: deps.companion?.readFile,
       }),
       handlers: deps.companion?.handlers,
+      // Context window and step budget from settings: per-service / global, capped at the model's known limit.
+      contextWindow: async (llm, options) => agentContextWindow(deps.config ? await deps.config.get() : null, llm.metadata.model, options.llm_config_id || "").tokens,
+      defaultMaxSteps: async () => (deps.config ? normalizeMaxSteps((await deps.config.get()).agent_max_steps) : undefined),
       prepareAttachments: deps.attachmentFiles
         ? (message, ids) => prepareAttachmentMessage(attachmentDeps(deps), message, ids)
         : undefined,
