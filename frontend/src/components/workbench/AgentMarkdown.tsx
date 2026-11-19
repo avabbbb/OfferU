@@ -2,6 +2,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useMemo } from "react";
 import { openAgentImage } from "./AgentMessageActions";
+import { closeOpenFences } from "@/lib/agentStreaming";
 
 // react-markdown renders to React elements: raw HTML in model output is escaped,
 // and javascript:/data: links are dropped by its default URL transform.
@@ -22,7 +23,9 @@ const baseComponents: Components = {
   ),
 };
 
-export function AgentMarkdown({ text }: { text: string }) {
+/** streaming：流到一半时补齐未闭合的代码块，并在末尾画一个闪烁光标（CSS，`data-streaming`）。 */
+export function AgentMarkdown({ text: raw, streaming = false }: { text: string; streaming?: boolean }) {
+  const text = streaming ? closeOpenFences(raw) : raw;
   const components = useMemo<Components>(() => {
     const images = markdownImages(text);
     return {
@@ -42,7 +45,7 @@ export function AgentMarkdown({ text }: { text: string }) {
     };
   }, [text]);
   return (
-    <div className="agent-md">
+    <div className="agent-md" data-streaming={streaming ? "true" : undefined}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </ReactMarkdown>

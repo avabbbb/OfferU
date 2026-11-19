@@ -2,7 +2,7 @@
  * 分叉 / 引用的纯函数。
  *
  * 界面上的消息列表比服务端保存的对话多两类「只在本地」的消息：欢迎语（id 以 `welcome` 开头）
- * 和本地提示（如取消 Run 后的 `assistant-abort-*`）。分叉要把界面下标换算成服务端的消息条数，
+ * 和本地提示（如取消 Run 后的 `assistant-abort-*`、Run 中断 / 失败时保留的半截回答 `assistant-partial-*`）。分叉要把界面下标换算成服务端的消息条数，
  * 所以这两类都要跳过；它们也不显示分叉按钮。
  */
 
@@ -13,7 +13,7 @@ export interface BranchableMessage {
 }
 
 /** 只存在于本地、不会写进对话记录的提示消息的 id 前缀。 */
-export const LOCAL_NOTICE_PREFIXES = ["assistant-abort-"] as const;
+export const LOCAL_NOTICE_PREFIXES = ["assistant-abort-", "assistant-partial-"] as const;
 
 export function isWelcomeMessage(message: Pick<BranchableMessage, "id">): boolean {
   return String(message.id || "").startsWith("welcome");

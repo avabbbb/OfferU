@@ -8,7 +8,7 @@ import type { Json } from "../types";
 import type { AgentRun } from "./run-state";
 
 export const CANONICAL_AGENT_RUN_EVENT_TYPES = new Set([
-  "run.started", "assistant.delta", "assistant.message", "reasoning.status",
+  "run.started", "assistant.delta", "assistant.message", "reasoning.status", "reasoning.delta",
   "tool.started", "tool.progress", "tool.completed", "tool.failed",
   "approval.requested", "approval.resolved", "task.progress",
   "run.completed", "run.failed", "run.cancelled", "run.blocked",
@@ -37,6 +37,9 @@ const RUN_EVENT_MAP: Record<string, string> = {
   "message.completed": "assistant.message",
   "assistant.message": "assistant.message",
   "reasoning.status": "reasoning.status",
+  // 模型的思考过程增量：只在线推送（durable=false），不写进 Run 事件日志。
+  "reasoning.delta": "reasoning.delta",
+  "thinking.delta": "reasoning.delta",
   "runtime.agent_completed": "assistant.message",
   "pi.agent_end": "assistant.message",
   "runtime.tool_started": "tool.started",

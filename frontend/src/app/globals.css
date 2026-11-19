@@ -2857,3 +2857,24 @@ body {
 .offeru-agent-panel .agent-quote-chip__close:focus-visible { outline: none; box-shadow: var(--ou-ring-agent); color: var(--ou-text-primary); }
 .offeru-agent-panel .agent-msg-quote { margin: 0 0 var(--ou-space-1); padding-left: var(--ou-space-2); border-left: 2px solid var(--ou-tone-purple-border); font-size: var(--ou-type-xs); color: var(--ou-text-secondary); white-space: normal; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { .offeru-agent-panel .agent-quote-chip { animation: none; } }
+/* 思考块：思考中标题扫高光（.ou-shimmer）+ 计时，正文开始后收起成「已思考 N 秒」；展开看思考原文。紫色 = Agent。 */
+.offeru-agent-panel .agent-thinking { margin-bottom: var(--ou-space-1); }
+.offeru-agent-panel .agent-thinking__head { display: inline-flex; align-items: center; gap: var(--ou-space-1); padding: 0 var(--ou-space-1); height: 1.5rem; border: 0; border-radius: var(--ou-radius-pill); background: transparent; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); cursor: pointer; transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
+.offeru-agent-panel .agent-thinking__head:hover { background: var(--ou-capsule-bg); color: var(--ou-text-primary); }
+.offeru-agent-panel .agent-thinking__head:focus-visible { outline: none; box-shadow: var(--ou-ring-agent); }
+.offeru-agent-panel .agent-thinking__icon { flex: none; color: var(--ou-tone-purple-text); }
+.offeru-agent-panel .agent-thinking[data-state="done"] .agent-thinking__icon { color: inherit; }
+.offeru-agent-panel .agent-thinking__chevron { flex: none; transition: rotate var(--ou-motion-base) var(--ou-ease-spring); }
+.offeru-agent-panel .agent-thinking__head[aria-expanded="true"] .agent-thinking__chevron { rotate: 90deg; }
+.offeru-agent-panel .agent-thinking__body { max-height: 10rem; overflow-y: auto; margin: var(--ou-space-1) 0 0 var(--ou-space-2); padding-left: var(--ou-space-2); border-left: 2px solid var(--ou-tone-purple-border); font-size: var(--ou-type-xs); line-height: var(--ou-line-body); color: var(--ou-text-tertiary); white-space: pre-wrap; overflow-wrap: anywhere; animation: ou-preview-in var(--ou-motion-base) var(--ou-ease-standard); }
+
+/* 流式回答末尾的光标：跟在最后一段文字后面闪（列表跟在最后一项、代码块跟在代码里）。 */
+@keyframes agent-caret-blink { 0%, 45% { opacity: 1; } 55%, 100% { opacity: 0; } }
+.offeru-agent-panel .agent-md[data-streaming="true"] > :is(p, h1, h2, h3, h4, h5, h6, blockquote):last-child::after,
+.offeru-agent-panel .agent-md[data-streaming="true"] > :is(ul, ol):last-child > li:last-child::after,
+.offeru-agent-panel .agent-md[data-streaming="true"] > pre:last-child > code::after,
+.offeru-agent-panel .agent-md[data-streaming="true"]:empty::after { content: ""; display: inline-block; width: 0.45em; height: 1em; margin-left: 0.15em; vertical-align: -0.15em; border-radius: var(--ou-radius-check); background: var(--ou-tone-purple-text); animation: agent-caret-blink calc(var(--ou-motion-shimmer) / 1.8) steps(1, end) infinite; }
+
+/* Run 中断 / 失败时保留下来的半截回答：气泡照常，下面一行说明没写完。 */
+.offeru-agent-panel .agent-msg-partial-note { margin-top: var(--ou-space-1); font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+@media (prefers-reduced-motion: reduce) { .offeru-agent-panel .agent-md[data-streaming="true"] *::after, .offeru-agent-panel .agent-thinking__body { animation: none; } }

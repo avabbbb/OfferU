@@ -180,6 +180,7 @@ Notion 式：整张表放在 20px 圆角的实白纸上（`.ou-jobs-sheet`，L2 
 - **消息操作**（`.agent-msg-actions`）：悬停 / 键盘聚焦某条消息时气泡下方出小图标钮，现在是「复制」（回答复制 Markdown 原文，成功后一瞬变紫勾）。
 - **引用**（`lib/agentQuote.ts`，`AgentQuoteChip`）：消息操作里的「引用」把整条消息（选区落在这条消息里时只取选中部分）放进输入框上方的引用条（紫色左线、`--ou-tone-purple-*`），× 或空输入时 Esc 取消；发送时以 Markdown 引用块放在正文前，用户气泡里拆回成顶部的引用块 `.agent-msg-quote`。
 - **分叉**（`lib/agentMessageBranch.ts`，`POST /api/agent/conversations/:id/branch`）：从某条已保存的消息「分叉」成新对话（复制这条及之前的消息，原对话不动、不复制 Run）并直接打开。欢迎语和本地提示（`assistant-abort-*`）不算消息条数、也没有分叉按钮；Run 进行中按钮禁用。
+- **流式**（`lib/agentStreaming.ts`）：思考过程走只在线推送、不落盘的 `reasoning.delta`，回答上方画思考块 `AgentThinkingBlock`——思考中标题扫高光（`.ou-shimmer`）并按秒计时，正文一开始自动收起成「已思考 N 秒」（用户手动开合后不再自动改）；正文流式渲染时补齐未闭合的代码块、末尾一个紫色闪烁光标（`.agent-md[data-streaming]`，减少动效时不闪）；增量每帧合并一次再更新界面；Run 中断或失败时已经流出的文字留成一条本地消息（`assistant-partial-*`，下方一行灰字说明没写完，不计入分叉条数）。
 - **图片**：用户发的图按张数排（1 张大图、2 张对半、3 张以上两列方格，`[data-images]`）；回答里的 Markdown 图片圆角、可点。任意图片点开是 `Dialog` 大图（`AgentImageViewer`），同一条消息里多张时 ←→ 切换、Esc 关闭。
 
 看：任意页点右上角 bot 钮（1440 宽约在 (1408, 32)），再在输入框里打字。

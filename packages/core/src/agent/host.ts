@@ -472,7 +472,9 @@ export class AgentHost {
               return;
             }
             case "thinking_delta":
-              return;
+              // 思考过程只给在线的界面看（reasoning.delta），不落盘、不进事件日志。
+              if (!event.text) return;
+              return publish("reasoning.delta", { delta: event.text, ...runtimeTag });
             case "agent_start":
               return persistWorkerEvent("runtime.agent_started", {}, "kernel.agent_start");
             case "turn_start":

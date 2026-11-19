@@ -80,6 +80,8 @@ import { agentOrbState } from "@/lib/agentWorkingOrb";
 import { AgentAttachmentTray, AgentMessageAttachments, type SentAttachment } from "./AgentAttachmentTray";
 import { useComposerAttachments, type ComposerAttachment } from "./useComposerAttachments";
 import { AGENT_ATTACHMENT_ACCEPT, ATTACHMENT_ONLY_MESSAGE, hasDraggedFiles } from "@/lib/agentAttachments";
+import { createFrameBatcher, partialReplyFrom } from "@/lib/agentStreaming";
+import { AgentThinkingBlock } from "./AgentThinkingBlock";
 
 interface PanelMessage {
   id: string;
@@ -87,6 +89,10 @@ interface PanelMessage {
   content: string;
   response?: AgentResponse;
   attachments?: SentAttachment[];
+  /** 这一轮的思考过程（只在本次会话里有，不落盘）。 */
+  thinking?: { text: string; ms: number };
+  /** Run 中断 / 失败前已经流出的半截回答：本地保留，不在服务端对话里。 */
+  partial?: "cancelled" | "failed";
 }
 
 interface ResumeCandidate {
@@ -101,6 +107,10 @@ interface InFlightTurn {
   id: string;
   progressText: string;
   streamingText: string;
+  /** 思考过程（reasoning.delta）；开始 / 结束时间给思考块计时，正文一开始就算结束。 */
+  reasoningText?: string;
+  reasoningStartedAt?: number;
+  reasoningEndedAt?: number;
   toolStream: AgentStreamState;
 }
 
@@ -585,6 +595,25 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
     // 被导航分离到后台的流：结果只落在它自己的对话里，绝不写进当前界面。
     const isDetached = () => detachedControllersRef.current.has(controller) || controller.signal.aborted;
     let streamState = createInitialAgentStreamState();
+    // 已经流出的正文 / 思考：Run 中断或失败时用它保留半截回答，完成时挂上思考过程。
+    const streamed = { text: "", reasoning: "", reasoningStartedAt: 0, reasoningEndedAt: 0 };
+    const deltaBatcher = createFrameBatcher<{ text: string; reasoning: string; at: number }>((items) => {
+      if (isDetached()) return;
+      const text = items.map((item) => item.text).join("");
+      const reasoning = items.map((item) => item.reasoning).join("");
+      const firstReasoning = items.find((item) => item.reasoning);
+      const firstText = items.find((item) => item.text);
+      if (firstReasoning && !streamed.reasoningStartedAt) streamed.reasoningStartedAt = firstReasoning.at;
+      if (firstText && streamed.reasoningStartedAt && !streamed.reasoningEndedAt) streamed.reasoningEndedAt = firstText.at;
+      const { reasoningStartedAt, reasoningEndedAt } = streamed;
+      patchTurn(turnId, (turn) => ({
+        ...turn,
+        streamingText: turn.streamingText + text,
+        reasoningText: (turn.reasoningText || "") + reasoning,
+        reasoningStartedAt: reasoningStartedAt || undefined,
+        reasoningEndedAt: reasoningEndedAt || undefined,
+      }));
+    });
 
     const sentAttachments: SentAttachment[] = attachments.map((item) => ({
       id: item.attachmentId,
@@ -615,6 +644,19 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
         },
         (event, data) => {
           if (isDetached()) return;
+          const delta = event === "assistant.delta" || event === "message.delta"
+            ? String(data?.payload?.delta || "")
+            : "";
+          const reasoningDelta = event === "reasoning.delta" ? String(data?.payload?.delta || "") : "";
+          if (delta || reasoningDelta) {
+            // 正文 / 思考增量每帧合并一次再更新界面。
+            streamed.text += delta;
+            streamed.reasoning += reasoningDelta;
+            deltaBatcher.push({ text: delta, reasoning: reasoningDelta, at: Date.now() });
+            return;
+          }
+          if (event === "assistant.delta" || event === "message.delta" || event === "reasoning.delta") return;
+          deltaBatcher.flush();
           streamState = applyRuntimeToolEvent(streamState, event, data || {});
           const nextStream = streamState;
           const eventRunId = String(data?.run_id || "");
@@ -622,14 +664,10 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
           const progress = progressForEvent(event, data?.payload?.operation);
           const usage = contextUsageFromEvent(data);
           if (usage) setContextUsage(usage);
-          const delta = event === "assistant.delta" || event === "message.delta"
-            ? String(data?.payload?.delta || "")
-            : "";
           patchTurn(turnId, (turn) => ({
             ...turn,
             toolStream: nextStream,
             progressText: progress ?? turn.progressText,
-            streamingText: delta ? turn.streamingText + delta : turn.streamingText,
           }));
         },
         controller.signal,
@@ -644,12 +682,17 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
         }
         throw new Error(runtimeResponse.errors?.join("；") || "内置助手执行失败");
       }
+      deltaBatcher.flush();
       const response = toPanelResponse(runtimeResponse);
+      const thinkingText = streamed.reasoning.trim();
       const assistantMessage: PanelMessage = {
         id: "assistant-" + turnId,
         role: "assistant",
         content: response.assistant_message,
         response,
+        thinking: thinkingText
+          ? { text: thinkingText, ms: Math.max(0, (streamed.reasoningEndedAt || Date.now()) - (streamed.reasoningStartedAt || Date.now())) }
+          : undefined,
       };
       if (response.conversation_id) {
         currentConvRef.current = response.conversation_id;
@@ -663,12 +706,17 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
       setPendingActionCount(pendingCountOf(runtimeResponse.run));
       refreshConversations();
     } catch (err: any) {
+      deltaBatcher.cancel();
       if (isDetached()) return;
       if (err instanceof Error && err.name === "AbortError") return;
+      // Run 中断 / 失败：已经流出来的文字留在对话里（本地，标明没写完），不随错误一起消失。
+      const partial = partialReplyFrom(streamed.text, err);
+      if (partial) setMessages((prev) => [...prev, { id: "assistant-partial-" + turnId, role: "assistant", ...partial }]);
       setError(safeClientErrorMessage(err, "OfferU 请求失败"));
       setInput((current) => current || (content === ATTACHMENT_ONLY_MESSAGE && attachments.length > 0 ? "" : content));
       composerAttachments.restore(attachments);
     } finally {
+      deltaBatcher.cancel();
       detachedControllersRef.current.delete(controller);
       turnControllersRef.current.delete(turnId);
       setInFlightTurns((current) => current.filter((turn) => turn.id !== turnId));
@@ -1262,9 +1310,12 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
           ))}
           {inFlightTurns.map((turn) => (
             <div key={turn.id} id={"agent-turn-" + turn.id} data-testid="agent-inflight-turn" className="space-y-2">
+              {turn.reasoningText && turn.reasoningStartedAt && (
+                <AgentThinkingBlock text={turn.reasoningText} startedAt={turn.reasoningStartedAt} endedAt={turn.reasoningEndedAt ?? null} />
+              )}
               {turn.streamingText && (
                 <div className="agent-msg agent-msg-assistant">
-                  <AgentMarkdown text={turn.streamingText} />
+                  <AgentMarkdown text={turn.streamingText} streaming />
                 </div>
               )}
               <ToolExecutionList executions={turn.toolStream.toolExecutions} />
@@ -1573,10 +1624,18 @@ function PanelMessageBubble({
         {isUser && message.attachments && message.attachments.length > 0 && (
           <AgentMessageAttachments attachments={message.attachments} imageUrl={agentRuntimeApi.attachmentUrl} />
         )}
-        <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"}>
+        {!isUser && message.thinking && (
+          <AgentThinkingBlock text={message.thinking.text} startedAt={0} endedAt={message.thinking.ms} />
+        )}
+        <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"} data-partial={message.partial}>
           {isUser && quoted.quote && <blockquote className="agent-msg-quote">{quotePreview(quoted.quote)}</blockquote>}
           {isUser ? quoted.body : <AgentMarkdown text={message.content} />}
         </div>
+        {message.partial && (
+          <p className="agent-msg-partial-note" data-testid="agent-partial-note">
+            {message.partial === "cancelled" ? "Run 已中断，以上是中断前已经写出的部分。" : "Run 失败，以上是失败前已经写出的部分；可以重试或说「继续」。"}
+          </p>
+        )}
         {message.content.trim() && (
           <div className="agent-msg-actions" data-align={isUser ? "end" : undefined} role="toolbar" aria-label="消息操作">
             <AgentCopyButton text={message.content} label={isUser ? "复制这条消息" : "复制回答（Markdown）"} />
