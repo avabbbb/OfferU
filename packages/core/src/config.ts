@@ -9,6 +9,8 @@ import { CoreError } from "./types";
 import type { LlmApiConfig, LlmSettings } from "./llm-config";
 import { ENDPOINT_PROTOCOL_TEMPLATES, providerDefaultModel, providerDefaultUrl, providerName, providerTierModels } from "./llm-presets";
 import type { HttpFetch } from "./tools/net";
+import { normalizeContextWindow } from "./llm-context";
+import { MAX_STEPS, normalizeMaxSteps } from "./agent/limits";
 
 /** What an adapter persists. Same field names as Python config.json. */
 export interface StoredConfig extends LlmSettings {
@@ -24,6 +26,10 @@ export interface StoredConfig extends LlmSettings {
   ssl_verify: boolean;
   llm_timeout: number;
   max_concurrent_agent_runs: number;
+  /** Built-in Agent context window in tokens; 0 = default 256K. Capped per model at its known limit (llm-context.ts). */
+  agent_context_window: number;
+  /** Built-in Agent tool-step budget per Run (1–40, default 12). */
+  agent_max_steps: number;
   llm_fallback_to_agent: boolean;
 }
 
@@ -44,6 +50,8 @@ export interface StoredLlmApiConfig extends LlmApiConfig {
   icon: string;
   website_url: string;
   notes: string;
+  /** This service's context window in tokens; 0 = use agent_context_window / the 256K default. */
+  context_window: number;
 }
 
 /** Load/save the stored config; the adapter owns where (and how safely) it lives. */
@@ -98,7 +106,7 @@ export function defaultConfig(): StoredConfig {
     ollama_base_url: DEFAULT_OLLAMA,
     llm_api_configs: [], active_llm_config_id: "", active_llm_base_url: "", active_llm_api_key: "",
     tier_model_map: {}, disabled_llm_providers: [],
-    ssl_verify: true, llm_timeout: 60, max_concurrent_agent_runs: 3, llm_fallback_to_agent: false,
+    ssl_verify: true, llm_timeout: 60, max_concurrent_agent_runs: 3, agent_context_window: 0, agent_max_steps: MAX_STEPS, llm_fallback_to_agent: false,
   };
 }
 
@@ -121,6 +129,7 @@ function entry(raw: Partial<StoredLlmApiConfig>): StoredLlmApiConfig {
     supports_json_mode: raw.supports_json_mode === undefined || raw.supports_json_mode === null ? true : Boolean(raw.supports_json_mode),
     default_headers: strMap(raw.default_headers),
     icon: str(raw.icon), website_url: str(raw.website_url), notes: str(raw.notes),
+    context_window: normalizeContextWindow(raw.context_window),
   };
 }
 
@@ -154,6 +163,8 @@ export function normalizeConfig(raw: Partial<StoredConfig> | null | undefined): 
   cfg.ssl_verify = cfg.ssl_verify !== false;
   cfg.llm_timeout = Number(cfg.llm_timeout) || 60;
   cfg.max_concurrent_agent_runs = Math.min(10, Math.max(1, Math.trunc(Number(cfg.max_concurrent_agent_runs) || 3)));
+  cfg.agent_context_window = normalizeContextWindow(cfg.agent_context_window);
+  cfg.agent_max_steps = normalizeMaxSteps(cfg.agent_max_steps);
   cfg.llm_fallback_to_agent = Boolean(cfg.llm_fallback_to_agent);
   cfg.llm_api_configs = (Array.isArray(cfg.llm_api_configs) ? cfg.llm_api_configs : []).map((item) => entry(item ?? {}));
 

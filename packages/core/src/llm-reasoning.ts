@@ -10,6 +10,7 @@
 
 import type { LlmApiFormat } from "./llm";
 import { providerPreset } from "./llm-presets";
+import { resolveContextWindow } from "./llm-context";
 
 export type ReasoningEffort = "" | "minimal" | "low" | "medium" | "high";
 export type ReasoningLevel = Exclude<ReasoningEffort, "">;
@@ -114,7 +115,15 @@ export function buildReasoningParams(
 // ---- the composer's model catalog (GET /api/agent/runtime/models) ----
 
 export interface ModelCatalogLevel { id: ReasoningLevel; label: string; hint: string }
-export interface ModelCatalogModel { id: string; name: string; efforts: ModelCatalogLevel[] }
+export interface ModelCatalogModel {
+  id: string;
+  name: string;
+  efforts: ModelCatalogLevel[];
+  /** The model's known context limit (tokens), null when OfferU does not know it. */
+  context_limit: number | null;
+  /** Window the built-in Agent uses with this model: configured / 256K default, capped at context_limit. */
+  context_window: number;
+}
 export interface ModelCatalogService {
   config_id: string;
   service_name: string;
@@ -134,6 +143,7 @@ interface CatalogConfigLike {
   model?: unknown;
   models?: unknown;
   is_active?: unknown;
+  context_window?: unknown;
 }
 
 /**
@@ -142,7 +152,7 @@ interface CatalogConfigLike {
  * the bundled preset list for its provider (in that order, de-duplicated).
  */
 export function llmModelCatalog(
-  settings: { llm_api_configs?: unknown; active_llm_config_id?: unknown },
+  settings: { llm_api_configs?: unknown; active_llm_config_id?: unknown; agent_context_window?: unknown },
   presetModels: (providerId: string) => Array<{ id: string; name: string }> = (providerId) => providerPreset(providerId)?.models ?? [],
 ): ModelCatalogService[] {
   const configs = Array.isArray(settings.llm_api_configs) ? settings.llm_api_configs as CatalogConfigLike[] : [];
@@ -167,11 +177,16 @@ export function llmModelCatalog(
       provider_id: provider,
       active: id === activeId || Boolean(item.is_active),
       default_model: String(item.model || ""),
-      models: [...names].map(([model, name]) => ({
-        id: model,
-        name,
-        efforts: reasoningLevelsFor({ ...target, model }).map((level) => ({ id: level, ...REASONING_LEVEL_COPY[level] })),
-      })),
+      models: [...names].map(([model, name]) => {
+        const context = resolveContextWindow({ model, configured: [item.context_window, settings.agent_context_window] });
+        return {
+          id: model,
+          name,
+          efforts: reasoningLevelsFor({ ...target, model }).map((level) => ({ id: level, ...REASONING_LEVEL_COPY[level] })),
+          context_limit: context.limit,
+          context_window: context.tokens,
+        };
+      }),
     };
   });
 }

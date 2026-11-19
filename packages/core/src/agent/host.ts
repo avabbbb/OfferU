@@ -10,7 +10,8 @@ import { CoreError } from "../types";
 import type { ChatContentPart, ChatMessage, LlmClient } from "../llm";
 import { sanitizeLlmError } from "../llm";
 import { runAgentLoop, type AgentTool, type LoopEvent } from "./loop";
-import type { CompactionPolicy } from "./compaction";
+import { compactionPolicyFor, type CompactionPolicy } from "./compaction";
+import { DEFAULT_CONTEXT_WINDOW_TOKENS, resolveContextWindow } from "../llm-context";
 import type { StreamGuardPolicy } from "./stream-guard";
 import { MAX_STEPS } from "./prompt";
 import {
@@ -27,9 +28,10 @@ import type { RawRunEvent } from "./events";
 export const PROTOCOL_VERSION = "offeru.ts-agent.v1";
 export const RUNTIME_ID = "ts_agent";
 const SKILL_ID = "offeru";
-export const CONTEXT_WINDOW_TOKENS = 64000;
-export const CONTEXT_RESERVE_TOKENS = 8000;
-export const CONTEXT_KEEP_RECENT_TOKENS = 16000;
+/** Default context window (256K); per model it is capped at the model's known limit (llm-context.ts). */
+export const CONTEXT_WINDOW_TOKENS = DEFAULT_CONTEXT_WINDOW_TOKENS;
+export const CONTEXT_RESERVE_TOKENS = compactionPolicyFor(CONTEXT_WINDOW_TOKENS).reserveTokens;
+export const CONTEXT_KEEP_RECENT_TOKENS = compactionPolicyFor(CONTEXT_WINDOW_TOKENS).keepRecentTokens;
 const DELTA_FLUSH_CHARS = 512;
 
 export interface RunOptions {
@@ -72,8 +74,15 @@ export interface AgentHostDeps {
   maxConcurrentRuns?: number;
   /** Override the stream timeouts / retries (tests); default stream-guard DEFAULT_STREAM_GUARD. */
   streamGuard?: StreamGuardPolicy | false;
-  /** Override context compaction (tests); default window CONTEXT_WINDOW_TOKENS, reserve CONTEXT_RESERVE_TOKENS. */
+  /** Override context compaction (tests); default compactionPolicyFor(contextWindow(...)). */
   compaction?: CompactionPolicy | false;
+  /**
+   * Context window for this run's model (config: per-service / global, capped at the model's
+   * known limit). Absent: resolveContextWindow({ model }) — 256K capped at the model limit.
+   */
+  contextWindow?(llm: ResolvedLlm, options: RunOptions): number | Promise<number>;
+  /** Default tool-step budget when the request gives none (config agent_max_steps); absent = MAX_STEPS. */
+  defaultMaxSteps?(): number | undefined | Promise<number | undefined>;
 }
 
 export type StreamListener = (event: RawRunEvent) => void | Promise<void>;
@@ -263,7 +272,7 @@ export class AgentHost {
   }): Promise<RunResult> {
     const state = this.deps.state;
     const options = input.options || {};
-    const maxSteps = options.max_steps || MAX_STEPS;
+    const maxSteps = options.max_steps || await this.deps.defaultMaxSteps?.() || MAX_STEPS;
     let goal = String(input.message || "").trim();
     if (!goal && !input.resumeRunId) throw new CoreError("Agent Run 需要非空消息。", "invalid");
     if (!input.resumeRunId && this.active.size >= this.maxConcurrentRuns()) {
@@ -410,7 +419,8 @@ export class AgentHost {
       await publish("run.created", { task_id: run.task_id, skill_id: SKILL_ID, status: run.status });
       if (!input.resumeRunId) for (const seed of await state.listEvents(runId)) await publishPersisted(seed);
       const llm = await this.deps.resolveLlm(options);
-      const metadata = { runtime: RUNTIME_ID, provider_id: "embedded", protocol_version: PROTOCOL_VERSION, ...llm.metadata };
+      const contextWindow = this.deps.contextWindow ? await this.deps.contextWindow(llm, options) : resolveContextWindow({ model: llm.metadata.model }).tokens;
+      const metadata = { runtime: RUNTIME_ID, provider_id: "embedded", protocol_version: PROTOCOL_VERSION, ...llm.metadata, context_window: contextWindow, max_steps: maxSteps };
       run = await state.saveRun(
         { ...run, status: "executing", llm_runtime: { ...run.llm_runtime, ...metadata, status: input.resumeRunId ? "resuming" : "starting", session_id: runId } },
         input.resumeRunId ? { type: "recovery.started", payload: { session_id: runId } } : undefined,
@@ -448,7 +458,7 @@ export class AgentHost {
         reasoningEffort: options.reasoning_effort || "",
         takeSteering: () => activeRun.steering.splice(0, activeRun.steering.length),
         streamGuard: this.deps.streamGuard,
-        compaction: this.deps.compaction ?? { windowTokens: CONTEXT_WINDOW_TOKENS, reserveTokens: CONTEXT_RESERVE_TOKENS, keepRecentTokens: CONTEXT_KEEP_RECENT_TOKENS },
+        compaction: this.deps.compaction ?? compactionPolicyFor(contextWindow),
         onSavePoint: (messages) => state.store.putSession(runId, messages),
         emit: async (event) => {
           switch (event.type) {

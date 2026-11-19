@@ -10,3 +10,4 @@ export * from "./skills";
 export * from "./discovery";
 export * from "./compaction";
 export * from "./stream-guard";
+export { MAX_STEPS_LIMIT, normalizeMaxSteps } from "./limits";
