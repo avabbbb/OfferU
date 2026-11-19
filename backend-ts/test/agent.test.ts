@@ -17,7 +17,7 @@ import { SqliteAgentRunStore } from "../src/agent-store";
 import { createApp, type AppDeps } from "../src/app";
 import { SqliteCoreStore } from "../src/store";
 
-type Turn = { text?: string; calls?: Array<{ name: string; args: Record<string, unknown> }> };
+type Turn = { text?: string; thinking?: string; calls?: Array<{ name: string; args: Record<string, unknown> }> };
 
 /** A scripted model: each completeStream call plays the next turn. */
 function scriptedLlm(turns: Turn[], seen: ChatRequest[] = []): LlmClient {
@@ -28,6 +28,7 @@ function scriptedLlm(turns: Turn[], seen: ChatRequest[] = []): LlmClient {
     async *completeStream(request: ChatRequest): AsyncIterable<LlmStreamEvent> {
       seen.push(request);
       const turn = turns.shift() ?? { text: "（没有更多脚本）" };
+      if (turn.thinking) for (const piece of [turn.thinking.slice(0, 3), turn.thinking.slice(3)]) if (piece) yield { type: "thinking_delta", text: piece };
       if (turn.text) {
         for (const piece of [turn.text.slice(0, 2), turn.text.slice(2)]) if (piece) yield { type: "text_delta", text: piece };
       }
@@ -270,6 +271,21 @@ describe("SSE", () => {
     expect(replay.slice(0, -1).map((frame) => Number(frame.id))).toEqual(replay.slice(0, -1).map((_, index) => index + 1));
     expect(replay.at(-1)!.data.response).toMatchObject({ ok: true, assistant_message: "流式回复", conversation_title: "hi" });
     expect((await call("GET", "/api/agent/runtime/runs/run_bbbbbbbbbbbbbbbb/events/stream")).status).toBe(404);
+  });
+
+  it("streams thinking as live-only reasoning.delta (never persisted)", async () => {
+    const { app, call } = setup([{ thinking: "先看看岗位要求", text: "好的" }]);
+    const response = await app.request("/api/agent/runtime/runs/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "hi", run_id: "run_dddddddddddddddd" }) });
+    const frames = parseSse(await response.text());
+    const reasoning = frames.filter((frame) => frame.event === "reasoning.delta");
+    expect(reasoning.map((frame) => frame.data.payload.delta).join("")).toBe("先看看岗位要求");
+    expect(reasoning.every((frame) => frame.data.durable !== true && frame.id === undefined)).toBe(true);
+    expect(reasoning[0].data.provider_event).toBe("reasoning.delta");
+    // 思考在正文之前
+    expect(frames.findIndex((frame) => frame.event === "reasoning.delta")).toBeLessThan(frames.findIndex((frame) => frame.event === "assistant.delta"));
+    const events = await call("GET", "/api/agent/runs/run_dddddddddddddddd/events?after_sequence=0");
+    expect(events.body.events.some((event: any) => event.type === "reasoning.delta" || event.provider_event === "reasoning.delta")).toBe(false);
+    expect(JSON.stringify(events.body.events)).not.toContain("先看看岗位要求");
   });
 
   it("steer / abort / resume on a finished run", async () => {

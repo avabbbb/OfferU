@@ -31,6 +31,7 @@ describe("message kinds", () => {
     expect(isWelcomeMessage({ id: "welcome-1700" })).toBe(true);
     expect(isWelcomeMessage({ id: "conv-0" })).toBe(false);
     expect(isLocalNoticeMessage({ id: "assistant-abort-1" })).toBe(true);
+    expect(isLocalNoticeMessage({ id: "assistant-partial-turn-2" })).toBe(true);
     expect(isLocalNoticeMessage({ id: "assistant-turn-1" })).toBe(false);
   });
   it("only persisted, non-empty messages can be branched from", () => {
