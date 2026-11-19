@@ -182,6 +182,7 @@ Notion 式：整张表放在 20px 圆角的实白纸上（`.ou-jobs-sheet`，L2 
 - **分叉**（`lib/agentMessageBranch.ts`，`POST /api/agent/conversations/:id/branch`）：从某条已保存的消息「分叉」成新对话（复制这条及之前的消息，原对话不动、不复制 Run）并直接打开。欢迎语和本地提示（`assistant-abort-*`）不算消息条数、也没有分叉按钮；Run 进行中按钮禁用。
 - **流式**（`lib/agentStreaming.ts`）：思考过程走只在线推送、不落盘的 `reasoning.delta`，回答上方画思考块 `AgentThinkingBlock`——思考中标题扫高光（`.ou-shimmer`）并按秒计时，正文一开始自动收起成「已思考 N 秒」（用户手动开合后不再自动改）；正文流式渲染时补齐未闭合的代码块、末尾一个紫色闪烁光标（`.agent-md[data-streaming]`，减少动效时不闪）；增量每帧合并一次再更新界面；Run 中断或失败时已经流出的文字留成一条本地消息（`assistant-partial-*`，下方一行灰字说明没写完，不计入分叉条数）。
 - **插话 / 排队**（`lib/agentSteerQueue.ts`，`AgentQueueTray`）：同一时间只跑一个 Run。Run 在跑时发送键变「插话」，Enter 把这句话经 `POST /runs/:id/steer` 交给正在跑的这一轮（用户气泡上方紫色小标「插话」；没送到就放回队首）；Tab 把它排进输入框上方的托盘（胶囊玻璃，紫色标题），这一轮结束且不在等用户、没报错时依次自动发出。托盘存 localStorage（`offeru.agent.queue.v1`），按对话分开；刷新后读回的条目不自动发，要点「发送」。别处（简历画布、建议胶囊）在 Run 进行中发来的请求也进队列，不再并发第二个 Run。
+- **Skill Hub / 沙箱**（`AgentSkillHub`，`GET /api/agent/skills`；`packages/core agent/sandbox.ts`）：`/skills` 打开对话框，列出技能注册表（`agent/skills.ts`）：标题、什么时候用、自动加载的触发词（紫色小胶囊）、展开看完整方法、「试一下」把示例说法填进输入框。沙箱分「可写」（默认）/「只读」：输入框「模式」菜单、Skill Hub 底部分段开关、`/readonly` `/write` 三处改的是同一个设置；只读时模式胶囊显示锁和「只读」，Run 带 `sandbox: read_only`，后端只放行读类工具白名单，写类工具一律回 `{ok:false, error:{code:"read_only", …}}`，不执行。
 - **图片**：用户发的图按张数排（1 张大图、2 张对半、3 张以上两列方格，`[data-images]`）；回答里的 Markdown 图片圆角、可点。任意图片点开是 `Dialog` 大图（`AgentImageViewer`），同一条消息里多张时 ←→ 切换、Esc 关闭。
 
 看：任意页点右上角 bot 钮（1440 宽约在 (1408, 32)），再在输入框里打字。

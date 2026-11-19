@@ -52,6 +52,7 @@ Python 后端（FastAPI，`backend/`）已在 `chore/remove-python` 删除，最
 | POST | `/api/agent/runtime/runs/{run_id}/input-requests/{request_id}/answer` | ✅ |
 | GET | `/api/agent/runtime/runs/{run_id}/events/stream` | ✅ |
 | GET | `/api/agent/runtime` | ✅ |
+| GET | `/api/agent/skills` | ✅ |
 | GET | `/api/agent/runtime/providers/health` | ✅ |
 | GET | `/api/agent/runtime/connections` | ✅ |
 | GET | `/api/agent/runtime/skill` | — |

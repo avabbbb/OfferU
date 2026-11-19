@@ -14,6 +14,7 @@ import { compactionPolicyFor, type CompactionPolicy } from "./compaction";
 import { DEFAULT_CONTEXT_WINDOW_TOKENS, resolveContextWindow } from "../llm-context";
 import type { StreamGuardPolicy } from "./stream-guard";
 import { MAX_STEPS } from "./prompt";
+import { applySandbox, resolveSandbox, type SandboxMode } from "./sandbox";
 import {
   AgentConversations,
   AgentRunState,
@@ -40,6 +41,8 @@ export interface RunOptions {
   model?: string;
   reasoning_effort?: ReasoningEffort;
   approval_mode?: "auto" | "ask";
+  /** read_only：写类工具不执行，回 read_only 错误（agent/sandbox.ts）。不给就沿用这个 Run 记下的，默认可写。 */
+  sandbox?: SandboxMode;
   max_steps?: number;
   journey_id?: string;
 }
@@ -359,7 +362,8 @@ export class AgentHost {
     };
 
     const turnState: { inputRequest: AgentInputRequest | null } = { inputRequest: null };
-    const tools = this.deps.tools();
+    const sandbox = resolveSandbox(options.sandbox, run.llm_runtime?.sandbox);
+    const tools = applySandbox(this.deps.tools(), sandbox);
     const describe = new Map(tools.map((tool) => [tool.name, tool.description]));
     const askTool: AgentTool = {
       name: "request_user_input",
@@ -431,7 +435,7 @@ export class AgentHost {
       await persistWorkerEvent("runtime.session_started", { session_id: runId, kernel: "ts" }, "run.started");
       const allTools = [...tools, askTool];
       const current = await state.loadRun(runId) || run;
-      run = await state.saveRun({ ...current, llm_runtime: { ...current.llm_runtime, ...metadata, status: "active", session_id: runId, active_tools: allTools.map((tool) => tool.name) } });
+      run = await state.saveRun({ ...current, llm_runtime: { ...current.llm_runtime, ...metadata, status: "active", session_id: runId, sandbox, active_tools: allTools.map((tool) => tool.name) } });
 
       let promptMessage = input.resumeRunId && !input.continuation
         ? `Resume this interrupted OfferU Agent Run from the persisted Agent Session. Do not claim interrupted work completed. Original goal:\n${goal}`

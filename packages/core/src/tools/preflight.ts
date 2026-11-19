@@ -21,6 +21,7 @@ export type ToolErrorCode =
   | "not_found"
   | "conflict"
   | "forbidden"
+  | "read_only"
   | "unsupported"
   | "unknown_tool"
   | "upstream_unavailable"
@@ -45,6 +46,7 @@ const DEFAULT_ACTION: Record<ToolErrorCode, string> = {
   not_found: "先用 search 或 list 找到正确的 id，再调一次；不要猜 id。",
   conflict: "先 get 最新记录看现状，再决定要不要改；不要重复写同一件事。",
   forbidden: "这一步只能由用户本人做：告诉用户在哪里操作，不要换个方式绕过。",
+  read_only: "只读模式下不能写入：用读类工具给出结果，告诉用户要写入请把沙箱切到「可写」。",
   unsupported: "这个运行环境做不了这一步：照实告诉用户，给出可行的替代做法。",
   unknown_tool: "用 tool_manual() 看可用工具。",
   upstream_unavailable: "外部服务暂时不可用：稍后重试一次；仍失败就照实告诉用户，已做的改动不要重复做。",

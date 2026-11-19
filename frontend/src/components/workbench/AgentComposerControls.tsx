@@ -8,13 +8,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Hand, Settings, Sparkles, Zap } from "lucide-react";
+import { ChevronDown, Hand, Lock, PencilLine, Settings, Sparkles, Zap } from "lucide-react";
 import { Menu, type MenuItem } from "@/components/ui";
 import { agentRuntimeApi, type AgentModelService } from "@/lib/api";
 import { MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 
 export type ReasoningEffort = "" | "minimal" | "low" | "medium" | "high";
 export type ApprovalMode = "auto" | "ask";
+/** 沙箱：workspace_write 可写（默认）/ read_only 只读——只读时 Agent 的写类工具一律被拦下。 */
+export type SandboxMode = "workspace_write" | "read_only";
 
 export interface ComposerOptions {
   llmConfigId: string;
@@ -22,15 +24,40 @@ export interface ComposerOptions {
   model: string;
   reasoningEffort: ReasoningEffort;
   approvalMode: ApprovalMode;
+  sandbox?: SandboxMode;
 }
 
 const STORAGE_KEY = "offeru.agent.composer";
-const DEFAULT_OPTIONS: ComposerOptions = { llmConfigId: "", model: "", reasoningEffort: "", approvalMode: "auto" };
+const DEFAULT_OPTIONS: ComposerOptions = { llmConfigId: "", model: "", reasoningEffort: "", approvalMode: "auto", sandbox: "workspace_write" };
 
 const MODES: Array<{ id: ApprovalMode; label: string; hint: string }> = [
   { id: "ask", label: "询问", hint: "每一步写入都先问你" },
   { id: "auto", label: "自动", hint: "可撤销的直接做，不可撤销的才问你" },
 ];
+
+const SANDBOXES: Array<{ id: SandboxMode; label: string; hint: string }> = [
+  { id: "workspace_write", label: "可写", hint: "Agent 可以改档案、岗位和文档（都能撤销）" },
+  { id: "read_only", label: "只读", hint: "只查、只给建议；任何写入都会被拦下" },
+];
+
+/** 「模式」菜单：写入确认（询问 / 自动）+ 沙箱（可写 / 只读）。 */
+export function modeMenuItems(options: ComposerOptions, onChange: (patch: Partial<ComposerOptions>) => void): MenuItem[] {
+  const mode = MODES.find((item) => item.id === options.approvalMode) || MODES[1];
+  const sandbox = options.sandbox === "read_only" ? "read_only" : "workspace_write";
+  return [
+    { heading: "写入确认" },
+    ...MODES.map((item): MenuItem => {
+      const Icon = item.id === "ask" ? Hand : Zap;
+      return { label: item.label, description: item.hint, icon: <Icon size={16} strokeWidth={1.75} />, checked: item.id === mode.id, onSelect: () => onChange({ approvalMode: item.id }) };
+    }),
+    "separator",
+    { heading: "沙箱" },
+    ...SANDBOXES.map((item): MenuItem => {
+      const Icon = item.id === "read_only" ? Lock : PencilLine;
+      return { label: item.label, description: item.hint, icon: <Icon size={16} strokeWidth={1.75} />, checked: item.id === sandbox, onSelect: () => onChange({ sandbox: item.id }) };
+    }),
+  ];
+}
 
 /** The composer's model / effort / mode choice, kept across reloads. */
 export function useComposerOptions() {
@@ -153,17 +180,8 @@ export function AgentComposerControls({
   const current = resolveComposerChoice(services, options);
   const mode = MODES.find((item) => item.id === options.approvalMode) || MODES[1];
   const ModeIcon = mode.id === "ask" ? Hand : Zap;
-
-  const modeItems: MenuItem[] = MODES.map((item) => {
-    const Icon = item.id === "ask" ? Hand : Zap;
-    return {
-      label: item.label,
-      description: item.hint,
-      icon: <Icon size={16} strokeWidth={1.75} />,
-      checked: item.id === mode.id,
-      onSelect: () => onChange({ approvalMode: item.id }),
-    };
-  });
+  const readOnly = options.sandbox === "read_only";
+  const modeItems = modeMenuItems(options, onChange);
 
   return (
     <div className="agent-composer-tools">
@@ -176,10 +194,12 @@ export function AgentComposerControls({
             <ChevronDown size={12} strokeWidth={2} />
           </button>
         } />
-      <Menu label="模式" side="top" align="start" items={modeItems} trigger={
-        <button type="button" className="agent-composer-tool" title={mode.hint}>
-          <ModeIcon size={15} strokeWidth={1.75} />
+      <Menu label="模式与沙箱" side="top" align="start" items={modeItems} trigger={
+        <button type="button" className="agent-composer-tool" title={readOnly ? `${mode.hint} · 只读：任何写入都会被拦下` : mode.hint}
+          data-testid="agent-mode-trigger" data-sandbox={readOnly ? "read_only" : undefined}>
+          {readOnly ? <Lock size={15} strokeWidth={1.75} /> : <ModeIcon size={15} strokeWidth={1.75} />}
           <span>{mode.label}</span>
+          {readOnly && <span className="agent-composer-tool-sub">只读</span>}
           <ChevronDown size={12} strokeWidth={2} />
         </button>
       } />
