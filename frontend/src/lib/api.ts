@@ -1217,6 +1217,8 @@ export const agentRuntimeApi = {
     model?: string;
     reasoning_effort?: "" | "minimal" | "low" | "medium" | "high";
     approval_mode?: "auto" | "ask";
+    /** read_only：只读沙箱，Agent 的写类工具一律被拦下。 */
+    sandbox?: "read_only" | "workspace_write";
     attachments?: string[];
   }, onEvent?: (event: string, data: any) => void, signal?: AbortSignal) => {
     const runId = createAgentRunId();
@@ -1553,7 +1555,24 @@ export const preApplicationApi = {
     ),
 };
 
+/** Skill Hub：技能注册表里的一项（GET /api/agent/skills）。 */
+export interface AgentSkillEntry {
+  id: string;
+  title: string;
+  when: string;
+  keywords: string[];
+  body: string;
+  example: string;
+}
+
+export interface AgentSkillCatalog {
+  skills: AgentSkillEntry[];
+  sandbox: { modes: string[]; default: string; read_only_tools: string[] };
+}
+
 export const agentSupportApi = {
+  /** Skill Hub：技能目录 + 沙箱说明（只读）。 */
+  skills: () => request<AgentSkillCatalog>("/api/agent/skills"),
   conversations: () =>
     request<{ conversations: AgentConversationSummary[] }>("/api/agent/conversations"),
   conversation: (id: string) =>

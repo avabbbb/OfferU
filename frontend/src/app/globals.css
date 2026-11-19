@@ -2896,3 +2896,33 @@ body {
 .offeru-agent-panel .agent-msg-steer-tag { display: block; margin-bottom: 2px; text-align: right; font-size: var(--ou-type-xs); color: var(--ou-tone-purple-text); }
 @media (hover: none) { .offeru-agent-panel .agent-queue-tray__btn { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .offeru-agent-panel .agent-queue-tray { animation: none; } }
+
+/* Skill Hub（对话框，挂在 body 上所以不在 .offeru-agent-panel 下）：技能列表 + 触发词（紫色小胶囊 = Agent）+ 方法正文 + 沙箱分段开关。 */
+.ou-dialog.ou-dialog-skill-hub { width: min(40rem, calc(100vw - 2 * var(--ou-gutter))); }
+.ou-skill-hub { display: grid; gap: var(--ou-space-3); }
+.ou-skill-hub__search { display: flex; align-items: center; gap: var(--ou-space-2); height: 2.25rem; padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-tertiary); }
+.ou-skill-hub__search:focus-within { box-shadow: var(--ou-capsule-shadow), var(--ou-ring-agent); }
+.ou-skill-hub__search input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: var(--ou-type-sm); color: var(--ou-text-primary); outline: none; }
+.ou-skill-hub__empty { font-size: var(--ou-type-sm); color: var(--ou-text-tertiary); }
+.ou-skill-hub__list { display: grid; gap: var(--ou-space-2); max-height: min(26rem, 55vh); overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.ou-skill-hub__item { display: grid; gap: var(--ou-space-1); padding: var(--ou-space-2) var(--ou-space-3); border-radius: var(--ou-radius-card); background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); animation: ou-rise-in var(--ou-motion-slow) var(--ou-ease-spring) both; }
+.ou-skill-hub__head { display: flex; align-items: baseline; gap: var(--ou-space-2); min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; color: var(--ou-text-primary); }
+.ou-skill-hub__head:focus-visible { outline: none; border-radius: var(--ou-radius-check); box-shadow: var(--ou-ring-agent); }
+.ou-skill-hub__title { flex: none; font-size: var(--ou-type-sm); font-weight: 600; }
+.ou-skill-hub__when { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-skill-hub__chevron { flex: none; align-self: center; color: var(--ou-text-tertiary); transition: rotate var(--ou-motion-base) var(--ou-ease-spring); }
+.ou-skill-hub__head[aria-expanded="true"] .ou-skill-hub__chevron { rotate: 90deg; }
+.ou-skill-hub__keywords { display: flex; flex-wrap: wrap; gap: var(--ou-space-1); margin: 0; }
+.ou-skill-hub__keyword { padding: 0 var(--ou-space-2); border-radius: var(--ou-radius-pill); background: var(--ou-tone-purple-bg); font-size: var(--ou-type-xs); line-height: 1.6; color: var(--ou-tone-purple-text); }
+.ou-skill-hub__body { max-height: 14rem; overflow: auto; margin: 0; padding: var(--ou-space-2); border-left: 2px solid var(--ou-tone-purple-border); font-family: inherit; font-size: var(--ou-type-xs); line-height: var(--ou-line-body); color: var(--ou-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; animation: ou-preview-in var(--ou-motion-base) var(--ou-ease-standard); }
+.ou-skill-hub__try { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 var(--ou-space-2); height: 1.5rem; border: 0; border-radius: var(--ou-radius-pill); background: transparent; font-size: var(--ou-type-xs); color: var(--ou-tone-purple-text); cursor: pointer; transition: background-color var(--ou-motion-fast) var(--ou-ease-standard); }
+.ou-skill-hub__try:hover { background: var(--ou-tone-purple-bg); }
+.ou-skill-hub__try:focus-visible { outline: none; box-shadow: var(--ou-ring-agent); }
+.ou-skill-hub__sandbox { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-1); padding-top: var(--ou-space-2); border-top: 1px solid var(--ou-line-separator); }
+.ou-skill-hub__sandbox-label { margin-right: var(--ou-space-1); font-size: var(--ou-type-xs); font-weight: 600; color: var(--ou-text-secondary); }
+.ou-skill-hub__seg { display: inline-flex; align-items: center; gap: var(--ou-space-1); height: 1.75rem; padding: 0 var(--ou-space-3); border: 0; border-radius: var(--ou-radius-pill); background: transparent; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); cursor: pointer; transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard); }
+.ou-skill-hub__seg[aria-checked="true"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); color: var(--ou-text-primary); }
+.ou-skill-hub__seg:focus-visible { outline: none; box-shadow: var(--ou-ring-agent); }
+.ou-skill-hub__sandbox-hint { flex-basis: 100%; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.offeru-agent-panel .agent-composer-tool[data-sandbox="read_only"] .agent-composer-tool-sub { color: var(--ou-tone-purple-text); }
+@media (prefers-reduced-motion: reduce) { .ou-skill-hub__item, .ou-skill-hub__body { animation: none; } }

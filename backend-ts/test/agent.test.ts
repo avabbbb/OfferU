@@ -329,6 +329,50 @@ describe("SSE", () => {
     expect((await request("POST", "/api/agent/runtime/runs/run_eeeeeeeeeeeeeeee/steer", { message: "再加北京" })).body).toEqual({ ok: true, disposition: "not_running" });
   });
 
+  it("lists the skill registry for the Skill Hub", async () => {
+    const { call } = setup([]);
+    const response = await call("GET", "/api/agent/skills");
+    expect(response.status).toBe(200);
+    expect(response.body.skills.map((skill: any) => skill.id)).toEqual(["interview-practice", "role-research", "resume-tailoring", "job-evaluation", "email-writing"]);
+    const interview = response.body.skills[0];
+    expect(interview).toMatchObject({ title: "模拟面试与面试准备", example: expect.stringContaining("模拟面试") });
+    expect(interview.keywords).toContain("模拟面试");
+    expect(interview.body).toContain("模拟面试");
+    expect(response.body.sandbox).toMatchObject({ modes: ["read_only", "workspace_write"], default: "workspace_write" });
+    expect(response.body.sandbox.read_only_tools).toContain("search");
+    expect(response.body.sandbox.read_only_tools).not.toContain("save");
+  });
+
+  it("read-only sandbox blocks write tools (structured read_only error) but lets reads through", async () => {
+    const { call, store, seen } = setup([
+      { calls: [{ name: "save", args: { type: "memory", data: { kind: "note", title: "试写", body: "x" } } }, { name: "overview", args: {} }] },
+      { text: "只读模式下没写入。" },
+    ]);
+    const response = await call("POST", "/api/agent/runtime/runs", { message: "记一下", sandbox: "read_only" });
+    expect(response.body).toMatchObject({ ok: true, assistant_message: "只读模式下没写入。" });
+    expect(response.body.run.llm_runtime.sandbox).toBe("read_only");
+    const replies = seen[1].messages.filter((message) => message.role === "tool").map((message) => JSON.parse(String(message.content)));
+    expect(replies[0]).toMatchObject({ ok: false, error: { code: "read_only", retryable: false } });
+    expect(replies[0].error.message).toContain("save");
+    expect(replies[0].error.suggestedAction).toContain("可写");
+    expect(replies[1].ok).not.toBe(false); // overview 照常
+    expect(await store.all("memory")).toHaveLength(0);
+    // 写类工具的描述里标了只读
+    expect(seen[0].tools?.find((tool) => tool.name === "save")?.description).toMatch(/^【只读模式下不可用/);
+    expect(seen[0].tools?.find((tool) => tool.name === "search")?.description).not.toMatch(/只读模式/);
+    expect((await call("POST", "/api/agent/runtime/runs", { message: "x", sandbox: "yolo" })).status).toBe(400);
+  });
+
+  it("writable sandbox (default) still writes", async () => {
+    const { call, store } = setup([
+      { calls: [{ name: "save", args: { type: "memory", data: { kind: "note", title: "可写", body: "y" } } }] },
+      { text: "存好了" },
+    ]);
+    const response = await call("POST", "/api/agent/runtime/runs", { message: "记一下", sandbox: "workspace_write" });
+    expect(response.body.run.llm_runtime.sandbox).toBe("workspace_write");
+    expect(await store.all("memory")).toHaveLength(1);
+  });
+
   it("steer / abort / resume on a finished run", async () => {
     const { call } = setup([{ text: "完成" }]);
     const first = await call("POST", "/api/agent/runtime/runs", { message: "hi" });

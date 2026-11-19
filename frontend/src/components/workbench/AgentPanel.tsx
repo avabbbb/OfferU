@@ -21,6 +21,8 @@ import {
   ChevronUp,
   ArrowUp,
   Hand,
+  Library,
+  Lock,
   History,
   ListTodo,
   Loader2,
@@ -83,6 +85,7 @@ import { AGENT_ATTACHMENT_ACCEPT, ATTACHMENT_ONLY_MESSAGE, hasDraggedFiles } fro
 import { createFrameBatcher, partialReplyFrom } from "@/lib/agentStreaming";
 import { AgentThinkingBlock } from "./AgentThinkingBlock";
 import { AgentQueueTray } from "./AgentQueueTray";
+import { AgentSkillHub } from "./AgentSkillHub";
 import {
   composerKeyIntent, enqueue, enqueueFront, loadQueue, nextArmed, queuedFor, rebindConversation, removeQueued, saveQueue,
   type QueuedMessage,
@@ -310,6 +313,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const [interruptedRunId, setInterruptedRunId] = useState<string | null>(null);
   const [composerOptions, setComposerOptions] = useComposerOptions();
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [skillHubOpen, setSkillHubOpen] = useState(false);
   const modelCatalog = useModelCatalog(modelMenuOpen);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
@@ -391,6 +395,9 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
     { id: "model", label: "切换模型", description: "服务 › 模型 › 思考强度", group: "输入", hint: "/model", keywords: ["model", "模型", "思考", "强度", "effort"], icon: <Sparkles size={15} />, run: () => setModelMenuOpen(true) },
     { id: "ask", label: "模式 · 询问", description: "每一步写入都先问你", group: "输入", hint: "/ask", keywords: ["mode", "模式"], icon: <Hand size={15} />, run: () => setComposerOptions({ approvalMode: "ask" }) },
     { id: "auto", label: "模式 · 自动", description: "可撤销的直接做，不可撤销的才问你", group: "输入", hint: "/auto", keywords: ["mode", "模式"], icon: <Zap size={15} />, run: () => setComposerOptions({ approvalMode: "auto" }) },
+    { id: "skills", label: "Skill Hub", description: "看 OfferU 的技能和沙箱设置", group: "输入", hint: "/skills", keywords: ["skill", "技能", "方法", "hub", "沙箱", "sandbox"], icon: <Library size={15} />, run: () => setSkillHubOpen(true) },
+    { id: "readonly", label: "沙箱 · 只读", description: "只查、只给建议，写入一律拦下", group: "输入", hint: "/readonly", keywords: ["sandbox", "沙箱", "只读", "read"], icon: <Lock size={15} />, run: () => setComposerOptions({ sandbox: "read_only" }) },
+    { id: "write", label: "沙箱 · 可写", description: "可以改档案、岗位和文档（可撤销）", group: "输入", hint: "/write", keywords: ["sandbox", "沙箱", "可写", "write"], icon: <PenLine size={15} />, run: () => setComposerOptions({ sandbox: "workspace_write" }) },
     { id: "attach", label: "添加附件", description: "图片、PDF 或 PPT", group: "输入", hint: "/attach", keywords: ["file", "image", "附件", "图片", "文件"], icon: <Paperclip size={15} />, run: () => attachmentInputRef.current?.click() },
     ...[...quickActionsForStage(latestStage), ...EMPTY_SUGGESTIONS.map((item) => ({ label: item.label, prompt: item.prompt }))].map((action, index): SlashAction => ({
       id: `quick-${index}`, label: action.label, description: action.prompt, group: "快捷任务", keywords: [action.prompt], icon: <ListTodo size={15} />, run: () => fillComposer(action.prompt),
@@ -725,6 +732,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
           model: choice.modelId,
           reasoning_effort: choice.reasoningEffort,
           approval_mode: composerOptions.approvalMode,
+          sandbox: composerOptions.sandbox === "read_only" ? "read_only" : "workspace_write",
           attachments: sentAttachments.map((item) => item.id),
         },
         (event, data) => {
@@ -1434,6 +1442,10 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
       <AgentTurnTimeline ref={timelineRef} scrollerRef={scrollRef} turns={turns} onJump={() => { stickRef.current = false; }} />
       <AgentScrollToLatest visible={awayFromBottom} onClick={scrollToLatest} />
       <AgentImageViewer />
+      <AgentSkillHub open={skillHubOpen} onOpenChange={setSkillHubOpen}
+        sandbox={composerOptions.sandbox === "read_only" ? "read_only" : "workspace_write"}
+        onSandboxChange={(mode) => setComposerOptions({ sandbox: mode })}
+        onTry={fillComposer} />
       </div>
 
       {interruptedRunId && (

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import type { AgentModelService } from "@/lib/api";
-import { AgentComposerControls, modelMenuItems, resolveComposerChoice, type ComposerOptions } from "./AgentComposerControls";
+import { AgentComposerControls, modeMenuItems, modelMenuItems, resolveComposerChoice, type ComposerOptions } from "./AgentComposerControls";
 
 const SERVICES: AgentModelService[] = [
   {
@@ -59,5 +59,20 @@ describe("AgentComposerControls", () => {
     const high = await screen.findByText("高 · 想得更深");
     fireEvent.click(high);
     await waitFor(() => expect(onChange).toHaveBeenCalledWith({ llmConfigId: "ds", model: "deepseek-v4-pro", reasoningEffort: "high" }));
+  });
+});
+
+describe("modeMenuItems (approval + sandbox)", () => {
+  it("offers 询问 / 自动 and 可写 / 只读, checking the current ones", () => {
+    const onChange = vi.fn();
+    const items = modeMenuItems({ ...OPTIONS, sandbox: "read_only" }, onChange) as Array<any>;
+    const actions = items.filter((item) => item && typeof item === "object" && "label" in item);
+    expect(actions.map((item) => item.label)).toEqual(["询问", "自动", "可写", "只读"]);
+    expect(actions.filter((item) => item.checked).map((item) => item.label)).toEqual(["自动", "只读"]);
+    actions[2].onSelect();
+    expect(onChange).toHaveBeenCalledWith({ sandbox: "workspace_write" });
+    // 没设沙箱时默认可写
+    const defaults = (modeMenuItems(OPTIONS, onChange) as Array<any>).filter((item) => item?.checked).map((item) => item.label);
+    expect(defaults).toEqual(["自动", "可写"]);
   });
 });

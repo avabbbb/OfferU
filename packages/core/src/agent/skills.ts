@@ -17,6 +17,8 @@ export interface AgentSkill {
   /** Auto-load when the user's message or recent conversation matches. */
   triggers: RegExp;
   body: string;
+  /** Skill Hub 里「试一下」填进输入框的示例说法（会命中 triggers，自动加载这个技能）。 */
+  example?: string;
 }
 
 /** Rules that hold for every task (always in the system prompt). */
@@ -25,6 +27,7 @@ export const CORE_RULES = "规则：\n- 只用工具查到的记录和用户说�
 export const AGENT_SKILLS: AgentSkill[] = [
   {
     id: "interview-practice",
+    example: "按我投的岗位给我来一场模拟面试",
     title: "模拟面试与面试准备",
     when: "模拟面试、押题、自我介绍、面试复盘",
     triggers: /模拟面试|面试练习|练(一下|练)?面试|mock ?interview|押题|自我介绍|第\s*\d+\s*题|面试官/i,
@@ -32,6 +35,7 @@ export const AGENT_SKILLS: AgentSkill[] = [
   },
   {
     id: "role-research",
+    example: "帮我调研一下这家公司和岗位，准备面试",
     title: "岗位 / 公司调研",
     when: "准备面试前了解岗位或公司、写调研文档、查面经",
     triggers: /调研|准备.{0,8}面试|了解(一下)?(这家|这个)?(公司|岗位|团队)|公司背景|面经|竞品|业务线|research/i,
@@ -39,6 +43,7 @@ export const AGENT_SKILLS: AgentSkill[] = [
   },
   {
     id: "resume-tailoring",
+    example: "针对这个岗位帮我改一版简历",
     title: "按岗位定制简历",
     when: "针对某个岗位改简历、补经历、导出投递版 PDF",
     triggers: /简历|resume|\bcv\b|定制|改写|导出.{0,4}pdf/i,
@@ -51,6 +56,7 @@ export const AGENT_SKILLS: AgentSkill[] = [
   },
   {
     id: "job-evaluation",
+    example: "这个岗位值不值得投？和我的匹配度怎么样",
     title: "岗位评估与证据对照",
     when: "值不值得投、匹配度、差距、打招呼语",
     triggers: /值不值得|该不该投|适合我|匹配|评估|差距|打招呼|greeting/i,
@@ -62,6 +68,7 @@ export const AGENT_SKILLS: AgentSkill[] = [
   },
   {
     id: "email-writing",
+    example: "帮我写一封投递邮件发给 HR",
     title: "投递邮件与网申回答",
     when: "写投递邮件、回复 HR、回答网申问题",
     triggers: /邮件|邮箱投递|发给\s*HR|回复\s*HR|网申|申请表|求职信|cover ?letter/i,
@@ -108,3 +115,50 @@ export const SKILL_READ_SPEC = {
     required: ["id"],
   } as Record<string, unknown>,
 };
+
+// ---- Skill Hub（只读目录：界面展示技能列表，不改技能本身） ----
+
+export interface SkillCatalogEntry {
+  id: string;
+  title: string;
+  when: string;
+  /** 自动加载的触发词（由 triggers 的正则拆出来给人看）。 */
+  keywords: string[];
+  body: string;
+  example: string;
+}
+
+/** 把触发正则拆成人能读的关键词：按顶层 | 拆，去掉正则语法，过短的丢掉。 */
+export function triggerKeywords(pattern: RegExp): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of pattern.source) {
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (char === "|" && depth === 0) { parts.push(current); current = ""; continue; }
+    current += char;
+  }
+  parts.push(current);
+  const cleaned = parts
+    .map((part) => part
+      .replace(/\\d\+?/g, "N")
+      .replace(/\\b|\\s\*|\\s|\.\{\d+,\d+\}|\?:/g, "")
+      .replace(/\(([^()|]*)\|[^()]*\)\??/g, "$1")
+      .replace(/[()?*+^$[\]{}\\]/g, "")
+      .replace(/\s+/g, " ")
+      .trim())
+    .filter((part) => part.length >= 2);
+  return [...new Set(cleaned)];
+}
+
+export function skillCatalog(): SkillCatalogEntry[] {
+  return AGENT_SKILLS.map((skill) => ({
+    id: skill.id,
+    title: skill.title,
+    when: skill.when,
+    keywords: triggerKeywords(skill.triggers),
+    body: skill.body,
+    example: skill.example ?? "",
+  }));
+}

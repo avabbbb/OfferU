@@ -24,6 +24,9 @@ import {
   llmModelCatalog,
   type ReasoningEffort,
   createAgentRuntime,
+  READ_ONLY_TOOLS,
+  SANDBOX_MODES,
+  skillCatalog,
   randomHex,
   runtimeResponseFromRun,
   runtimeTurnIsFinished,
@@ -99,6 +102,7 @@ export interface RunRequest {
   model: string;
   reasoning_effort: ReasoningEffort;
   approval_mode: "auto" | "ask";
+  sandbox?: "read_only" | "workspace_write";
   attachments: string[];
 }
 
@@ -119,6 +123,8 @@ export function parseRunRequest(raw: unknown): RunRequest {
   if (!isReasoningEffort(effort)) throw new CoreError("reasoning_effort 只能是 minimal / low / medium / high", "invalid");
   const approval = str(body.approval_mode || "auto");
   if (approval !== "auto" && approval !== "ask") throw new CoreError("approval_mode 只能是 auto / ask", "invalid");
+  const sandbox = body.sandbox === undefined || body.sandbox === null || body.sandbox === "" ? undefined : str(body.sandbox);
+  if (sandbox !== undefined && sandbox !== "read_only" && sandbox !== "workspace_write") throw new CoreError("sandbox 只能是 read_only / workspace_write", "invalid");
   const attachments = body.attachments === undefined ? [] : body.attachments;
   if (!Array.isArray(attachments) || attachments.length > 8) throw new CoreError("attachments 最多 8 个", "invalid");
   const skill = str(body.skill_id || "auto");
@@ -140,6 +146,7 @@ export function parseRunRequest(raw: unknown): RunRequest {
     model,
     reasoning_effort: effort,
     approval_mode: approval as RunRequest["approval_mode"],
+    ...(sandbox ? { sandbox: sandbox as NonNullable<RunRequest["sandbox"]> } : {}),
     attachments: attachments.map(String),
   };
 }
@@ -150,6 +157,7 @@ function runOptions(body: RunRequest): RunOptions {
     model: body.model,
     reasoning_effort: body.reasoning_effort,
     approval_mode: body.approval_mode,
+    sandbox: body.sandbox,
     max_steps: body.max_steps,
     journey_id: body.journey_id,
   };
@@ -234,6 +242,12 @@ export function registerAgent(app: Hono<AppEnv>): void {
   // ---- runtime ----
 
   app.get("/api/agent/runtime", (c) => c.json(agentHost(c.get("deps")).status()));
+
+  // Skill Hub：技能目录（agent/skills.ts 注册表，只读）+ 沙箱模式说明。
+  app.get("/api/agent/skills", (c) => c.json({
+    skills: skillCatalog(),
+    sandbox: { modes: SANDBOX_MODES, default: "workspace_write", read_only_tools: [...READ_ONLY_TOOLS] },
+  }));
 
   // Hosted CLI providers (codex / claude) are a companion feature not ported yet.
   // Composer uploads (Python POST/GET /api/agent/runtime/attachments): multipart field "file".
