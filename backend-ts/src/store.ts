@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -91,9 +92,12 @@ function changeFromRow(row: ChangeSqlRow): ChangeRow {
 
 /** SQLite adapter for the shared OfferU core. Same records/changes schema as Python. */
 export class SqliteCoreStore implements SyncableStore {
-  private readonly db: DatabaseSync;
+  /** Shared with other table adapters on the same file (agent-store.ts). */
+  readonly db: DatabaseSync;
   private queue: Promise<unknown> = Promise.resolve();
-  private inTx = false;
+  /** Set only inside the async context of the running transaction, so a
+   * concurrent caller (another Agent run) queues instead of joining it. */
+  private readonly txContext = new AsyncLocalStorage<boolean>();
 
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -208,9 +212,8 @@ export class SqliteCoreStore implements SyncableStore {
    * would interleave inside each other's transaction.
    */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.inTx) return fn();
-    const run = this.queue.then(async () => {
-      this.inTx = true;
+    if (this.txContext.getStore()) return fn();
+    const run = this.queue.then(() => this.txContext.run(true, async () => {
       this.db.exec("BEGIN IMMEDIATE");
       try {
         const result = await fn();
@@ -219,12 +222,16 @@ export class SqliteCoreStore implements SyncableStore {
       } catch (error) {
         this.db.exec("ROLLBACK");
         throw error;
-      } finally {
-        this.inTx = false;
       }
-    });
+    }));
     this.queue = run.catch(() => undefined);
     return run;
+  }
+
+  async changeStats(actor: string, since: string): Promise<{ count: number; last: string | null }> {
+    const row = this.db.prepare("SELECT COUNT(id) AS n, MAX(at) AS last FROM changes WHERE actor = ? AND at >= ?")
+      .get(actor, since) as { n: number; last: string | null };
+    return { count: Number(row.n), last: row.last };
   }
 
   close(): void {

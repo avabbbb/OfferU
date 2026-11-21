@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type CoreErrorCode, type CoreStore, type FileStore, type LlmClient, type PageRenderer } from "@offeru/core";
+import { isCoreError, type AgentRunStore, type CoreErrorCode, type CoreStore, type FileStore, type LlmClient, type PageRenderer } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
 import { callTool, SUPPORTED_TOOLS } from "./tools";
@@ -25,6 +25,8 @@ export interface AppDeps {
   renderer?: PageRenderer | null;
   /** Bundled school-emblem PNGs by file name: disk on the companion, a static-asset fetch on the web; null = missing. */
   schoolLogos?: ((file: string) => Promise<Uint8Array | null>) | null;
+  /** Agent run rows (SQLite on the companion, IndexedDB in the browser); absent = in-memory. */
+  agentRuns?: AgentRunStore;
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };

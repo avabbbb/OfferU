@@ -1,0 +1,699 @@
+// Tool specs the built-in Agent shows the model — generated from
+// backend/app/core/tools.py TOOLS (name, description, pydantic JSON schema).
+// The route only exposes the subset the host can actually run (see
+// backend-ts src/tools.ts SUPPORTED_TOOLS); the rest light up as tools migrate.
+// Regenerate from backend/: python -c "import json; from app.core import tools; print(json.dumps([{'name': t.name, 'description': t.description, 'parameters': t.input.model_json_schema()} for t in tools.TOOLS.values()], ensure_ascii=False))"
+
+import type { ToolSpec } from "../llm";
+
+export const CORE_TOOL_SPECS: ToolSpec[] = [
+ {
+  "name": "overview",
+  "description": "先调这个。用户现在的求职阶段、下一步、待办（逾期/今天/7天内/以后/没定时间）、各状态岗位数、最近改动。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {},
+   "title": "OverviewIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "search",
+  "description": "按关键词搜所有记录（档案、职业记忆、岗位、事项、文档），返回 type、id、摘要。找用户的经历和说过的话先用它。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "query": {
+     "description": "关键词，空格分开",
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    },
+    "types": {
+     "anyOf": [
+      {
+       "items": {
+        "enum": [
+         "profile",
+         "memory",
+         "job",
+         "event",
+         "doc"
+        ],
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Types"
+    },
+    "limit": {
+     "default": 20,
+     "maximum": 100,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "SearchIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "list",
+  "description": "列出某类记录（长文本会截断，要全文用 get）。profile: 唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about, photo（证件照文件名）。 memory: 职业记忆，一条一件事。kind: experience/project/education/skill/award/preference/note; title; body（具体经历、数字、用户原话）; start, end; mode（性质：experience 填 全职/实习/兼职，education 填 全日制/非全日制；不确定就问用户，别猜）; tags; quote（用户原话，原样）, said_at（用户说这话的日期 YYYY-MM-DD）; source（来源：user 用户说的 / resume 用户简历原文 / agent Agent 推断或总结的；新建时系统按调用者自动填，Agent 存的一律是 agent）, confirmed（用户是否确认过；Agent 存的记忆是待确认，不进定制简历；Agent 不能把 confirmed 设成 true，也不能把 source 改成 user，要请用户在档案页点「确认」）。 job: 岗位和投递状态。company, title, status: saved/applied/test/interview/offer/rejected/closed; url, city, jd, notes, applied_at; source（来源站点：xhs / boss / feishu / moka / beisen / 域名）, images（页面图片链接，JD 可能在图里）；tags（标签，短词数组，整体替换；建岗和补 JD 时 Agent 会自动打招聘类型、城市、方向、公司属性，记在 auto_tags；用户删掉的 Agent 标签记在 tags_muted，以后不再自动加回；用户口头要加或去标签就直接改 tags）；截止日期存 event kind=deadline。 event: 待办和日程。title, kind: todo/deadline/test/interview; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes。 doc: 文档。kind: resume/apply_chat/email/review/research/evaluation/note; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template classic 经典（默认）/ clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {top, right, bottom, left} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{basics: {name, target, contacts: [{label（电话 / 邮箱 / 城市 / 微信…，可空）, value}]}, sections: [{id, type, title, hidden, items: [{id, title, subtitle, date, location, bullets: [文字], text}]}]}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "type": {
+     "enum": [
+      "profile",
+      "memory",
+      "job",
+      "event",
+      "doc"
+     ],
+     "title": "Type",
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "岗位状态",
+     "title": "Status"
+    },
+    "kind": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kind"
+    },
+    "job_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Job Id"
+    },
+    "done": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "事项是否完成",
+     "title": "Done"
+    },
+    "tag": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "只列带这个标签的岗位",
+     "title": "Tag"
+    },
+    "full": {
+     "default": false,
+     "description": "返回全文，不截断",
+     "title": "Full",
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 500,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "type"
+   ],
+   "title": "ListIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "get",
+  "description": "读一条完整记录。读岗位时连带它的事项和文档。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "type": {
+     "enum": [
+      "profile",
+      "memory",
+      "job",
+      "event",
+      "doc"
+     ],
+     "title": "Type",
+     "type": "string"
+    },
+    "id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "profile 不用传",
+     "title": "Id"
+    }
+   },
+   "required": [
+    "type"
+   ],
+   "title": "GetIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "save",
+  "description": "新建或更新一条记录，直接生效，用户可以在「最近改动」里撤销。profile: 唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about, photo（证件照文件名）。 memory: 职业记忆，一条一件事。kind: experience/project/education/skill/award/preference/note; title; body（具体经历、数字、用户原话）; start, end; mode（性质：experience 填 全职/实习/兼职，education 填 全日制/非全日制；不确定就问用户，别猜）; tags; quote（用户原话，原样）, said_at（用户说这话的日期 YYYY-MM-DD）; source（来源：user 用户说的 / resume 用户简历原文 / agent Agent 推断或总结的；新建时系统按调用者自动填，Agent 存的一律是 agent）, confirmed（用户是否确认过；Agent 存的记忆是待确认，不进定制简历；Agent 不能把 confirmed 设成 true，也不能把 source 改成 user，要请用户在档案页点「确认」）。 job: 岗位和投递状态。company, title, status: saved/applied/test/interview/offer/rejected/closed; url, city, jd, notes, applied_at; source（来源站点：xhs / boss / feishu / moka / beisen / 域名）, images（页面图片链接，JD 可能在图里）；tags（标签，短词数组，整体替换；建岗和补 JD 时 Agent 会自动打招聘类型、城市、方向、公司属性，记在 auto_tags；用户删掉的 Agent 标签记在 tags_muted，以后不再自动加回；用户口头要加或去标签就直接改 tags）；截止日期存 event kind=deadline。 event: 待办和日程。title, kind: todo/deadline/test/interview; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes。 doc: 文档。kind: resume/apply_chat/email/review/research/evaluation/note; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template classic 经典（默认）/ clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {top, right, bottom, left} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{basics: {name, target, contacts: [{label（电话 / 邮箱 / 城市 / 微信…，可空）, value}]}, sections: [{id, type, title, hidden, items: [{id, title, subtitle, date, location, bullets: [文字], text}]}]}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume。 用户说了新的经历、偏好、截止时间，直接存。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "type": {
+     "enum": [
+      "profile",
+      "memory",
+      "job",
+      "event",
+      "doc"
+     ],
+     "title": "Type",
+     "type": "string"
+    },
+    "data": {
+     "additionalProperties": true,
+     "description": "要写的字段；更新时只传要改的，传 null 删除该字段",
+     "title": "Data",
+     "type": "object"
+    },
+    "id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "不传就新建；profile 不用传",
+     "title": "Id"
+    }
+   },
+   "required": [
+    "type",
+    "data"
+   ],
+   "title": "SaveIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "delete",
+  "description": "删除一条记录（可撤销）。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "type": {
+     "enum": [
+      "profile",
+      "memory",
+      "job",
+      "event",
+      "doc"
+     ],
+     "title": "Type",
+     "type": "string"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "type",
+    "id"
+   ],
+   "title": "DeleteIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "undo",
+  "description": "撤销一条改动，把记录恢复到改动之前。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "change_id": {
+     "title": "Change Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "change_id"
+   ],
+   "title": "UndoIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "changes",
+  "description": "最近改动，谁改了什么，最新在前。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "limit": {
+     "default": 20,
+     "maximum": 200,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    }
+   },
+   "title": "ChangesIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "read_file",
+  "description": "读本机 PDF / Word / txt / md 文件的文字，比如用户的旧简历。读完把经历拆成一条条 memory 存进档案。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "path": {
+     "description": "本机文件的绝对路径，或用户上传后拿到的文件名",
+     "title": "Path",
+     "type": "string"
+    }
+   },
+   "required": [
+    "path"
+   ],
+   "title": "ReadFileIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "find_files",
+  "description": "找本机文件：列目录（默认只看 PDF / Word / txt / md，新改的在前，另给子目录名）；给 query 时按文件名或正文里的文字筛，带片段。用户说「H 盘 学习 留档」这类位置时，自己拼成绝对路径（H:/学习/留档）先找，挑出像简历的再 read_file，不要让用户报完整路径。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "dir": {
+     "description": "本机目录的绝对路径。用户说「H 盘 学习 留档」就是 H:/学习/留档",
+     "title": "Dir",
+     "type": "string"
+    },
+    "query": {
+     "default": "",
+     "description": "要找的文字，空格分开的词都要出现在文件名或正文里；不填就只列文件",
+     "title": "Query",
+     "type": "string"
+    },
+    "pattern": {
+     "default": "*",
+     "description": "文件名通配，比如 *简历*；默认全部",
+     "title": "Pattern",
+     "type": "string"
+    },
+    "recursive": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "是否进子目录（最多 3 层）；不填时有 query 就进，没有就不进",
+     "title": "Recursive"
+    },
+    "docs_only": {
+     "default": true,
+     "description": "只列 read_file 能读的 PDF / Word / txt / md；有 query 时总是只看这些",
+     "title": "Docs Only",
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "dir"
+   ],
+   "title": "FindFilesIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "web_search",
+  "description": "搜公开网页，返回标题、链接、摘要；要正文再用 fetch_page。没配搜索服务会报错，照实告诉用户。做岗位调研时官网、招聘官网、权威媒体优先，记下每个来源的链接和日期，按系统提示里的调研结构存成 research 文档。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "query": {
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    },
+    "limit": {
+     "default": 8,
+     "maximum": 20,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "WebSearchIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "export_resume_pdf",
+  "description": "把一份简历（doc kind=resume）按它的排版（style）导出成 PDF，和工作台预览是同一份 HTML，返回文件路径。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "description": "简历 doc 的 id",
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "ExportIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "fetch_page",
+  "description": "抓取一个公开网页的文字（比如岗位详情页链接），需要登录或 JS 的页面可能拿不到内容。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "url": {
+     "title": "Url",
+     "type": "string"
+    }
+   },
+   "required": [
+    "url"
+   ],
+   "title": "FetchIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "email_sync",
+  "description": "邮箱同步。status：已连的邮箱、最近几次同步、今天邮箱写了几条改动；sync：立刻拉一次新邮件，识别投递回执、笔试、面试、offer、拒信，直接改岗位状态（只前进）并把笔试面试时间写成事项，返回写了哪些改动（都能撤销）。连邮箱和断开在设置页。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "default": "status",
+     "description": "status 看已连邮箱和最近同步；sync 立刻拉一次新邮件并回写",
+     "enum": [
+      "status",
+      "sync"
+     ],
+     "title": "Action",
+     "type": "string"
+    },
+    "account": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "只看 / 只同步这个账号（account_id），不传就是全部",
+     "title": "Account"
+    }
+   },
+   "title": "EmailSyncIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "tailor_resume",
+  "description": "按岗位 JD 改写简历：只用档案和记忆里的事实，参考这个岗位的评估报告（有的话）。传岗位简历就原地改；传主简历（没挂岗位）就写进这个岗位的定制简历，没有就新建一份，主简历不动。一条改动，可撤销；返回写入的 doc_id 和新正文。会调模型，要一两分钟。返回的 asks 是只写了动作、没写结果的句子（最多 3 句），可以拿去问用户；用户答完，把回答整理成记忆给用户看，用户确认后 save(memory)（带原话 quote 和日期 said_at，不加原话里没有的数字），再传 review_only=true 再改一下。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "description": "简历 doc 的 id（kind=resume）",
+     "title": "Id",
+     "type": "integer"
+    },
+    "job_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "按哪个岗位改；不传就用简历上关联的岗位（岗位要有 JD）",
+     "title": "Job Id"
+    },
+    "review_only": {
+     "default": false,
+     "description": "true：不重新起草，拿这个岗位已有的定制简历只跑审稿（档案补了新成果后再改一下）",
+     "title": "Review Only",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "TailorIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "split_resume",
+  "description": "把一份旧简历（原文 text 或文件 path）拆成一条条 memory 直接存进档案，只整理不编造；每条一条改动，返回 change_ids 可逐条撤销。会调模型，要一两分钟。你自己能拆就用 read_file + save。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "text": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "简历原文；和 path 二选一",
+     "title": "Text"
+    },
+    "path": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "本机文件的绝对路径，或用户上传后拿到的文件名",
+     "title": "Path"
+    }
+   },
+   "title": "SplitResumeIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "add_job",
+  "description": "用户贴来岗位链接或 JD 文本时用：抓链接正文、拆出公司 / 岗位 / 城市 / JD，截止日期另存成 deadline 事项，返回岗位和 change_ids（可撤销）。页面要登录或靠 JS 渲染时报错不存，让用户用插件「存为岗位」或贴 JD。会调模型。存完接着用 evaluate_jobs 评估这个岗位。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "text": {
+     "description": "岗位详情页链接、整段 JD 文本，或只写「公司 岗位」（会联网找官方岗位页）",
+     "title": "Text",
+     "type": "string"
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "title": "AddJobIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "evaluate_jobs",
+  "description": "评估岗位值不值得投：每个岗位出一份评估报告（结论、JD 逐条要求对档案的命中和差距、来源真假、职级薪资、简历怎么改、面试准备、反问），存成岗位下的 evaluation 文档（重评覆盖同一份），0–100 分和三句理由写回 job.score / reasons，每步一条改动可撤销。不联网：公司、竞品、面经调研另存 research。add_job 存完就传 ids 评这一个；不传 ids 按顺序评没评过的，一次最多 limit 个（默认 3）。返回的 remaining 大于 0 就再调一次。会调模型，每个岗位几十秒。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "integer"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "只评这些岗位；不传就评所有没评过、没结束、有 JD 的岗位",
+     "title": "Ids"
+    },
+    "redo": {
+     "default": false,
+     "description": "不传 ids 时，true 表示评过的也重评",
+     "title": "Redo",
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 3,
+     "description": "本次最多评几个，默认 3；返回的 remaining 大于 0 就再调一次（同一个岗位几十秒，别超过工具超时）",
+     "maximum": 20,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    }
+   },
+   "title": "EvaluateJobsIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "apply_answer",
+  "description": "回答招聘官网的网申问题：用岗位 JD、这个岗位的定制简历、档案和记忆作答，问答追加到岗位下的 apply_chat 文档（一条改动，可撤销），返回回答。会调模型。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "job_id": {
+     "description": "岗位 id（要有 JD）",
+     "title": "Job Id",
+     "type": "integer"
+    },
+    "question": {
+     "description": "官网上的问题原文，有字数限制一起贴",
+     "title": "Question",
+     "type": "string"
+    }
+   },
+   "required": [
+    "job_id",
+    "question"
+   ],
+   "title": "ApplyAnswerIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "draft_email",
+  "description": "写邮件投递草稿：从岗位 JD / 备注里拆出投递邮箱和标题、附件要求，按档案写标题和正文，导出简历 PDF，存成岗位下的 email 文档（可撤销）。不会发送：把草稿给用户看，用户在邮件客户端里确认后自己发。标题格式和 JD 要求不一致时提醒用户改。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {
+    "job_id": {
+     "description": "岗位 id（JD 或备注里要有投递邮箱）",
+     "title": "Job Id",
+     "type": "integer"
+    },
+    "resume_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "附哪份简历；不传就用这个岗位下最新的简历，没有就用主简历",
+     "title": "Resume Id"
+    }
+   },
+   "required": [
+    "job_id"
+   ],
+   "title": "DraftEmailIn",
+   "type": "object"
+  }
+ },
+ {
+  "name": "reconcile_memory",
+  "description": "只读核对职业记忆（不改任何记录）：同一个数或时间前后写法不一样（记忆之间、记忆和原话 quote、主简历、档案）、一处写已完成一处写计划中、重复记了两次、待补 / 记不清放太久。每条给证据、一句建议，能直接改的给 proposed（一次 save 的参数）。别自己拿 proposed 去 save：告诉用户去档案页「待核对」点采纳。",
+  "parameters": {
+   "additionalProperties": false,
+   "properties": {},
+   "title": "ReconcileIn",
+   "type": "object"
+  }
+ }
+];
+
+export function coreToolSpecs(names: readonly string[]): ToolSpec[] {
+  const wanted = new Set(names);
+  return CORE_TOOL_SPECS.filter((spec) => wanted.has(spec.name));
+}

@@ -82,7 +82,9 @@ export function withoutMeta(record: StoredRecord | null): PlainRecord | null {
 }
 
 export function brief(record: StoredRecord): StoredRecord & { label: string } {
-  const out: StoredRecord & { label: string } = { ...record, label: label(record) };
+  // Python _brief: resume and messages never go into list/brief views; jd/body are cut to 160.
+  const { resume: _resume, messages: _messages, ...rest } = record;
+  const out = { ...rest, label: label(record) } as StoredRecord & { label: string };
   for (const key of ["jd", "body"] as const) {
     const value = record[key];
     if (typeof value === "string" && value) {

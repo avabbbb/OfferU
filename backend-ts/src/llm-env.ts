@@ -1,14 +1,22 @@
-import { createOpenAiLlm, type LlmClient } from "@offeru/core";
+import { createLlmClient, type LlmClient } from "@offeru/core";
 
 /**
- * DEV FALLBACK ONLY. The real model comes from the user's saved config through AppDeps.llm (config domain:
- * /api/config, key in the local data dir / IndexedDB). This reads OFFERU_LLM_BASE_URL / OFFERU_LLM_API_KEY /
- * OFFERU_LLM_MODEL so a developer can try tailor/impact before that lands; null when unset (= "没配模型").
- * Never used on the web or the Worker.
+ * Dev fallback only: the companion's model from env until ts/interview-config
+ * resolves it from the user's saved config (AppDeps.llm per request).
+ *   OFFERU_LLM_BASE_URL, OFFERU_LLM_API_KEY, OFFERU_LLM_MODEL
+ *   OFFERU_LLM_FORMAT=anthropic for the Anthropic Messages API
+ *   OFFERU_LLM_JSON_MODE=0 for providers that reject response_format.
  */
-export function devLlmFromEnv(env: Record<string, string | undefined> = process.env): LlmClient | null {
+export function llmFromEnv(env: NodeJS.ProcessEnv = process.env): LlmClient | null {
   const baseUrl = env.OFFERU_LLM_BASE_URL?.trim();
   const model = env.OFFERU_LLM_MODEL?.trim();
   if (!baseUrl || !model) return null;
-  return createOpenAiLlm({ baseUrl, model, apiKey: env.OFFERU_LLM_API_KEY?.trim(), fetch: (url, init) => fetch(url, init) });
+  return createLlmClient({
+    provider: "custom",
+    baseUrl,
+    model,
+    apiKey: env.OFFERU_LLM_API_KEY?.trim() ?? "",
+    apiFormat: env.OFFERU_LLM_FORMAT === "anthropic" ? "anthropic" : "openai",
+    supportsJsonMode: env.OFFERU_LLM_JSON_MODE !== "0",
+  }, { fetch: globalThis.fetch as never });
 }

@@ -79,6 +79,12 @@ export interface CoreStore {
   addChange(row: Omit<ChangeRow, "id" | "undone_at">): Promise<number>;
   updateChange(id: number, patch: Partial<Pick<ChangeRow, "at" | "after" | "undone_at">>): Promise<void>;
   transaction<T>(fn: () => Promise<T>): Promise<T>;
+  /**
+   * Optional: how many changes `actor` made at or after `since` (ISO), and the
+   * latest `at`. Overview's mail progress uses it; stores without it are
+   * scanned through `changes()`.
+   */
+  changeStats?(actor: string, since: string): Promise<{ count: number; last: string | null }>;
 }
 
 /**

@@ -6,26 +6,32 @@ import { pathToFileURL } from "node:url";
 import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
 import { createApp, type AppDeps } from "./app";
-import { devLlmFromEnv } from "./llm-env";
+import { SqliteAgentRunStore } from "./agent-store";
+import { llmFromEnv } from "./llm-env";
+import { agentHost } from "./routes/agent";
 import { registerCompanionRoutes } from "./routes/companion";
 import { filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
 import { openStore } from "./store";
 import type { SqliteCoreStore } from "./store";
 
 export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDeps> = {}): Server {
-  const app = createApp({
+  const deps: AppDeps = {
     store,
     pairingToken,
     runtime: "node",
     storage: "sqlite",
     // The model comes from the user's config (AppDeps.llm, owned by the config domain); env vars are a dev fallback only.
-    llm: "llm" in overrides ? overrides.llm : () => devLlmFromEnv(),
-    files: "files" in overrides ? overrides.files : nodeFileStore(filesDirFor(dbPath())),
-    renderer: "renderer" in overrides ? overrides.renderer : playwrightRenderer(),
-    schoolLogos: "schoolLogos" in overrides ? overrides.schoolLogos : nodeSchoolLogos(),
+    llm: () => llmFromEnv(),
+    files: nodeFileStore(filesDirFor(dbPath())),
+    renderer: playwrightRenderer(),
+    schoolLogos: nodeSchoolLogos(),
+    agentRuns: new SqliteAgentRunStore(store),
     ...overrides,
-  });
+  };
+  const app = createApp(deps);
   registerCompanionRoutes(app);
+  // Runs that were executing when the last process died become resumable.
+  void agentHost(deps).state.recoverInterrupted().catch((cause) => console.error("agent recovery failed", cause));
   return createAdaptorServer({ fetch: app.fetch }) as Server;
 }
 

@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 
 import type { AppEnv } from "../app";
+import { registerAgent } from "./agent";
 import { registerResume } from "./resume";
 
 /**
@@ -18,7 +19,7 @@ import { registerResume } from "./resume";
  *   on the Worker. Node-only routes go under routes/companion/.
  */
 export function registerRoutes(app: Hono<AppEnv>): void {
-  void app;
+  registerAgent(app);
   // register<Domain>(app);
   registerResume(app);
 }
