@@ -16,7 +16,7 @@ import { createApp, type AppDeps } from "../src/app";
 import { createMcpServer } from "../src/mcp";
 import { createLocalFiles, fnmatchRegex } from "../src/routes/companion/files";
 import { SqliteCoreStore } from "../src/store";
-import { callTool, toolDeps } from "../src/tools";
+import { agentExtraTools, callTool, toolDeps } from "../src/tools";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PYTHON_TOOL_ORDER = [
@@ -321,4 +321,32 @@ describe("MCP and CLI surfaces", () => {
     expect(JSON.parse(saved.out).record).toMatchObject({ source: "agent", confirmed: false });
     expect(failed).toEqual({ code: 1, out: "{\"error\":\"job #9 不存在\"}\n" });
   }, 60_000);
+});
+
+describe("built-in Agent gets the shared registry (Python agent.loop_tools)", () => {
+  it("offers only tools this runtime can run, beyond the record tools", () => {
+    const files = createLocalFiles(join(tmp, "files"));
+    const companion = agentExtraTools({ store, companion: { handlers: files.handlers, readFile: files.readFile } }).map((tool) => tool.name);
+    expect(companion).toEqual(["read_file", "find_files", "web_search", "fetch_page", "split_resume", "add_job", "evaluate_jobs", "apply_answer", "draft_email", "reconcile_memory"]);
+    const browser = agentExtraTools({ store }).map((tool) => tool.name);
+    expect(browser).not.toContain("read_file");
+    expect(browser).not.toContain("tailor_resume");
+    const withResume = agentExtraTools({ store, toolHandlers: { tailor_resume: async () => ({ doc_id: 1 }) } }).map((tool) => tool.name);
+    expect(withResume).toContain("tailor_resume");
+    const spec = agentExtraTools({ store }).find((tool) => tool.name === "evaluate_jobs")!;
+    expect(spec.parameters).toEqual(TOOL_SPECS.find((s) => s.name === "evaluate_jobs")!.inputSchema);
+  });
+
+  it("runs as the Agent actor and returns errors as ERROR text", async () => {
+    const tools = agentExtraTools({ store, llm: () => fakeLlm(() => JSON.stringify({ items: [{ kind: "skill", title: "SQL", body: "熟练" }] })) });
+    const split = tools.find((tool) => tool.name === "split_resume")!;
+    const ok = await split.execute({ text: "技能：SQL" }, { callId: "c1" });
+    expect(ok.isError).toBe(false);
+    expect(JSON.parse(ok.text)).toMatchObject({ count: 1 });
+    expect((await callTool("changes", {}, store) as any).items[0].actor).toBe("助手");
+    const bad = await tools.find((tool) => tool.name === "fetch_page")!.execute({ url: "ftp://x" }, { callId: "c2" });
+    expect(bad).toMatchObject({ isError: true, text: "ERROR: 只支持 http/https 链接" });
+    const invalid = await split.execute({ nope: 1 }, { callId: "c3" });
+    expect(invalid.isError).toBe(true);
+  });
 });

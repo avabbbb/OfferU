@@ -6,13 +6,21 @@ import { pathToFileURL } from "node:url";
 import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
 import { createApp } from "./app";
+import { SqliteAgentRunStore } from "./agent-store";
 import { nodeToolRuntime } from "./node-runtime";
+import { agentHost } from "./routes/agent";
 import { openStore } from "./store";
 import type { SqliteCoreStore } from "./store";
 
 export function createAppServer(store: SqliteCoreStore): Server {
   const { llm, search, fetch, companion } = nodeToolRuntime(store);
-  const app = createApp({ store, pairingToken, runtime: "node", storage: "sqlite", llm, search, fetch, companion });
+  const deps = {
+    store, pairingToken, runtime: "node" as const, storage: "sqlite" as const,
+    llm, search, fetch, companion, agentRuns: new SqliteAgentRunStore(store),
+  };
+  const app = createApp(deps);
+  // Runs that were executing when the last process died become resumable.
+  void agentHost(deps).state.recoverInterrupted().catch((cause) => console.error("agent recovery failed", cause));
   return createAdaptorServer({ fetch: app.fetch }) as Server;
 }
 

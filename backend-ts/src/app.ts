@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type SearchClient } from "@offeru/core";
+import { isCoreError, type AgentRunStore, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type SearchClient } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
 import { TOOL_NAMES, type ToolRuntime } from "./tools";
@@ -22,8 +22,12 @@ export interface AppDeps {
   search?: () => SearchClient | null;
   /** Outbound fetch for fetch_page / add_job (global fetch on Node and Workers). */
   fetch?: HttpFetch;
+  /** Tool handlers other domains register, runtime-agnostic (tailor_resume, export_resume_pdf, email_sync…). */
+  toolHandlers?: ToolRuntime["toolHandlers"];
   /** Node companion only: local-file tools (read_file, find_files). */
   companion?: ToolRuntime["companion"];
+  /** Agent run rows (SQLite on the companion, IndexedDB in the browser); absent = in-memory. */
+  agentRuns?: AgentRunStore;
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };

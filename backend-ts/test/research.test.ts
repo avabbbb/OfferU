@@ -15,8 +15,8 @@ import {
   saveRecord,
   sourceFact,
   todayIso,
-  type ChatMessage,
-  type ChatOptions,
+  type LlmMessage as ChatMessage,
+  type LlmChatOptions as ChatOptions,
   type EvaluateEvent,
   type LlmClient,
 } from "@offeru/core";

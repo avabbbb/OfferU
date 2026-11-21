@@ -1,21 +1,22 @@
-import { createOpenAiLlm, type LlmClient } from "@offeru/core";
+import { createLlmClient, type LlmClient } from "@offeru/core";
 
 /**
- * Node companion's model, from env until the config domain ports Python's
- * config.json / secret-vault resolution (resolve_llm_client_config):
+ * Dev fallback only: the companion's model from env until ts/interview-config
+ * resolves it from the user's saved config (AppDeps.llm per request).
  *   OFFERU_LLM_BASE_URL, OFFERU_LLM_API_KEY, OFFERU_LLM_MODEL
+ *   OFFERU_LLM_FORMAT=anthropic for the Anthropic Messages API
  *   OFFERU_LLM_JSON_MODE=0 for providers that reject response_format.
- * Read per call so the process picks up a changed env-backed key without restart logic here.
  */
 export function llmFromEnv(env: NodeJS.ProcessEnv = process.env): LlmClient | null {
   const baseUrl = env.OFFERU_LLM_BASE_URL?.trim();
   const model = env.OFFERU_LLM_MODEL?.trim();
   if (!baseUrl || !model) return null;
-  return createOpenAiLlm({
-    fetch: (input, init) => globalThis.fetch(input, init),
+  return createLlmClient({
+    provider: "custom",
     baseUrl,
     model,
     apiKey: env.OFFERU_LLM_API_KEY?.trim() ?? "",
+    apiFormat: env.OFFERU_LLM_FORMAT === "anthropic" ? "anthropic" : "openai",
     supportsJsonMode: env.OFFERU_LLM_JSON_MODE !== "0",
-  });
+  }, { fetch: globalThis.fetch as never });
 }
