@@ -223,6 +223,23 @@ describe("S3 sync between two devices", () => {
     expect((await a.store.first("profile"))?.school).toBe("A 大学");
   });
 
+  it("merges two profiles created before the first sync into one", async () => {
+    const s3 = new FakeS3();
+    const a = device(s3, "A");
+    const b = device(s3, "B");
+    await a.tool("save", { type: "profile", data: { name: "A 的名字" } });
+    await tick();
+    await b.tool("save", { type: "profile", data: { name: "B 的名字" } });
+    await a.sync.run();
+    const result = await b.sync.run();
+    expect(result.conflicts).toEqual([expect.objectContaining({ kept: "local", copy: "change-log" })]);
+    await a.sync.run();
+    for (const dev of [a, b]) {
+      const rows = await dev.store.all("profile");
+      expect(rows.map((row) => row.name)).toEqual(["B 的名字"]);
+    }
+  });
+
   it("propagates deletes as tombstones, lets an edit beat a concurrent delete, and undo resurrects", async () => {
     const s3 = new FakeS3();
     const a = device(s3, "A");

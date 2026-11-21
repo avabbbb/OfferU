@@ -267,6 +267,8 @@ export class SyncEngine {
     for (const [uid, entry] of Object.entries(remote)) {
       if (!entry.del && entry.h && !claimed.has(uid)) unclaimedByHash.set(`${entry.t}:${entry.h}`, uid);
     }
+    let unclaimedProfile = Object.entries(remote).find(([uid, entry]) => entry.t === "profile" && !entry.del && !claimed.has(uid))?.[0];
+    if (records.some((record) => record.type === "profile" && state.map[`profile:${record.id}`])) unclaimedProfile = undefined;
 
     const entries: EntryMap = {};
     const payloads = new Map<string, Uint8Array>();
@@ -280,8 +282,13 @@ export class SyncEngine {
       const h = await this.keys.objectId(bytes);
       let uid = state.map[localKey];
       if (!uid) {
-        uid = unclaimedByHash.get(`${record.type}:${h}`) ?? randomId(12);
+        uid = unclaimedByHash.get(`${record.type}:${h}`)
+          // The profile is a singleton: two devices that each made one before
+          // their first sync share it (newer wins, the other stays in the change log).
+          ?? (record.type === "profile" ? unclaimedProfile : undefined)
+          ?? randomId(12);
         unclaimedByHash.delete(`${record.type}:${h}`);
+        if (uid === unclaimedProfile) unclaimedProfile = undefined;
         state.map[localKey] = uid;
       }
       entries[uid] = { h, u: comparableTime(record.updated_at), t: record.type };
@@ -542,12 +549,15 @@ export class SyncEngine {
           continue;
         }
         const payload = fetched.get(entry.h)!;
+        // A uid this device deleted earlier comes back under its old local id.
+        const revive = !before && local && local.type === type ? local.id : undefined;
         const record = await store.put(type, payload.data, {
-          id: before ? before.id : undefined,
+          id: before ? before.id : revive,
           jobId: jobLocalId(payload.job),
           now: payload.updated_at,
           createdAt: payload.created_at,
           replace: true,
+          restore: revive !== undefined,
         });
         if (!before) {
           state.map[`${type}:${record.id}`] = uid;

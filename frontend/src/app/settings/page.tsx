@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ModelPicker } from "@/components/settings/ModelPicker";
 import { FreshResetPanel } from "@/components/settings/FreshResetPanel";
+import { DataSyncCard } from "@/components/settings/DataSyncCard";
 import BuildIdentityPanel from "@/components/settings/BuildIdentityPanel";
 import { motion } from "framer-motion";
 import {
@@ -1378,6 +1379,7 @@ export default function SettingsPage() {
 
       <SettingsDialog isOpen={openSection === "data"} onClose={closeSection} title="数据">
         <LocalDataSafetyCard />
+        <DataSyncCard />
         <details className="ou-sheet p-4">
           <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground-muted)]">危险操作</summary>
           <div className="mt-4">
