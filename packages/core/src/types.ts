@@ -66,6 +66,10 @@ export type PutOptions = {
  * browser, node:sqlite on the local companion, and anything else later.
  * `transaction` must make every write inside `fn` all-or-nothing: a record
  * write and its change-log row either both land or neither does.
+ * Transactions are serialized and never nest: an independent caller that
+ * arrives while one is open queues behind it (never joins it, never shares its
+ * rollback). Code already inside a transaction uses saveRecordInTx /
+ * deleteRecordInTx instead of opening another one.
  */
 export interface CoreStore {
   all(type: RecordType, jobId?: number | null): Promise<StoredRecord[]>;

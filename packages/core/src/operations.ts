@@ -286,6 +286,15 @@ export function saveRecord(store: CoreStore, args: Args, ctx: CoreContext, optio
   return store.transaction(() => saveRecordUnsafe(store, args, ctx, options));
 }
 
+/**
+ * saveRecord for code already inside store.transaction(): transactions never nest
+ * (a nested call would queue behind its own outer transaction), so composite
+ * writes (evaluation report + score, split resume, mock interview) call this.
+ */
+export function saveRecordInTx(store: CoreStore, args: Args, ctx: CoreContext, options: SaveOptions = {}): Promise<SaveResult> {
+  return saveRecordUnsafe(store, args, ctx, options);
+}
+
 async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext, options: SaveOptions): Promise<SaveResult> {
   const type = recordType(args.type);
   let data = objectArg(args.data ?? {}, "data");
@@ -409,6 +418,11 @@ export async function listRecords(store: CoreStore, args: Args): Promise<{ total
 /** All-or-nothing: the record write and its change-log row commit together. */
 export function deleteRecord(store: CoreStore, args: Args, ctx: CoreContext): Promise<{ change_id: number }> {
   return store.transaction(() => deleteRecordUnsafe(store, args, ctx));
+}
+
+/** deleteRecord for code already inside store.transaction() (see saveRecordInTx). */
+export function deleteRecordInTx(store: CoreStore, args: Args, ctx: CoreContext): Promise<{ change_id: number }> {
+  return deleteRecordUnsafe(store, args, ctx);
 }
 
 async function deleteRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext): Promise<{ change_id: number }> {

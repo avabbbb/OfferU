@@ -13,7 +13,6 @@ export class BrowserDemoStore implements CoreStore {
   private loading: Promise<void> | null = null;
   private writes: Promise<void> = Promise.resolve();
   private txQueue: Promise<unknown> = Promise.resolve();
-  private inTx = false;
 
   private readonly storage: LocalForage;
 
@@ -138,24 +137,25 @@ export class BrowserDemoStore implements CoreStore {
 
   /**
    * All-or-nothing over the in-memory state: on failure the snapshot taken at
-   * BEGIN is restored, on success the state is flushed to IndexedDB. Calls
-   * queue so two concurrent tool calls never see each other's half-writes.
+   * BEGIN is restored, on success the state is flushed to IndexedDB.
+   *
+   * Transactions are strictly serialized and never nest (CoreStore contract).
+   * There is no AsyncLocalStorage in the page, so an instance flag cannot tell
+   * "nested call from inside fn" from "independent request that arrived while
+   * fn was awaiting" — the old `inTx` shortcut let the independent one join and
+   * then vanish in the first one's rollback. Every call now queues; composite
+   * writes use saveRecordInTx instead of opening an inner transaction.
    */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.inTx) return fn();
     const run = this.txQueue.then(async () => {
       const before = clone(this.current());
-      this.inTx = true;
       try {
         const result = await fn();
-        this.inTx = false;
         await this.flush();
         return result;
       } catch (error) {
         this.state = before;
         throw error;
-      } finally {
-        this.inTx = false;
       }
     });
     this.txQueue = run.catch(() => undefined);

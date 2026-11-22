@@ -1,7 +1,7 @@
 // apply_answer / draft_email / reconcile_memory / split_resume, ported from backend/app/core/tools.py.
 
 import { label } from "../labels";
-import { saveRecord } from "../operations";
+import { saveRecord, saveRecordInTx } from "../operations";
 import { CoreError, type Json, type StoredRecord } from "../types";
 import type { ToolDeps } from "./deps";
 import { candidateText as candidate, jobText } from "../research/job-eval";
@@ -194,7 +194,7 @@ export async function splitResume(deps: ToolDeps, rawText?: string | null, path?
   // fromResume: the user's own resume text → source=resume, confirmed=true, whoever the caller is (Python from_resume).
   const saved = await deps.store.transaction(async () => {
     const out = [];
-    for (const item of items) out.push(await saveRecord(deps.store, { type: "memory", data: item }, deps.ctx, { fromResume: true }));
+    for (const item of items) out.push(await saveRecordInTx(deps.store, { type: "memory", data: item }, deps.ctx, { fromResume: true }));
     return out;
   });
   return {

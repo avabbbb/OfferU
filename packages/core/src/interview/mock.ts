@@ -4,7 +4,7 @@
 // questions), messages, evaluations and derived behaviour events live in it,
 // so every write is a normal undoable core change.
 
-import { deleteRecord, saveRecord } from "../operations";
+import { deleteRecord, saveRecord, saveRecordInTx } from "../operations";
 import type { CoreStore, StoredRecord } from "../types";
 import { CoreError } from "../types";
 import { extractJson, requireLlm, type LlmClient } from "../llm";
@@ -493,7 +493,7 @@ export async function submitAnswer(store: CoreStore, interviewId: unknown, args:
         patch.report = report;
       }
       const freshRuns = isObject(fresh.evaluation_runs) ? fresh.evaluation_runs : {};
-      await saveRecord(store, {
+      await saveRecordInTx(store, {
         type: "doc",
         id,
         data: {
@@ -538,7 +538,7 @@ export async function ingestBehaviorEvents(store: CoreStore, interviewId: unknow
       }
       patch.report = { ...session.report, delivery_feedback: filterBehaviorPanels(summary, definition), combined_score: null };
     }
-    await saveRecord(store, { type: "doc", id, data: patch }, userContext(actor));
+    await saveRecordInTx(store, { type: "doc", id, data: patch }, userContext(actor));
     return { interview_id: id, accepted: fresh.length, duplicates, summary, raw_camera_data_received: false };
   }));
 }
@@ -557,8 +557,8 @@ export async function restartInterview(store: CoreStore, interviewId: unknown, a
     const original = await interviewDoc(store, id);
     if (!original.questions.length) throw new CoreError("原面试没有可复用的问题");
     const ctx = userContext(actor);
-    await saveRecord(store, { type: "doc", id, data: { status: "archived" } }, ctx);
-    const clone = await saveRecord(store, {
+    await saveRecordInTx(store, { type: "doc", id, data: { status: "archived" } }, ctx);
+    const clone = await saveRecordInTx(store, {
       type: "doc",
       data: {
         kind: "note",

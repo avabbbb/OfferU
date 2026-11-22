@@ -193,7 +193,9 @@ export class SqliteCoreStore implements CoreStore {
    * would interleave inside each other's transaction.
    */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.txContext.getStore()) return fn();
+    // Transactions never nest (CoreStore contract): fail loudly instead of joining, so a
+    // composite write that forgot saveRecordInTx shows up in tests, not as a silent half-commit.
+    if (this.txContext.getStore()) throw new Error("事务不能嵌套：已在事务里的写入请用 saveRecordInTx / deleteRecordInTx");
     const run = this.queue.then(() => this.txContext.run(true, async () => {
       this.db.exec("BEGIN IMMEDIATE");
       try {

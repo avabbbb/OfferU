@@ -4,7 +4,7 @@
 
 import type { LlmClient } from "../llm";
 import { label } from "../labels";
-import { saveRecord } from "../operations";
+import { saveRecord, saveRecordInTx } from "../operations";
 import type { CoreContext, CoreStore, StoredRecord } from "../types";
 import { CoreError } from "../types";
 import { candidateText, evaluateJob, type JobEvaluation } from "./job-eval";
@@ -79,12 +79,12 @@ async function existingEvaluationDoc(store: CoreStore, jobId: number): Promise<S
 async function persist(store: CoreStore, job: StoredRecord, result: JobEvaluation, ctx: CoreContext): Promise<{ docId: number; changeIds: number[] }> {
   return store.transaction(async () => {
     const old = await existingEvaluationDoc(store, job.id);
-    const doc = await saveRecord(store, {
+    const doc = await saveRecordInTx(store, {
       type: "doc",
       id: old?.id,
       data: { kind: "evaluation", job_id: job.id, title: `岗位评估 · ${label(job)}`, body: result.markdown },
     }, ctx);
-    const scored = await saveRecord(store, {
+    const scored = await saveRecordInTx(store, {
       type: "job",
       id: job.id,
       data: { score: result.score, reasons: result.reasons, ...(result.greeting ? { greeting: result.greeting } : {}) },
