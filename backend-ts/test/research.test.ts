@@ -234,3 +234,27 @@ describe("llmFromEnv (dev fallback over core createOpenAiLlm)", () => {
     expect(llm!.local).toBe(true);
   });
 });
+
+describe("evaluate_jobs concurrency", () => {
+  it("two calls that both see the job unevaluated share one model call and one write", async () => {
+    const { SqliteCoreStore } = await import("../src/store");
+    const { evaluateJobs, saveRecord } = await import("@offeru/core");
+    const store = new SqliteCoreStore(":memory:");
+    const ctx = () => ({ actor: "OfferU Agent", now: "2026-11-23T00:00:00+08:00", today: "2026-11-23" });
+    const job = await saveRecord(store, { type: "job", data: { title: "数据分析实习", jd: "要求 SQL", posting: { duties: ["SQL"] } } }, ctx());
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const reply = JSON.stringify({ score: 80, reasons: ["一", "二", "三"], markdown: "# 结论\n可以投", greeting: "" });
+    const llm = { provider: "fake", model: "fake", async chat() { calls += 1; await gate; return reply; } };
+    const a = evaluateJobs(store, llm as never, { ids: [job.record.id] }, { context: ctx });
+    const b = evaluateJobs(store, llm as never, { ids: [job.record.id] }, { context: ctx });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    release();
+    const [ra, rb] = await Promise.all([a, b]);
+    expect(calls).toBe(1);
+    expect(ra.items[0].doc_id).toBe(rb.items[0].doc_id);
+    expect((await store.all("doc", job.record.id)).filter((doc) => doc.kind === "evaluation")).toHaveLength(1);
+    store.close();
+  });
+});

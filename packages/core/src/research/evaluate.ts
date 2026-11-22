@@ -31,7 +31,26 @@ export type EvaluateOptions = {
   enrich?: (ids: number[], signal?: AbortSignal) => Promise<Array<number | null>>;
   /** Fresh context per write (a stream can run for minutes). */
   context: () => CoreContext;
+  /** Jobs evaluated at the same time within one call (default EVALUATE_CONCURRENCY). */
+  concurrency?: number;
 };
+
+/** Model calls in flight per evaluate call: enough to overlap latency, small enough for free-tier rate limits. */
+export const EVALUATE_CONCURRENCY = 2;
+
+type Outcome = { result: JobEvaluation; docId: number; changeIds: number[] } | null;
+
+/**
+ * Evaluations in flight, per store, keyed by job + the inputs it reads (job version, candidate text).
+ * Two tasks that both see「这个岗位还没评估」share one model call and one write instead of running twice.
+ */
+const inflight = new WeakMap<CoreStore, Map<string, Promise<Outcome>>>();
+
+function inputKey(job: StoredRecord, profileText: string): string {
+  let hash = 0;
+  for (let index = 0; index < profileText.length; index += 1) hash = (hash * 31 + profileText.charCodeAt(index)) | 0;
+  return `${job.id}:${String(job.updated_at ?? "")}:${profileText.length}:${hash}`;
+}
 
 export const NO_MODEL_MESSAGE = "没配模型，没法自动评估。你自己评就用 save 给 job 写 score（0–100）和 reasons（三句）";
 
@@ -98,7 +117,7 @@ export async function* runEvaluation(
   store: CoreStore,
   llm: LlmClient,
   prepared: PreparedEvaluation,
-  options: Pick<EvaluateOptions, "signal" | "enrich" | "context">,
+  options: Pick<EvaluateOptions, "signal" | "enrich" | "context" | "concurrency">,
 ): AsyncGenerator<EvaluateEvent> {
   let jobs = prepared.jobs;
   const { remaining } = prepared;
@@ -124,19 +143,49 @@ export async function* runEvaluation(
     }
   }
 
+  let running = inflight.get(store);
+  if (!running) inflight.set(store, (running = new Map()));
+  const shared = running;
+  // Owner: the first caller for this job + inputs runs the model and writes; later callers join its promise.
+  const evaluateOrJoin = (job: StoredRecord): { outcome: Promise<Outcome>; owner: boolean } => {
+    const key = inputKey(job, profileText);
+    const existing = shared.get(key);
+    if (existing) return { outcome: existing, owner: false };
+    const outcome = (async (): Promise<Outcome> => {
+      const result = await evaluateJob(llm, profileText, job, options.signal);
+      if (!result) return null;
+      const { docId, changeIds: written } = await persist(store, job, result, options.context());
+      return { result, docId, changeIds: written };
+    })().finally(() => shared.delete(key));
+    shared.set(key, outcome);
+    return { outcome, owner: true };
+  };
+
+  // Bounded concurrency, events in job order: start up to `width` jobs ahead, then await them one by one.
+  const width = Math.max(1, Math.min(4, Math.trunc(options.concurrency ?? EVALUATE_CONCURRENCY)));
+  const started: Array<{ outcome: Promise<Outcome>; owner: boolean } | undefined> = [];
+  const launch = (index: number) => {
+    if (index < jobs.length && !started[index] && !options.signal?.aborted) {
+      started[index] = evaluateOrJoin(jobs[index]);
+      started[index]!.outcome.catch(() => undefined); // awaited in order below
+    }
+  };
+  for (let index = 0; index < Math.min(width, jobs.length); index += 1) launch(index);
   for (const [offset, job] of jobs.entries()) {
     const index = offset + 1;
     options.signal?.throwIfAborted();
+    launch(offset);
     yield { type: "job_start", id: job.id, label: label(job), index, total };
-    const result = await evaluateJob(llm, profileText, job, options.signal);
-    if (!result) {
+    const { outcome, owner } = started[offset]!;
+    const done = await outcome;
+    launch(offset + width);
+    if (!done) {
       failed.push(label(job));
       continue;
     }
-    const { docId, changeIds: written } = await persist(store, job, result, options.context());
-    changeIds.push(...written);
+    if (owner) changeIds.push(...done.changeIds);
     const item: EvaluateItem = {
-      id: job.id, label: label(job), score: result.score, reasons: result.reasons, greeting: result.greeting || "", doc_id: docId,
+      id: job.id, label: label(job), score: done.result.score, reasons: done.result.reasons, greeting: done.result.greeting || "", doc_id: done.docId,
     };
     items.push(item);
     yield { type: "job", index, total, ...item };
