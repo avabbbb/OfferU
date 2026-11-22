@@ -28,6 +28,11 @@ export type ChangeRow = {
   before: PlainRecord | null;
   after: PlainRecord | null;
   undone_at: string | null;
+  /**
+   * Operation key of the write (Agent: "<run_id>:<tool_call_id>"). Absent for the user's own
+   * writes. Lets a resumed run tell which tool calls already committed before the crash.
+   */
+  op?: string;
 };
 
 export type ChangeView = {
@@ -46,6 +51,8 @@ export type CoreContext = {
   actor: string;
   now: string;
   today: string;
+  /** Operation key stamped on every change this call writes (see ChangeRow.op). */
+  op?: string;
 };
 
 export type PutOptions = {

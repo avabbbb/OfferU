@@ -241,7 +241,7 @@ export function statusMoveError(current: JobStatus | undefined, next: JobStatus)
 
 async function logChange(
   store: CoreStore,
-  data: { actor: string; summary: string; type: RecordType; record_id: number; before: PlainRecord | null; after: PlainRecord | null; now: string },
+  data: { actor: string; summary: string; type: RecordType; record_id: number; before: PlainRecord | null; after: PlainRecord | null; now: string; op?: string },
 ): Promise<number> {
   const last = await store.lastChange();
   if (
@@ -253,6 +253,7 @@ async function logChange(
     && last.summary === data.summary
     && last.type === data.type
     && last.record_id === data.record_id
+    && (last.op ?? "") === (data.op ?? "") // an Agent tool call's change stays its own row (resume looks it up by op)
     && Date.parse(data.now) - Date.parse(last.at) < 600_000
   ) {
     await store.updateChange(last.id, { at: data.now, after: data.after });
@@ -266,6 +267,7 @@ async function logChange(
     record_id: data.record_id,
     before: data.before,
     after: data.after,
+    ...(data.op ? { op: data.op } : {}),
   }));
 }
 
@@ -376,6 +378,7 @@ async function saveRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext, 
     before,
     after: plain(record),
     now: ctx.now,
+    op: ctx.op,
   });
   return { record, change_id: changeId, existed, ...(openEvents ? { open_events: openEvents } : {}) };
 }
@@ -439,6 +442,7 @@ async function deleteRecordUnsafe(store: CoreStore, args: Args, ctx: CoreContext
     before: plain(record),
     after: null,
     now: ctx.now,
+    op: ctx.op,
   });
   return { change_id: changeId };
 }

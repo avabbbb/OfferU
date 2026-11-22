@@ -35,6 +35,9 @@ import { bindAgentTools } from "./tools";
 /** Record tools every runtime has (core/tools.py TOOLS that need no network / files / model). */
 export const AGENT_RECORD_TOOLS = ["overview", "search", "list", "get", "save", "delete", "undo", "changes"] as const;
 
+/** ChangeRow.op for one Agent tool call. */
+export const toolOpKey = (runId: string, callId: string): string => `${runId}:${callId}`;
+
 export function agentContext(actor = AGENT_ACTOR): CoreContext {
   return { actor, now: nowIso(), today: todayIso() };
 }
@@ -106,7 +109,8 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
     },
     tools() {
       const record = bindAgentTools(agentSpecs, (name, args, call) => {
-        const ctx = agentContext();
+        // Every change this call writes carries "<run>:<call>", so a resumed run can tell committed calls apart.
+        const ctx: CoreContext = { ...agentContext(), ...(call.runId && call.callId ? { op: toolOpKey(call.runId, call.callId) } : {}) };
         const runtime = deps.toolDeps?.(ctx, { signal: call.signal, callId: call.callId }) ?? { store: deps.store, signal: call.signal, callId: call.callId };
         return callCoreTool(name, args, { ...runtime, ctx }, handlers);
       }, async (name, args) => {
@@ -118,6 +122,10 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
       const manual = toolManualTool(() => [...manualSpecs, ...extraSpecs().filter((spec) => !names.has(spec.name))]);
       const kernel = new Set([TOOL_MANUAL_NAME, "skill_read"]);
       return [...record, ...extra.filter((tool) => !names.has(tool.name) && !kernel.has(tool.name)), manual, skillReadTool()];
+    },
+    async committedChanges(runId, callId) {
+      const op = toolOpKey(runId, callId);
+      return (await deps.store.changes(1000)).filter((row) => row.op === op).map((row) => row.id).sort((a, b) => a - b);
     },
     systemPrompt: ({ maxSteps, texts }) => agentSystemPrompt(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm, tools: toolNames(), skillTexts: texts }),
     prepareAttachments: deps.prepareAttachments,

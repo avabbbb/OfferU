@@ -10,6 +10,7 @@ import { CoreError } from "../types";
 import type { ChatContentPart, ChatMessage, LlmClient } from "../llm";
 import { sanitizeLlmError } from "../llm";
 import { runAgentLoop, type AgentTool, type LoopEvent } from "./loop";
+import { reconcileToolBatch } from "./reconcile";
 import { compactionPolicyFor, type CompactionPolicy } from "./compaction";
 import { DEFAULT_CONTEXT_WINDOW_TOKENS, resolveContextWindow } from "../llm-context";
 import type { StreamGuardPolicy } from "./stream-guard";
@@ -68,6 +69,11 @@ export interface AgentHostDeps {
   resolveLlm(options: RunOptions): Promise<ResolvedLlm>;
   /** Core tools bound to the Agent actor. */
   tools(): AgentTool[];
+  /**
+   * Change ids a tool call of this run committed (ChangeRow.op "<run>:<call>"). Used on resume to
+   * close a tool batch the process died in. Absent: every unanswered call counts as not executed.
+   */
+  committedChanges?: (runId: string, callId: string) => Promise<number[]>;
   /** `texts`: the user's message + recent conversation, for auto-loading matching skills. */
   systemPrompt(options: { maxSteps: number; texts?: string[] }): Promise<string>;
   /** Read uploaded attachments; absent means attachments are unsupported here. */
@@ -296,9 +302,13 @@ export class AgentHost {
       goal = goal || String(existing.goal || "").trim();
       const stored = await state.store.getSession(existing.id);
       if (!stored) throw new CoreError("Run 没有可恢复的 Agent Session，不能确定性恢复。", "conflict");
-      const last = stored.at(-1);
-      if (last?.role === "assistant" && last.tool_calls?.length) throw new CoreError("Interrupted tool batch needs reconciliation", "conflict");
-      session = stored;
+      // Died inside a tool batch: answer every unanswered call from the change log (committed or not), never re-run it.
+      const reconciled = await reconcileToolBatch(stored, (callId) => this.deps.committedChanges?.(existing.id, callId) ?? Promise.resolve([]));
+      session = reconciled.messages;
+      if (reconciled.committed.length || reconciled.interrupted.length) {
+        await state.store.putSession(existing.id, session);
+        await state.appendEvent(existing.id, "recovery.tool_batch_reconciled", { committed: reconciled.committed, interrupted: reconciled.interrupted });
+      }
       run = existing;
     } else {
       run = await state.createRun({
@@ -464,6 +474,7 @@ export class AgentHost {
         streamGuard: this.deps.streamGuard,
         compaction: this.deps.compaction ?? compactionPolicyFor(contextWindow),
         onSavePoint: (messages) => state.store.putSession(runId, messages),
+        runId,
         emit: async (event) => {
           switch (event.type) {
             case "text_delta": {

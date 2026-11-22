@@ -17,6 +17,8 @@ import { streamCompletion, type ChatMessage, type ChatToolCall, type LlmClient, 
 export interface AgentToolContext {
   callId: string;
   signal?: AbortSignal;
+  /** The run this call belongs to: with callId it keys the call's writes (ChangeRow.op). */
+  runId?: string;
 }
 
 export interface AgentToolResult {
@@ -66,8 +68,14 @@ export interface LoopOptions {
   signal?: AbortSignal;
   /** Drained between turns; non-empty means another turn even without tool calls. */
   takeSteering?: () => ChatMessage[];
-  /** Called after every turn with the full session (Python SAVE_POINT hook). */
+  /**
+   * Called with the full session at every point a resume must not lose: after the assistant
+   * message that asks for tools (before any runs), after each tool result, and at turn end.
+   * A crash between two tools leaves a session that says exactly which calls finished.
+   */
   onSavePoint?: (messages: ChatMessage[]) => void | Promise<void>;
+  /** Passed to every tool call (AgentToolContext.runId). */
+  runId?: string;
   model?: string;
   reasoningEffort?: ReasoningEffort;
   /** Mask phone / email / id numbers before the request (default true, like Python). */
@@ -249,6 +257,7 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
 
     moreToolCalls = false;
     if (toolCalls.length) {
+      await options.onSavePoint?.(session);
       let terminate = false;
       for (let index = 0; index < toolCalls.length; index += 1) {
         const call = toolCalls[index];
@@ -264,7 +273,7 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
             result = failed(toolFailure("invalid_args", `工具参数不是合法 JSON：${String(call.args._raw).slice(0, 200)}`, { tool: call.name, suggestedAction: "重新生成一个合法的 JSON 对象作为参数，再调一次。" }));
           } else {
             try {
-              result = await tool.execute(call.args, { callId: call.id, signal: options.signal });
+              result = await tool.execute(call.args, { callId: call.id, signal: options.signal, runId: options.runId });
             } catch (cause) {
               result = failed(classifyToolError(cause, call.name));
             }
@@ -272,6 +281,7 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
         }
         await emit({ type: "tool_execution_end", tool_call_id: call.id, tool_name: call.name, args: call.args, result: resultView(call.id, call.name, result), is_error: result.isError });
         session.push(toolMessage(call.id, call.name, result));
+        await options.onSavePoint?.(session);
         if (result.terminate) terminate = true;
         if (options.signal?.aborted && !terminate) break;
       }

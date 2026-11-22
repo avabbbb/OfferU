@@ -12,3 +12,4 @@ export * from "./compaction";
 export * from "./stream-guard";
 export { MAX_STEPS_LIMIT, normalizeMaxSteps } from "./limits";
 export * from "./sandbox";
+export * from "./reconcile";

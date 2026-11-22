@@ -33,6 +33,7 @@ type ChangeSqlRow = {
   before: string | null;
   after: string | null;
   undone_at: string | null;
+  op?: string | null;
 };
 
 const SCHEMA = `
@@ -72,6 +73,7 @@ function changeFromRow(row: ChangeSqlRow): ChangeRow {
     before: decode(row.before),
     after: decode(row.after),
     undone_at: row.undone_at,
+    ...(row.op ? { op: row.op } : {}),
   };
 }
 
@@ -91,6 +93,9 @@ export class SqliteCoreStore implements CoreStore {
     this.db.exec("PRAGMA busy_timeout=5000;");
     this.db.exec("PRAGMA journal_mode=WAL;");
     this.db.exec(SCHEMA);
+    // changes.op (Agent tool-call key) came later: add it to files made before. No other migration.
+    const columns = (this.db.prepare("PRAGMA table_info(changes)").all() as Array<{ name: string }>).map((col) => col.name);
+    if (!columns.includes("op")) this.db.exec("ALTER TABLE changes ADD COLUMN op TEXT");
   }
 
   async all(type: RecordType, jobId?: number | null): Promise<StoredRecord[]> {
@@ -164,7 +169,7 @@ export class SqliteCoreStore implements CoreStore {
 
   async addChange(row: Omit<ChangeRow, "id" | "undone_at">): Promise<number> {
     const result = this.db.prepare(
-      "INSERT INTO changes(at, actor, summary, type, record_id, before, after) VALUES (?,?,?,?,?,?,?)",
+      "INSERT INTO changes(at, actor, summary, type, record_id, before, after, op) VALUES (?,?,?,?,?,?,?,?)",
     ).run(
       row.at,
       row.actor,
@@ -173,6 +178,7 @@ export class SqliteCoreStore implements CoreStore {
       row.record_id,
       row.before === null ? null : JSON.stringify(row.before),
       row.after === null ? null : JSON.stringify(row.after),
+      row.op ?? null,
     );
     return Number(result.lastInsertRowid);
   }
@@ -228,10 +234,10 @@ export class SqliteCoreStore implements CoreStore {
     this.db.exec("DELETE FROM records; DELETE FROM changes;");
     const record = this.db.prepare("INSERT INTO records(id, type, job_id, data, created_at, updated_at) VALUES (?,?,?,?,?,?)");
     for (const row of rows.records) record.run(row.id, row.type, row.job_id, JSON.stringify(row.data), row.created_at, row.updated_at);
-    const change = this.db.prepare("INSERT INTO changes(id, at, actor, summary, type, record_id, before, after, undone_at) VALUES (?,?,?,?,?,?,?,?,?)");
+    const change = this.db.prepare("INSERT INTO changes(id, at, actor, summary, type, record_id, before, after, undone_at, op) VALUES (?,?,?,?,?,?,?,?,?,?)");
     for (const row of rows.changes) {
       change.run(row.id, row.at, row.actor, row.summary, row.type, row.record_id,
-        row.before === null ? null : JSON.stringify(row.before), row.after === null ? null : JSON.stringify(row.after), row.undone_at);
+        row.before === null ? null : JSON.stringify(row.before), row.after === null ? null : JSON.stringify(row.after), row.undone_at, row.op ?? null);
     }
   }
 
