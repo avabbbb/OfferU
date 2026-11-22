@@ -11,6 +11,7 @@ import type { ChatContentPart, ChatMessage, LlmClient } from "../llm";
 import { sanitizeLlmError } from "../llm";
 import { runAgentLoop, type AgentTool, type LoopEvent } from "./loop";
 import { reconcileToolBatch } from "./reconcile";
+import { delegateTool } from "./subagent";
 import { compactionPolicyFor, type CompactionPolicy } from "./compaction";
 import { DEFAULT_CONTEXT_WINDOW_TOKENS, resolveContextWindow } from "../llm-context";
 import type { StreamGuardPolicy } from "./stream-guard";
@@ -74,6 +75,8 @@ export interface AgentHostDeps {
    * close a tool batch the process died in. Absent: every unanswered call counts as not executed.
    */
   committedChanges?: (runId: string, callId: string) => Promise<number[]>;
+  /** Offer delegate_research (read-only sub-agents) to the model. Default true. */
+  subagents?: boolean;
   /** `texts`: the user's message + recent conversation, for auto-loading matching skills. */
   systemPrompt(options: { maxSteps: number; texts?: string[] }): Promise<string>;
   /** Read uploaded attachments; absent means attachments are unsupported here. */
@@ -529,7 +532,15 @@ export class AgentHost {
 
       await state.store.putSession(runId, session);
       await persistWorkerEvent("runtime.session_started", { session_id: runId, kernel: "ts" }, "run.started");
-      const allTools = [...tools, askTool];
+      // Read-only sub-agents share this run's client (and so the provider's request budget) and its abort signal.
+      const delegate = this.deps.subagents === false ? [] : [delegateTool({
+        client: llm.client,
+        tools,
+        signal: activeRun.controller.signal,
+        model: llm.metadata.model,
+        onEvent: (type, payload) => persistWorkerEvent(type, payload, type),
+      })];
+      const allTools = [...tools, ...delegate, askTool];
       const current = await state.loadRun(runId) || run;
       run = await state.saveRun({ ...current, llm_runtime: { ...current.llm_runtime, ...metadata, status: "active", session_id: runId, sandbox, active_tools: allTools.map((tool) => tool.name) } });
 
