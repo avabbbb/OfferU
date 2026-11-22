@@ -98,7 +98,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | add_job | 贴岗位链接或 JD：抓正文、拆公司 / 岗位 / 城市 / JD，截止日另存 deadline 事项；抓不到正文就报错不存 | ✓ |
 | evaluate_jobs | 评估岗位：每个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖），0–100 分和三句理由写回 job.score / reasons（每步一条 change）。一次最多评 limit 个（默认 3），返回 remaining，大于 0 就再调一次；网页走 `/api/jobs/evaluate` 的 SSE 看进度 | ✓ |
 | apply_answer | 官网网申问答：用 JD、该岗位的定制简历、档案和记忆回答问题，问答追加到岗位下的 apply_chat 文档（每问一条 change） | ✓ |
-| draft_email | 邮件投递草稿：从 JD / 备注拆投递邮箱和标题、附件要求，写标题正文、导简历 PDF，存为 email 文档；不发送，用户在邮件客户端确认后自己发 | ✓ |
+| draft_email | 邮件投递草稿：从 JD / 备注拆投递邮箱和标题、附件要求，写标题正文、导简历 PDF，存为 email 文档；不发送，用户在邮件客户端确认后自己发。只有真导出了附件才写「简历见附件」；返回 job_id / resume_id / ready / missing（缺附件、标题占位段等），草稿文档也记 resume_id / missing | ✓ |
 
 工具的说明文字就是 Agent 看到的全部文档。每个工具的说明写清字段和枚举，Skill 只讲「什么时候用哪个工具」，不超过 4KB。
 
@@ -135,9 +135,11 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 - 设置里填 OpenAI 兼容的 base_url、key、模型名，存在本机配置文件里。
 - `/api/agent` 接收一句话 + 当前页面（比如正在看的岗位 id），用 function calling 调同一套工具，默认最多 12 步（设置 `agent_max_steps`，1–40；单次请求的 `max_steps` 优先），流式返回。
-- 并发：每个 Run 独占一个 Worker（按 run_id 放在进程内池子里），不同对话、同一对话的多次发送都可以同时跑，不再抢占旧 Run，也不排队、不 steer。上限是设置里的「Agent 最大并发数」（默认 3，1–10，保存后对新任务立即生效）；超出时启动直接返回中文提示。Run 结束、中止或启动失败都释放名额；前端每次发送是独立的 turn（各自的 AbortController、流式文字和工具进度），运行中仍可继续输入。
-- 循环、流式和 provider 复用现有的 `app/agent/`（`run_agent_loop`），`app/core/agent.py` 把全部 core TOOLS 包成 `LoopTool`（`loop_tools()`），每次经 `asyncio.to_thread(tools.call, ...)` 执行，actor=助手，步数上限同上，工具报错作为文本回给模型。宿主里的 skill router 和 guardian 暂时仍走旧 OPERATIONS，PR5 删除。
-- 改写简历：网页仍走 SSE；工具 tailor_resume 同步返回，内部用 `_await` 把协程交给主事件循环（`run_coroutine_threadsafe`，lifespan 里设 `MAIN_LOOP`）。在事件循环线程里同步调用会直接报错，要用 `asyncio.to_thread`。HTTP 的 `POST /api/tools/{name}` 在线程池里跑、MCP 经 `anyio.to_thread`，都不会死锁。
+- 并发（2026-11-23）：不同对话并行，同一对话同一时间只跑一轮（第二条 409，前端插话 / 排队 / 开新对话）。准入 `AgentHost.admit()`：先读设置里的「Agent 最大并发数」（默认 3，1–10，每次准入现读），再在一个同步步骤里检查并占位，新开、恢复、回答续跑共用；对话消息用 `AgentConversations.append` 在一个事务里追加，不整表回写。模型请求另有一份按服务商共享的额度（`ModelCallLimiter`，默认每家 4 个并发请求，`createApp` 包一次 `deps.llm`），Run 里的评估、改写、子任务都排在里面。
+- 工具级保存点与恢复：Loop 在「要调工具的 assistant 消息」后、每个工具结果后都存 session；Agent 写入的 change 带 `op = "<run_id>:<tool_call_id>"`。恢复时停在一批工具中间的，没回结果的调用按 op 查改动日志：已提交补 recovered 结果（带 change_ids），没提交补 interrupted，绝不重放（`agent/reconcile.ts`）。取消信号和 tool-call id 经 `bindAgentTools` 传到工具。
+- 只读子任务 `delegate_research`（`agent/subagent.ts`）：最多 4 个独立核查并行，子任务只拿只读工具、最多 6 步、返回 {summary, findings, gaps}；一份失败其余照用；父 Run 中止向下传；写入只由父 Agent 做。
+- 事务不嵌套（CoreStore 契约）：组合写入用 `saveRecordInTx` / `deleteRecordInTx`；SQLite 遇到嵌套直接报错，网页版所有事务严格排队（独立请求不再加入别人的事务、跟着回滚）。
+- 改写简历：网页走 SSE（`POST /api/resume/{id}/tailor`），工具 tailor_resume 在 core 里消费同一个 `runTailor` 生成器，只回摘要。锁按目标岗位（同一主简历可并行给不同岗位改写）；保存时在事务里重读 JD 和目标简历，生成期间被改就不覆盖，error 事件带 conflict 和 draft。
 - 系统提示词只有三件事：今天日期和 overview 摘要、工具说明、规则（不编造经历；对外的事只写草稿；长任务调用 handoff）。
 - 工具说明渐进披露（`packages/core/src/tools/catalog.ts`，借 Flovart `workflow.node.tool.list`）：每轮只给模型一行简述（`TOOL_BRIEFS`）+ 去掉 title / 长描述的精简 schema（校验仍用工具表原 schema），系统提示里放分组工具索引；要完整字段和规则时模型调只读的 `tool_manual(names=[…])`，常用流程（`role.research` / `evidence.map` / `resume.tailor` / `interview.prepare`）用 `tool_manual(capability=…)` 取步骤，流程只是现有工具的调用顺序，不新增业务逻辑。HTTP / MCP / CLI 仍列完整说明。
 - 工具报错结构化（`packages/core/src/tools/preflight.ts`）：内置 Agent 拿到的失败一律是 `{ok:false, error:{code, message, retryable, suggestedAction}}`（code：invalid_args / invalid / not_found / conflict / forbidden / unsupported / unknown_tool / upstream_unavailable / aborted / internal；只有 upstream_unavailable 可重试），不再是 `ERROR: …` 文本。执行前先过 schema 校验和预检（引用的岗位 / 记录 / 改动是否存在、简历 id 是不是 resume、改动是否已撤销），预检失败不执行，回修复建议（比如最近几条可用的 id）。HTTP / MCP / CLI 的报错形状不变。
