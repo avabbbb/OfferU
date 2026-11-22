@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type ConsentStore, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type LlmChoice, type SearchClient, type FileStore, type AgentRunStore, type BackupFiles, type PageRenderer, type ToolDeps } from "@offeru/core";
+import { isCoreError, type ConsentStore, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type LlmChoice, type SearchClient, type FileStore, type AgentRunStore, type BackupFiles, type PageRenderer, type ToolDeps, ModelCallLimiter, limitLlm } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
 import type { AgentBoardService } from "./routes/agent-board";
@@ -37,6 +37,8 @@ export interface AppDeps {
   files?: FileStore | null;
   /** HTML → PDF/PNG/page count (Playwright on the companion); absent elsewhere (the web page prints with window.print). */
   renderer?: PageRenderer | null;
+  /** Shared per-provider model request budget (created by createApp when absent). */
+  modelCalls?: ModelCallLimiter;
   /** Companion only: print a resume doc to <data>/exports/<name>.pdf (export_resume_pdf, draft_email's attachment). */
   exportResumePdf?: ToolDeps["exportResumePdf"];
   /** Bundled school-emblem PNGs by file name: disk on the companion, a static-asset fetch on the web; null = missing. */
@@ -122,8 +124,29 @@ class BodyTooLarge extends Error {
   }
 }
 
+/** Deps whose llm factory already goes through the shared model-call limiter. */
+const limitedDeps = new WeakSet<AppDeps>();
+
+/**
+ * One model-request budget per provider for everything this app runs (Agent turns, evaluate,
+ * tailor, HTTP tools): wrap the llm factory once, in place, so agentHost(deps) and every route
+ * that reads deps.llm share it.
+ */
+function limitModelCalls(deps: AppDeps): void {
+  if (!deps.llm || limitedDeps.has(deps)) return;
+  limitedDeps.add(deps);
+  const limiter = deps.modelCalls ?? new ModelCallLimiter();
+  deps.modelCalls = limiter;
+  const factory = deps.llm;
+  deps.llm = (choice) => {
+    const client = factory(choice);
+    return client ? limitLlm(client, limiter) : client;
+  };
+}
+
 export function createApp(deps: AppDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  limitModelCalls(deps);
 
   app.use("*", async (c, next) => {
     c.set("deps", deps);
