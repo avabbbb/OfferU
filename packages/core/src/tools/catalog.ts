@@ -100,10 +100,12 @@ export const CAPABILITIES: Capability[] = [
       "asks 逐句问用户（request_user_input 或直接问）",
       "用户确认的回答 save(type=memory, data={…, quote, said_at})",
       "tailor_resume(id=返回的 doc_id, review_only=true)",
-      "export_resume_pdf(id)",
+      "要投递：draft_email(job_id, resume_id=doc_id)，它导出 PDF 当附件；只要 PDF 就 export_resume_pdf(id)",
+      "看 draft_email 的 ready / missing，缺什么照实告诉用户",
     ],
     rules: [
       "不加原话里没有的数字，不把参与写成主导",
+      "attachment 为 null 时不说附件已带上",
       "回复里点名用了哪几条新证据、写进了哪里",
     ],
   },

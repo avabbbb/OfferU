@@ -5,9 +5,10 @@
 
 import type { LlmToolSpec } from "../llm";
 import { classifyToolError, type ToolFailure } from "../tools/preflight";
-import type { AgentTool } from "./loop";
+import type { AgentTool, AgentToolContext } from "./loop";
 
-export type ToolExecutor = (name: string, args: Record<string, unknown>) => Promise<unknown>;
+/** `call` carries the run's abort signal and the tool-call id down to the tool (long tools stop, writes are keyed). */
+export type ToolExecutor = (name: string, args: Record<string, unknown>, call: AgentToolContext) => Promise<unknown>;
 export type ToolPreflight = (name: string, args: Record<string, unknown>) => Promise<ToolFailure | null>;
 
 export function failureResult(failure: ToolFailure) {
@@ -17,12 +18,12 @@ export function failureResult(failure: ToolFailure) {
 export function bindAgentTools(specs: LlmToolSpec[], execute: ToolExecutor, preflight?: ToolPreflight): AgentTool[] {
   return specs.map((spec) => ({
     ...spec,
-    async execute(args) {
+    async execute(args, call) {
       const input = args && typeof args === "object" ? args : {};
       try {
         const blocked = await preflight?.(spec.name, input);
         if (blocked) return failureResult(blocked);
-        const result = await execute(spec.name, input);
+        const result = await execute(spec.name, input, call ?? { callId: "" });
         return { text: JSON.stringify(result ?? null), isError: false };
       } catch (cause) {
         return failureResult(classifyToolError(cause, spec.name));

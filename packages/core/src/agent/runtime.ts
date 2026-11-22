@@ -59,7 +59,7 @@ export interface AgentRuntimeDeps {
    * can run (CORE_HANDLERS + `handlers`), executed through callCoreTool with
    * actor = AGENT_ACTOR. Absent: only the record tools (store only).
    */
-  toolDeps?: (ctx: CoreContext) => Omit<ToolDeps, "ctx">;
+  toolDeps?: (ctx: CoreContext, call?: { signal?: AbortSignal; callId?: string }) => Omit<ToolDeps, "ctx">;
   /** Runtime-specific registry handlers (companion read_file / find_files ...). */
   handlers?: Record<string, ToolHandler>;
   /** More tools from other domains (not in the registry), already bound. */
@@ -84,8 +84,12 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
   const state = new AgentRunState(deps.runs, deps.now);
   const conversations = new AgentConversations(deps.runs, deps.now);
   const handlers = deps.handlers ?? {};
+  // A tool whose capability this runtime lacks stays off the Agent's list instead of costing a call that
+  // answers "unsupported" (the web build has no PDF exporter).
+  const probe = deps.toolDeps?.(agentContext());
+  const capable = (name: string) => name !== "export_resume_pdf" || Boolean(probe?.exportResumePdf) || name in handlers;
   const names = deps.toolDeps
-    ? CORE_TOOL_SPECS.map((spec) => spec.name).filter((name) => name in CORE_HANDLERS || name in handlers)
+    ? CORE_TOOL_SPECS.map((spec) => spec.name).filter((name) => (name in CORE_HANDLERS || name in handlers) && capable(name))
     : [...AGENT_RECORD_TOOLS];
   const agentSpecs = coreToolSpecs(names);
   const manualSpecs = registrySpecs(names);
@@ -101,9 +105,9 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
       return { client: picked, metadata: { provider: picked.provider || "custom", model: picked.model || "", source: "active_config" } };
     },
     tools() {
-      const record = bindAgentTools(agentSpecs, (name, args) => {
+      const record = bindAgentTools(agentSpecs, (name, args, call) => {
         const ctx = agentContext();
-        const runtime = deps.toolDeps?.(ctx) ?? { store: deps.store };
+        const runtime = deps.toolDeps?.(ctx, { signal: call.signal, callId: call.callId }) ?? { store: deps.store, signal: call.signal, callId: call.callId };
         return callCoreTool(name, args, { ...runtime, ctx }, handlers);
       }, async (name, args) => {
         const spec = toolSpec(name);

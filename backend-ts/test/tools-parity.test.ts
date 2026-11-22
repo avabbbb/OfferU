@@ -94,14 +94,19 @@ describe("draft_email / reconcile_memory over the same records", () => {
     expect(await callTool("changes", { limit: 200 }, db)).toEqual(before);
   });
 
-  it("draft_email: same to/cc/subject/body/todos/rules; no PDF exporter → attach_error, draft still saved", async () => {
+  it("draft_email: same to/cc/subject/todos/rules; no PDF exporter → no 简历见附件 in the body, missing lists it, draft still saved", async () => {
     const db = await seeded();
     const jobId = (await db.all("job"))[0].id;
     const out = await callTool("draft_email", { job_id: jobId }, db, "OfferU Agent") as Record<string, unknown>;
-    const { doc_id: docId, change_id: changeId, attachment, attach_error: attachError, ...rest } = out;
-    expect(rest).toEqual(parity.draft_email);
+    const { doc_id: docId, change_id: changeId, attachment, attach_error: attachError, job_id: outJob, resume_id: resumeId, ready, missing, ...rest } = out;
+    // Python always wrote 简历见附件; the body now only promises an attachment that was really exported.
+    expect(rest).toEqual({ ...parity.draft_email, body: String(parity.draft_email.body).replace("，简历见附件", "") });
     expect(attachment).toBeNull();
     expect(attachError).toMatch(/^简历 PDF 没导出来：/);
+    expect(outJob).toBe(jobId);
+    expect(resumeId).toEqual(expect.any(Number));
+    expect(ready).toBe(false);
+    expect(missing).toEqual([expect.stringMatching(/^附件：简历 PDF 没导出来/), "标题里的「到岗时间」：档案里没有，补上或手动改"]);
     expect((await db.get("doc", docId as number))).toMatchObject({ kind: "email", to: "hr@feishu.cn", job_id: jobId });
     expect(changeId).toEqual(expect.any(Number));
   });

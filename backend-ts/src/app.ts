@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { isCoreError, type ConsentStore, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type LlmChoice, type SearchClient, type FileStore, type AgentRunStore, type BackupFiles, type PageRenderer } from "@offeru/core";
+import { isCoreError, type ConsentStore, type CoreErrorCode, type CoreStore, type HttpFetch, type LlmClient, type LlmChoice, type SearchClient, type FileStore, type AgentRunStore, type BackupFiles, type PageRenderer, type ToolDeps } from "@offeru/core";
 
 import { registerRoutes } from "./routes";
 import type { AgentBoardService } from "./routes/agent-board";
@@ -37,6 +37,8 @@ export interface AppDeps {
   files?: FileStore | null;
   /** HTML → PDF/PNG/page count (Playwright on the companion); absent elsewhere (the web page prints with window.print). */
   renderer?: PageRenderer | null;
+  /** Companion only: print a resume doc to <data>/exports/<name>.pdf (export_resume_pdf, draft_email's attachment). */
+  exportResumePdf?: ToolDeps["exportResumePdf"];
   /** Bundled school-emblem PNGs by file name: disk on the companion, a static-asset fetch on the web; null = missing. */
   schoolLogos?: ((file: string) => Promise<Uint8Array | null>) | null;
   /** Companion only: BOSS 直聘 QR login via the boss CLI; absent = 501. */

@@ -323,39 +323,41 @@ export async function* runTailor(deps: TailorDeps, docId: number, jobId?: number
     return;
   }
   const locks = busy(store);
-  if (locks.has(doc.id)) {
-    yield { type: "error", message: "这份简历正在改写，等它写完或取消" };
+  // 锁的是输出（这个岗位的定制简历），不是输入：同一份主简历可以同时给不同岗位改写，
+  // 两个请求指向同一岗位才互相挡。检查和占位之间没有 await，并发请求不会一起通过。
+  if (locks.has(job.id)) {
+    yield { type: "error", message: "这个岗位的定制简历正在改写，等它写完或取消" };
     return;
   }
-  let base: StoredRecord | null = null;
-  let stream: DraftStream | null = deps.stream ?? null;
-  if (reviewOnly) {
-    const [baseId] = await target(store, doc, job);
-    base = baseId !== undefined ? await store.get("doc", baseId) : null;
-    if (!base || !str(base.body).trim()) {
-      yield { type: "error", message: "这个岗位还没有定制简历，先完整改写一次" };
-      return;
-    }
-    const replay = base.body as string;
-    stream = async function* () { yield replay; };
-  }
-  const llm = deps.llm ?? null;
-  if (!stream) {
-    if (!llm) {
-      yield { type: "error", message: NO_MODEL };
-      return;
-    }
-    stream = (messages, signal) => streamOrChat(llm, messages, { temperature: 0.3, maxTokens: 4096, signal });
-  }
-  const complete = (messages: LlmMessage[]): Promise<string | null> => {
-    if (!llm) return Promise.resolve(null);
-    return llm.chat(messages, { temperature: 0.2, json: true, maxTokens: 4096, signal: deps.signal });
-  };
-  const deadline = deps.deadlineMs ?? DEFAULT_DEADLINE_MS;
-  const aborted = () => Boolean(deps.signal?.aborted);
-
-  locks.add(doc.id);
+  locks.add(job.id);
   try {
+    let base: StoredRecord | null = null;
+    let stream: DraftStream | null = deps.stream ?? null;
+    if (reviewOnly) {
+      const [baseId] = await target(store, doc, job);
+      base = baseId !== undefined ? await store.get("doc", baseId) : null;
+      if (!base || !str(base.body).trim()) {
+        yield { type: "error", message: "这个岗位还没有定制简历，先完整改写一次" };
+        return;
+      }
+      const replay = base.body as string;
+      stream = async function* () { yield replay; };
+    }
+    const llm = deps.llm ?? null;
+    if (!stream) {
+      if (!llm) {
+        yield { type: "error", message: NO_MODEL };
+        return;
+      }
+      stream = (messages, signal) => streamOrChat(llm, messages, { temperature: 0.3, maxTokens: 4096, signal });
+    }
+    const complete = (messages: LlmMessage[]): Promise<string | null> => {
+      if (!llm) return Promise.resolve(null);
+      return llm.chat(messages, { temperature: 0.2, json: true, maxTokens: 4096, signal: deps.signal });
+    };
+    const deadline = deps.deadlineMs ?? DEFAULT_DEADLINE_MS;
+    const aborted = () => Boolean(deps.signal?.aborted);
+
     yield { type: "start", job: label(job) };
     const started = Date.now();
     const timings: Record<string, number> = {};
@@ -462,6 +464,6 @@ export async function* runTailor(deps: TailorDeps, docId: number, jobId?: number
       grounding: rounds.flatMap((entry) => entry.applied.filter((edit) => edit.category === "grounding")),
     };
   } finally {
-    locks.delete(doc.id);
+    locks.delete(job.id);
   }
 }

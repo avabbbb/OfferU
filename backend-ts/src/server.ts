@@ -16,7 +16,7 @@ import { nodeAttachmentFiles, popplerPdfText } from "./routes/companion/attachme
 import { NodeAgentBoard } from "./routes/companion/agent-board";
 import { nodeBackupFiles } from "./routes/companion/backups";
 import { nodeBossLogin } from "./routes/companion/boss-cli";
-import { filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
+import { exportResumePdf, filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
 import { ConfigRuntime } from "./routes/config";
 import { nodeConfigFile } from "./routes/companion/config-file";
 import { nodeConsentFile } from "./routes/companion/consent-file";
@@ -48,6 +48,8 @@ export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDe
     companion,
     files: "files" in overrides ? overrides.files : nodeFileStore(filesDirFor(dbPath())),
     renderer: "renderer" in overrides ? overrides.renderer : playwrightRenderer(),
+    // Reads deps.files / deps.renderer at call time, so test overrides of either apply here too.
+    exportResumePdf: (docId, name) => exportResumePdf({ store, files: deps.files, renderer: deps.renderer }, join(dirname(dbPath()), "exports"), docId, name),
     schoolLogos: "schoolLogos" in overrides ? overrides.schoolLogos : nodeSchoolLogos(),
     bossLogin: nodeBossLogin(),
     attachmentFiles: nodeAttachmentFiles(dbPath()),

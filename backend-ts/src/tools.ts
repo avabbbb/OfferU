@@ -30,6 +30,12 @@ export type ToolRuntime = {
     handlers: Record<string, ToolHandler>;
     readFile?: ToolDeps["readFile"];
   };
+  /** Uploads for resume HTML (photo / logos); tailor_resume measures with them. */
+  files?: ToolDeps["files"];
+  /** A4 page count of resume HTML (companion renderer). */
+  measure?: ToolDeps["measure"];
+  /** Resume → PDF file (companion): export_resume_pdf and draft_email's attachment. */
+  exportResumePdf?: ToolDeps["exportResumePdf"];
 };
 
 /** GET /api/tools — same shape as Python: {name, description, input: JSON schema}. */
@@ -38,7 +44,12 @@ export { TOOL_NAMES };
 
 const isStore = (value: ToolRuntime | CoreStore): value is CoreStore => typeof (value as CoreStore).transaction === "function";
 
-export function toolDeps(runtime: ToolRuntime, actor: string, signal?: AbortSignal): ToolDeps {
+/**
+ * The one place a runtime's capabilities become ToolDeps. HTTP, MCP, the CLI and the
+ * built-in Agent all build their deps here, so a capability wired for one surface
+ * (PDF export, page measuring) is never silently missing on another.
+ */
+export function toolDeps(runtime: ToolRuntime, actor: string, signal?: AbortSignal, callId?: string): ToolDeps {
   return {
     store: runtime.store,
     ctx: { actor, now: nowIso(), today: todayIso() },
@@ -46,7 +57,11 @@ export function toolDeps(runtime: ToolRuntime, actor: string, signal?: AbortSign
     search: runtime.search?.() ?? null,
     fetch: runtime.fetch,
     readFile: runtime.companion?.readFile,
+    files: runtime.files ?? null,
+    measure: runtime.measure ?? null,
+    exportResumePdf: runtime.exportResumePdf,
     signal,
+    callId,
   };
 }
 

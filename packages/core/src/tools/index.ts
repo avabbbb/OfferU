@@ -15,6 +15,7 @@ import {
 } from "../operations";
 import { CoreError } from "../types";
 import { applyAnswer, draftEmail, reconcileMemory, splitResume } from "./apply";
+import { exportResumePdfTool, tailorResume } from "./resume";
 import type { ToolDeps } from "./deps";
 import { evaluateJobs } from "../research/evaluate";
 import { addJob, enrichJobs } from "./jobs";
@@ -107,6 +108,8 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
   }),
   apply_answer: (a, d) => applyAnswer(d, a.job_id as number, String(a.question)),
   draft_email: (a, d) => draftEmail(d, a.job_id as number, a.resume_id as number | null | undefined),
+  tailor_resume: (a, d) => tailorResume(d, a),
+  export_resume_pdf: (a, d) => exportResumePdfTool(d, a),
   reconcile_memory: (_, d) => reconcileMemory(d),
   export_data: (_, d) => exportData(d.store, nowIso()),
   import_data: (a, d) => importData(d.store, a.snapshot, d.ctx),
@@ -116,8 +119,6 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
 const OWNER: Record<string, string> = {
   read_file: "本机伴侣（读本机文件）",
   find_files: "本机伴侣（读本机文件）",
-  export_resume_pdf: "简历模块（PDF 导出）",
-  tailor_resume: "简历模块（按岗位改写）",
   email_sync: "邮箱模块",
 };
 

@@ -95,11 +95,11 @@ describe("POST /api/agent/runtime/runs", () => {
     expect(response.body.run.llm_runtime).toMatchObject({ runtime: "ts_agent", provider: "fake", model: "fake-1" });
 
     // system prompt + every registry tool this runtime can run (no companion: no read_file / find_files;
-    // export_resume_pdf / tailor_resume / email_sync are not in core) + request_user_input reach the model
+    // email_sync is not in core; export_resume_pdf stays off without a PDF exporter) + request_user_input reach the model
     expect(seen[0].messages[0].role).toBe("system");
     expect(seen[0].tools?.map((tool) => tool.name)).toEqual([
       "overview", "search", "list", "get", "save", "delete", "undo", "changes",
-      "web_search", "fetch_page", "split_resume", "add_job", "evaluate_jobs", "apply_answer", "draft_email", "reconcile_memory",
+      "web_search", "fetch_page", "tailor_resume", "split_resume", "add_job", "evaluate_jobs", "apply_answer", "draft_email", "reconcile_memory",
       "export_data", "tool_manual", "skill_read", "request_user_input",
     ]);
 

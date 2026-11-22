@@ -1,10 +1,11 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { createSearchClient, type CoreStore, type SearchClient } from "@offeru/core";
 
 import { llmFromEnv } from "./llm-env";
-import { dataDir } from "./paths";
+import { dataDir, dbPath } from "./paths";
 import { createLocalFiles } from "./routes/companion/files";
+import { exportResumePdf, filesDirFor, nodeFileStore, playwrightRenderer } from "./routes/companion/resume";
 import type { ToolRuntime } from "./tools";
 
 /**
@@ -19,9 +20,14 @@ export function searchFromEnv(env: NodeJS.ProcessEnv = process.env): SearchClien
 }
 
 /** Everything the shared tools get on the Node companion: model, search, network, local files. */
-export function nodeToolRuntime(store: CoreStore): Required<Pick<ToolRuntime, "store" | "llm" | "search" | "fetch" | "companion">> {
+export function nodeToolRuntime(store: CoreStore): Required<Pick<ToolRuntime, "store" | "llm" | "search" | "fetch" | "companion">> & Pick<ToolRuntime, "files" | "measure" | "exportResumePdf"> {
   const files = createLocalFiles(join(dataDir(), "files"));
+  const uploads = nodeFileStore(filesDirFor(dbPath()));
+  const renderer = playwrightRenderer();
   return {
+    files: uploads,
+    measure: (html) => renderer.pageCount(html),
+    exportResumePdf: (docId, name) => exportResumePdf({ store, files: uploads, renderer }, join(dirname(dbPath()), "exports"), docId, name),
     store,
     llm: () => llmFromEnv(),
     search: () => searchFromEnv(),

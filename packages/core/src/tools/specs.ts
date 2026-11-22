@@ -495,9 +495,17 @@ export const TOOL_SPECS: ToolSpec[] = [
       "additionalProperties": false,
       "properties": {
         "id": {
-          "description": "简历 doc 的 id（kind=resume）",
-          "title": "Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "简历 doc 的 id（kind=resume）；不传就用这个岗位已有的定制简历，没有就用最新的主简历（这时要给 job_id）",
+          "title": "Id"
         },
         "job_id": {
           "anyOf": [
@@ -519,9 +527,6 @@ export const TOOL_SPECS: ToolSpec[] = [
           "type": "boolean"
         }
       },
-      "required": [
-        "id"
-      ],
       "title": "TailorIn",
       "type": "object"
     }

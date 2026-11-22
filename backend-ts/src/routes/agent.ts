@@ -42,6 +42,8 @@ import {
 } from "@offeru/core";
 
 import { jsonBody, type AppDeps, type AppEnv } from "../app";
+import { toolDeps } from "../tools";
+import { toolRuntime } from "./tools";
 
 const RUN_ID = /^run_[a-f0-9]{16,32}$/;
 const PROVIDER_ID = /^[a-z0-9][a-z0-9_-]*$/;
@@ -57,14 +59,13 @@ export function agentHost(deps: AppDeps): AgentHost {
       store: deps.store,
       runs: deps.agentRuns ?? new MemoryAgentRunStore(),
       llm: (options) => deps.llm?.({ llmConfigId: options.llm_config_id, model: options.model }) ?? null,
-      // Every registry tool this runtime can run (search / fetch / model tools, companion files).
-      toolDeps: () => ({
-        store: deps.store,
-        llm: deps.llm?.() ?? null,
-        search: deps.search?.() ?? null,
-        fetch: deps.fetch,
-        readFile: deps.companion?.readFile,
-      }),
+      // Every registry tool this runtime can run, with the same deps HTTP / MCP / CLI get (tools.ts toolDeps):
+      // search / fetch / model tools, companion files, PDF export, page measuring. The call's abort signal and
+      // tool-call id ride along so a long tool stops with its run and a write can be matched on resume.
+      toolDeps: (ctx, call) => {
+        const { ctx: _ctx, ...rest } = toolDeps(toolRuntime(deps), ctx.actor, call?.signal, call?.callId);
+        return rest;
+      },
       handlers: deps.companion?.handlers,
       // Context window and step budget from settings: per-service / global, capped at the model's known limit.
       contextWindow: async (llm, options) => agentContextWindow(deps.config ? await deps.config.get() : null, llm.metadata.model, options.llm_config_id || "").tokens,

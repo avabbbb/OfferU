@@ -52,6 +52,7 @@ export const AGENT_SKILLS: AgentSkill[] = [
       + "- 用户确认过的内容不能删；不加用户没做的事；数字要能追到用户原话、文件或公开数据；不把参与写成主导。\n"
       + "- 评估分数、模型自评、匹配度不是用户的成果，不写进简历或记忆。\n"
       + "- 改完回复里点名用了哪几条新证据、写进了哪里；拿不准的措辞给推荐写法并说明。\n"
+      + "- 用户要「改简历并准备投递」：tailor_resume → draft_email(job_id, resume_id=返回的 doc_id)（它会导出 PDF 当附件）；回复前看 draft_email 的 ready / missing，缺什么照实告诉用户，不说「附件已带上」除非 attachment 有路径。邮件不发送，用户自己发。\n"
       + "- 工具步骤：tool_manual(capability=\"resume.tailor\")。\n",
   },
   {

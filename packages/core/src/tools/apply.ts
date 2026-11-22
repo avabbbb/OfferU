@@ -151,21 +151,30 @@ export async function draftEmail(deps: ToolDeps, jobId: number, resumeId?: numbe
   }
   const intro = ["school", "major", "degree"].map((key) => text(profile[key])).join("");
   const sign = [name, profile.phone, profile.email].filter(truthy).map(pyStr).join("\n");
-  const body = (`您好：\n\n我是${name || "（姓名）"}${intro ? "，" + intro : ""}，想应聘贵司「${title}」岗位，简历见附件。\n\n`
+  // 只有真的导出了附件才写「简历见附件」：附件缺了，正文不替它打包票，结果里列进 missing。
+  const attached = Boolean(attachment);
+  const body = (`您好：\n\n我是${name || "（姓名）"}${intro ? "，" + intro : ""}，想应聘贵司「${title}」岗位${attached ? "，简历见附件" : ""}。\n\n`
     + `期待您的回复，谢谢！\n\n${sign}`).trimEnd();
+  const missing: string[] = [];
+  if (!resume) missing.push("简历：还没有可用的简历，先 tailor_resume 或新建一份");
+  else if (!attached) missing.push(`附件：${attachError ?? "简历 PDF 没导出来"}`);
+  for (const field of subjectTodo) missing.push(`标题里的「${field}」：档案里没有，补上或手动改`);
+  for (const field of attachTodo) missing.push(`附件命名里的「${field}」：档案里没有，用了默认文件名`);
   const existing = docs.find((doc) => doc.kind === "email" && doc.job_id === job.id);
   const saved = await saveRecord(store, {
     type: "doc",
     id: existing?.id,
     data: {
       kind: "email", job_id: job.id, title: `投递邮件 · ${label(job)}`, to: emails[0],
-      subject, body, attachment, rules: rules.length ? rules : null,
+      subject, body, attachment, resume_id: resume?.id ?? null, rules: rules.length ? rules : null,
+      missing: missing.length ? missing : null,
     },
   }, ctx);
   return {
     to: emails[0], cc: emails.slice(1), subject, body, attachment, attach_error: attachError,
     subject_todo: subjectTodo.length ? subjectTodo : null, attach_todo: attachTodo.length ? attachTodo : null,
     rules, doc_id: saved.record.id, change_id: saved.change_id,
+    job_id: job.id, resume_id: resume?.id ?? null, ready: missing.length === 0, missing,
   };
 }
 
