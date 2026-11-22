@@ -68,7 +68,7 @@ export interface AgentRuntimeDeps {
   /** More tools from other domains (not in the registry), already bound. */
   extraTools?: () => AgentTool[];
   prepareAttachments?: (message: string, ids: string[]) => Promise<PreparedAttachments>;
-  maxConcurrentRuns?: number;
+  maxConcurrentRuns?: AgentHostDeps["maxConcurrentRuns"];
   /** Test hooks: stream timeouts / retries and context compaction policies (agent/host.ts). */
   streamGuard?: AgentHostDeps["streamGuard"];
   compaction?: AgentHostDeps["compaction"];

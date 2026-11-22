@@ -547,6 +547,24 @@ export class AgentConversations {
     });
   }
 
+  /**
+   * Append one message atomically: read the latest copy and write it back inside one transaction,
+   * so two writers never overwrite each other's message. Creates the conversation when id is empty.
+   */
+  async append(conversationId: string | null | undefined, message: unknown): Promise<Conversation & { message_count: number }> {
+    const [clean] = cleanConversationMessages([message]);
+    const now = this.now();
+    return this.store.transaction(async () => {
+      const existing = conversationId ? await this.store.getConversation(String(conversationId)) : null;
+      const messages = cleanConversationMessages([...(existing?.messages || []), ...(clean ? [clean] : [])]);
+      const next: Conversation = existing
+        ? { ...existing, title: existing.title || titleFromMessages(messages), updated_at: now, messages }
+        : { id: conversationId || `conv_${randomHex(12)}`, title: titleFromMessages(messages), created_at: now, updated_at: now, messages };
+      await this.store.putConversation(next);
+      return { ...next, message_count: messages.length };
+    });
+  }
+
   delete(id: string): Promise<boolean> {
     return this.store.transaction(() => this.store.deleteConversation(String(id)));
   }

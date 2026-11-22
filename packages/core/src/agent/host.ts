@@ -80,7 +80,11 @@ export interface AgentHostDeps {
   prepareAttachments?(message: string, ids: string[]): Promise<PreparedAttachments>;
   /** User decisions on queued actions the Agent has not heard about (action_gate.take_decisions_for_agent). */
   takeDecisions?(runId: string, conversationId: string): Promise<string>;
-  maxConcurrentRuns?: number;
+  /**
+   * Run admission limit: a number, or read per admission (settings: max_concurrent_agent_runs).
+   * New runs, resumes and answer continuations all count against it.
+   */
+  maxConcurrentRuns?: number | (() => number | Promise<number>);
   /** Override the stream timeouts / retries (tests); default stream-guard DEFAULT_STREAM_GUARD. */
   streamGuard?: StreamGuardPolicy | false;
   /** Override context compaction (tests); default compactionPolicyFor(contextWindow(...)). */
@@ -113,6 +117,15 @@ interface ActiveRun {
   steering: ChatMessage[];
   promptActive: boolean;
 }
+
+/** A reserved run slot: taken synchronously before any await, released once (idempotent). */
+export interface AdmissionTicket {
+  /** The run is now in `active` (counted there): drop the reservation, keep the resume guard. */
+  activate(): void;
+  release(): void;
+}
+
+const clampRuns = (value: unknown): number => Math.min(10, Math.max(1, Math.trunc(Number(value)) || 3));
 
 /** Same heuristics as embedded_agent_host._announces_next_step / _dangling_reference. */
 export function announcesNextStep(text: string): boolean {
@@ -186,6 +199,13 @@ const REQUEST_USER_INPUT_DESCRIPTION = "向用户提出一个结构化问题（A
 export class AgentHost {
   private readonly active = new Map<string, ActiveRun>();
   private readonly continuationLocks = new Map<string, Promise<unknown>>();
+  /** Slots reserved by admit() whose run is not in `active` yet (record still being created). */
+  private readonly admitting = new Set<symbol>();
+  /** Runs being resumed / continued right now (reserved or active), so one run never runs twice. */
+  private readonly resuming = new Set<string>();
+  /** Conversations with a turn in flight: one turn per conversation at a time. */
+  private readonly busyConversations = new Set<string>();
+  private lastLimit = 3;
 
   constructor(private readonly deps: AgentHostDeps) {}
 
@@ -194,8 +214,49 @@ export class AgentHost {
 
   activeRunIds(): string[] { return [...this.active.keys()]; }
 
+  /** The admission limit last read (status display); admit() reads it fresh. */
   maxConcurrentRuns(): number {
-    return Math.min(10, Math.max(1, this.deps.maxConcurrentRuns ?? 3));
+    const configured = this.deps.maxConcurrentRuns;
+    return typeof configured === "function" ? this.lastLimit : clampRuns(configured ?? 3);
+  }
+
+  private async readLimit(): Promise<number> {
+    const configured = this.deps.maxConcurrentRuns;
+    if (typeof configured !== "function") return clampRuns(configured ?? 3);
+    try {
+      this.lastLimit = clampRuns(await configured());
+    } catch {
+      // settings unreadable: keep the last known limit
+    }
+    return this.lastLimit;
+  }
+
+  /**
+   * Reserve a run slot. The limit is read first (may await); the check and the reservation then
+   * happen in one synchronous step, so concurrent requests cannot all pass the check before any
+   * of them is counted. New runs, resumes and answer continuations share this gate.
+   */
+  async admit(resumeRunId = ""): Promise<AdmissionTicket> {
+    const limit = await this.readLimit();
+    if (resumeRunId && (this.active.has(resumeRunId) || this.resuming.has(resumeRunId))) {
+      throw new CoreError("A model turn is already running", "conflict");
+    }
+    if (this.active.size + this.admitting.size >= limit) {
+      throw new CoreError(`已达到最大并发数 ${limit}，请等待其他任务完成或在设置中调高。`, "conflict");
+    }
+    const slot = Symbol("run-slot");
+    this.admitting.add(slot);
+    if (resumeRunId) this.resuming.add(resumeRunId);
+    let released = false;
+    return {
+      activate: () => { this.admitting.delete(slot); },
+      release: () => {
+        if (released) return;
+        released = true;
+        this.admitting.delete(slot);
+        if (resumeRunId) this.resuming.delete(resumeRunId);
+      },
+    };
   }
 
   /** GET /api/agent/runtime — EmbeddedAgentRuntimeProvider.status(). */
@@ -213,6 +274,7 @@ export class AgentHost {
       kernel: "ts",
       session_scope: "one_session_per_agent_run",
       active_runs: this.active.size,
+      admitting_runs: this.admitting.size,
       max_concurrent_runs: this.maxConcurrentRuns(),
       features: { persistent_sessions: true, compaction: true, steer: true, follow_up: false, registry_tools_only: true },
     };
@@ -232,33 +294,46 @@ export class AgentHost {
     options?: RunOptions;
     listener?: StreamListener;
   }): Promise<RunResult> {
-    const prepared = await this.prepare(input.message, input.attachments || []);
-    const previous = input.conversation_id ? await this.conversations.get(input.conversation_id) : null;
-    const previousMessages = previous?.messages || [];
-    const conversation = await this.conversations.save(input.conversation_id, [
-      ...previousMessages,
-      { role: "user", content: prepared.historyMessage, attachments: prepared.attachments },
-    ]);
-    const result = await this.startRun({
-      message: prepared.modelMessage,
-      images: prepared.images,
-      conversationId: conversation.id,
-      taskId: String(input.task_id || ""),
-      contextMessages: previousMessages.map((item) => ({ role: item.role, content: item.content })),
-      requestedRunId: String(input.run_id || ""),
-      options: input.options || {},
-      listener: input.listener,
-    });
-    let completed = conversation;
-    const assistant = String(result.assistant_message || "").trim();
-    if (assistant) {
-      // Re-read: steering and parallel runs may have appended meanwhile.
-      const latest = await this.conversations.get(conversation.id) || conversation;
-      completed = await this.conversations.save(conversation.id, [...latest.messages, { role: "assistant", content: assistant }]);
+    // One turn per conversation: a second request would read the same history and its reply
+    // could land out of order. Checked and claimed synchronously; the UI steers or queues instead.
+    const claimed = input.conversation_id ? String(input.conversation_id) : "";
+    if (claimed && this.busyConversations.has(claimed)) {
+      throw new CoreError("这个对话还有一轮在运行：可以插话引导当前这轮、排队发下一条，或开一个新对话。", "conflict");
     }
-    result.conversation_id = completed.id;
-    result.conversation_title = completed.title;
-    return result;
+    if (claimed) this.busyConversations.add(claimed);
+    let ticket: AdmissionTicket | null = null;
+    let conversationId = claimed;
+    try {
+      // Admit before writing anything, so a refused turn leaves no orphan user message.
+      ticket = await this.admit();
+      const prepared = await this.prepare(input.message, input.attachments || []);
+      const previous = claimed ? await this.conversations.get(claimed) : null;
+      const previousMessages = previous?.messages || [];
+      const conversation = await this.conversations.append(claimed || null, { role: "user", content: prepared.historyMessage, attachments: prepared.attachments });
+      conversationId = conversation.id;
+      if (!claimed) this.busyConversations.add(conversationId);
+      const result = await this.startRun({
+        message: prepared.modelMessage,
+        images: prepared.images,
+        conversationId: conversation.id,
+        taskId: String(input.task_id || ""),
+        contextMessages: previousMessages.map((item) => ({ role: item.role, content: item.content })),
+        requestedRunId: String(input.run_id || ""),
+        options: input.options || {},
+        listener: input.listener,
+        ticket,
+      });
+      let completed = conversation;
+      const assistant = String(result.assistant_message || "").trim();
+      // Atomic append (read-modify-write inside one transaction), never a whole-list overwrite.
+      if (assistant) completed = await this.conversations.append(conversation.id, { role: "assistant", content: assistant });
+      result.conversation_id = completed.id;
+      result.conversation_title = completed.title;
+      return result;
+    } finally {
+      ticket?.release();
+      if (conversationId) this.busyConversations.delete(conversationId);
+    }
   }
 
   private async prepare(message: string, ids: string[]): Promise<PreparedAttachments> {
@@ -278,16 +353,26 @@ export class AgentHost {
     listener?: StreamListener;
     resumeRunId?: string;
     continuation?: boolean;
+    /** A slot already reserved by the caller (conversationTurn); otherwise startRun admits itself. */
+    ticket?: AdmissionTicket;
   }): Promise<RunResult> {
     const state = this.deps.state;
     const options = input.options || {};
     const maxSteps = options.max_steps || await this.deps.defaultMaxSteps?.() || MAX_STEPS;
     let goal = String(input.message || "").trim();
     if (!goal && !input.resumeRunId) throw new CoreError("Agent Run 需要非空消息。", "invalid");
-    if (!input.resumeRunId && this.active.size >= this.maxConcurrentRuns()) {
-      throw new CoreError(`已达到最大并发数 ${this.maxConcurrentRuns()}，请等待其他任务完成或在设置中调高。`, "conflict");
+    const ticket = input.ticket ?? await this.admit(input.resumeRunId || "");
+    try {
+      return await this.admittedRun(input, goal, maxSteps, ticket);
+    } finally {
+      ticket.release();
     }
+  }
 
+  private async admittedRun(input: Parameters<AgentHost["startRun"]>[0], goalText: string, maxSteps: number, ticket: AdmissionTicket): Promise<RunResult> {
+    const state = this.deps.state;
+    const options = input.options || {};
+    let goal = goalText;
     let run: AgentRun;
     let session: ChatMessage[] = [];
     if (input.resumeRunId) {
@@ -331,6 +416,7 @@ export class AgentHost {
     const listener = input.listener;
     const activeRun: ActiveRun = { controller: new AbortController(), steering: [], promptActive: false };
     this.active.set(runId, activeRun);
+    ticket.activate();
 
     const publish = async (type: string, payload: Json, extra: Partial<AgentRunEvent> & { durable?: boolean } = {}) => {
       if (!listener) return;

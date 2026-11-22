@@ -69,6 +69,8 @@ export function agentHost(deps: AppDeps): AgentHost {
       handlers: deps.companion?.handlers,
       // Context window and step budget from settings: per-service / global, capped at the model's known limit.
       contextWindow: async (llm, options) => agentContextWindow(deps.config ? await deps.config.get() : null, llm.metadata.model, options.llm_config_id || "").tokens,
+      // Settings page「并发数」: read on every admission, so a change applies without a restart.
+      maxConcurrentRuns: async () => (deps.config ? (await deps.config.get()).max_concurrent_agent_runs : 3),
       defaultMaxSteps: async () => (deps.config ? normalizeMaxSteps((await deps.config.get()).agent_max_steps) : undefined),
       prepareAttachments: deps.attachmentFiles
         ? (message, ids) => prepareAttachmentMessage(attachmentDeps(deps), message, ids)
