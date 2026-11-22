@@ -168,6 +168,49 @@ describe("agent regression bench (DOGFOOD replays)", () => {
     });
   });
 
+  it("compacted run: a fact the user confirms mid-run still reaches the next tailor, and the context shrinks", async () => {
+    const store = newStore();
+    const { jobId } = await seedDogfood1109(store);
+    await saveRecord(store, { type: "job", id: jobId, data: { jd: `要求跨部门协作；英语流利。${"岗位职责很长".repeat(3000)}` } }, at("09"));
+    const compaction = { windowTokens: 16_000, reserveTokens: 2_000, keepRecentTokens: 300 };
+    const seen: ChatRequest[] = [];
+    const drafts: string[] = [];
+    const steps = stepLlm([
+      { kind: "calls", calls: [{ name: "get", args: { type: "job", id: jobId } }] },
+      { kind: "calls", calls: [{ name: "get", args: { type: "job", id: jobId } }] },
+      { kind: "calls", calls: [{ name: "tailor_resume", args: { job_id: jobId } }] },
+      { kind: "text", text: `改好了，用上了雅思 7.5。` },
+    ], seen);
+    const llm: LlmClient = {
+      ...steps,
+      async chat(messages, options) {
+        if (options?.json) return JSON.stringify({ edits: [], notes: {}, asks: [] });
+        drafts.push(JSON.stringify(messages));
+        return `${BEFORE}\n- 英语：雅思 7.5`;
+      },
+    };
+    const agent = createAgentRuntime({ store, runs: new SqliteAgentRunStore(store), llm: () => llm, toolDeps: () => ({ store, llm }), streamGuard: false, compaction });
+    const events: string[] = [];
+    // the user confirms a new achievement in the UI while the run is going (between model turns)
+    let confirmed = false;
+    const run = agent.conversationTurn({ message: `按岗位 #${jobId} 改简历`, listener: async (event) => {
+      events.push(event.type);
+      if (!confirmed && seen.length === 2) {
+        confirmed = true;
+        await saveRecord(store, { type: "memory", data: { kind: "skill", title: "英语", body: "雅思 7.5", quote: "我雅思考了 7.5", said_at: "2026-11-09" } }, at("09"));
+      }
+    } });
+    const result = await run;
+    const sizes = seen.map((request) => JSON.stringify(request.messages).length);
+    record("compaction-fact-reuse", "P2 上下文策略：压缩后事实走存储", {
+      routing: String(seen[0].messages[0].content).includes("技能 resume-tailoring"),
+      call: okCalls(seen.at(-1)),
+      output: drafts.some((draft) => draft.includes("雅思 7.5"))
+        && Math.max(...sizes.slice(2)) < JSON.stringify("岗位职责很长".repeat(3000)).length * 2,
+      reply: result.ok && result.assistant_message.includes("雅思"),
+    });
+  });
+
   it("stop mid-run, switch model: the saved evidence stays and the next model reads it", async () => {
     const store = newStore();
     const seen1: ChatRequest[] = [];
