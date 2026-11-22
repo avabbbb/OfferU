@@ -140,3 +140,24 @@ describe("delivery pack through the built-in Agent", () => {
     expect(actors.filter((actor) => actor !== "你").length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("tailor_resume optimistic check", () => {
+  it("a JD edited while the model writes is not overwritten by a draft built on the old JD", async () => {
+    const { store, jobId } = await seeded();
+    const { runTailor } = await import("@offeru/core");
+    const master = (await store.all("doc")).find((doc) => doc.kind === "resume")!;
+    const events = [];
+    for await (const event of runTailor({
+      store,
+      llm: fakeModel(),
+      stream: async function* () {
+        yield "# 张三\n\n";
+        await saveRecord(store, { type: "job", id: jobId, data: { jd: "改成要 Python。投递邮箱 hr@feishu.cn" } }, ctx);
+        yield "## 教育\n- 复旦大学\n";
+      },
+      deadlineMs: 5000,
+    }, master.id, jobId)) events.push(event);
+    expect(events.at(-1)).toMatchObject({ type: "error", conflict: true, draft: expect.stringContaining("复旦大学") });
+    expect((await store.all("doc", jobId)).filter((doc) => doc.kind === "resume")).toHaveLength(0);
+  });
+});

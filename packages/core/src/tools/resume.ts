@@ -39,6 +39,7 @@ export async function tailorResume(deps: ToolDeps, args: Args): Promise<Json> {
     signal: deps.signal,
     context: () => deps.ctx,
   }, doc.id, jobId, { reviewOnly: args.review_only === true })) {
+    if (event.type === "error" && event.conflict) throw new CoreError(`${event.message.split("；")[0]}；按最新内容再调一次 tailor_resume`, "conflict");
     if (event.type === "error") throw new CoreError(event.message, event.message.includes("正在改写") ? "conflict" : "invalid");
     if (event.type === "done") done = event;
   }

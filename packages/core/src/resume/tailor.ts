@@ -10,7 +10,7 @@
 import { label, MEMORY_KIND } from "../labels";
 import { streamOrChat, type LlmClient, type LlmMessage } from "../llm";
 import { postingBlock } from "../research/job-eval";
-import { saveRecord } from "../operations";
+import { saveRecordInTx } from "../operations";
 import type { CoreContext, CoreStore, Json, StoredRecord } from "../types";
 import { resumeFromMarkdown, type Resume } from "./model";
 import { pyStr, truthy } from "./py";
@@ -45,7 +45,8 @@ export type TailorEvent =
     rounds: TailorRound[]; notes: Record<string, string>; asks: TailorAsk[]; checks: TailorChecks;
     timings: Record<string, number>; grounding: TailorEdit[];
   }
-  | { type: "error"; message: string };
+  /** `draft`: a finished body that was not saved (the inputs changed meanwhile), so the page can offer it. */
+  | { type: "error"; message: string; draft?: string; conflict?: boolean };
 
 export type DraftStream = (messages: LlmMessage[], signal?: AbortSignal) => AsyncIterable<string>;
 
@@ -358,6 +359,12 @@ export async function* runTailor(deps: TailorDeps, docId: number, jobId?: number
     const deadline = deps.deadlineMs ?? DEFAULT_DEADLINE_MS;
     const aborted = () => Boolean(deps.signal?.aborted);
 
+    // Versions this run reads: the JD it tailors to and the target resume it will overwrite.
+    // Checked again inside the save transaction (optimistic concurrency, the model runs outside it).
+    const jdAtStart = str(job.jd);
+    const [targetAtStartId] = await target(store, doc, job);
+    const targetAtStart = targetAtStartId !== undefined ? await store.get("doc", targetAtStartId) : null;
+    const targetBodyAtStart = targetAtStart ? str(targetAtStart.body) : null;
     yield { type: "start", job: label(job) };
     const started = Date.now();
     const timings: Record<string, number> = {};
@@ -447,11 +454,24 @@ export async function* runTailor(deps: TailorDeps, docId: number, jobId?: number
     timings.verify = since(mark);
     if (aborted()) return; // 客户端断开 = 取消，不写库
     mark = Date.now();
-    const [targetId, extra] = await target(store, doc, job);
     const ctx = deps.context ? deps.context() : defaultContext(actor);
-    const result = await saveRecord(store, {
-      type: "doc", id: targetId ?? null, data: { ...extra, body, pending_asks: reviewOnly ? null : asks },
-    }, { ...ctx, actor });
+    const saved = await store.transaction(async () => {
+      const freshJob = await store.get("job", job.id);
+      if (!freshJob || str(freshJob.jd) !== jdAtStart) return { conflict: "生成期间这个岗位的 JD 改过了，本次结果没有保存（它是按旧 JD 写的）" };
+      const [targetId, extra] = await target(store, doc, job);
+      const current = targetId !== undefined ? await store.get("doc", targetId) : null;
+      if ((targetBodyAtStart ?? null) !== (current ? str(current.body) : null)) {
+        return { conflict: "生成期间这份定制简历被改过了，本次结果没有覆盖它" };
+      }
+      return { result: await saveRecordInTx(store, {
+        type: "doc", id: targetId ?? null, data: { ...extra, body, pending_asks: reviewOnly ? null : asks },
+      }, { ...ctx, actor }) };
+    });
+    if ("conflict" in saved) {
+      yield { type: "error", message: `${saved.conflict}；草稿在 draft 里，可以对照后手动采用或重新改写`, draft: body, conflict: true };
+      return;
+    }
+    const result = saved.result;
     const record = result.record;
     timings.save = since(mark);
     mark = Date.now();
