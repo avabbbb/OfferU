@@ -78,7 +78,7 @@ export interface AgentHostDeps {
   /** Offer delegate_research (read-only sub-agents) to the model. Default true. */
   subagents?: boolean;
   /** `texts`: the user's message + recent conversation, for auto-loading matching skills. */
-  systemPrompt(options: { maxSteps: number; texts?: string[] }): Promise<string>;
+  systemPrompt(options: { maxSteps: number; texts?: string[] }): Promise<string | { system: string; context?: string }>;
   /** Read uploaded attachments; absent means attachments are unsupported here. */
   prepareAttachments?(message: string, ids: string[]): Promise<PreparedAttachments>;
   /** User decisions on queued actions the Agent has not heard about (action_gate.take_decisions_for_agent). */
@@ -557,10 +557,11 @@ export class AgentHost {
 
       activeRun.promptActive = true;
       const recent = (input.contextMessages || []).slice(-6).map((item) => String(item.content || ""));
-      const systemPrompt = await this.deps.systemPrompt({ maxSteps, texts: [goal, ...recent] });
+      const prompt = await this.deps.systemPrompt({ maxSteps, texts: [goal, ...recent] });
       const result = await runAgentLoop({
         client: llm.client,
-        systemPrompt,
+        systemPrompt: typeof prompt === "string" ? prompt : prompt.system,
+        contextPrompt: typeof prompt === "string" ? undefined : prompt.context,
         messages: session,
         tools: allTools,
         softLimit: maxSteps,

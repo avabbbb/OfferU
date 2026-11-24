@@ -79,7 +79,24 @@ export interface PromptOptions {
   skillTexts?: readonly string[];
 }
 
+/**
+ * The prompt in two parts. `system` is the same on every run (identity, rules, tool and skill indexes)
+ * so providers can cache it with the whole conversation after it. `context` changes per run (memory,
+ * today's overview, the skills loaded for this message); the loop puts it on the newest user message,
+ * after the history, so a save or a new day no longer invalidates the cached history.
+ */
+export interface PromptParts {
+  system: string;
+  context: string;
+}
+
+/** The whole prompt as one string (system + per-run context), for callers that send a single system message. */
 export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, options: PromptOptions = {}): Promise<string> {
+  const parts = await agentPromptParts(store, ctx, options);
+  return `${parts.system}\n${parts.context}`;
+}
+
+export async function agentPromptParts(store: CoreStore, ctx: CoreContext, options: PromptOptions = {}): Promise<PromptParts> {
   const view = await overview(store, ctx);
   const summary: Record<string, unknown> = {
     stage: view.stage,
@@ -97,10 +114,9 @@ export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, opti
   } else if (arm === "full") {
     memory = `用户的记忆（全文，新的在前；标「待确认」的还不能当事实）：\n${await memoryFull(store)}\n`;
   }
-  // Stable first, per-run last: the identity, rules, tool and skill indexes are the same on every
-  // run (prompt-cache friendly, and a stable prefix keeps the model's earlier reasoning — see
-  // OpenAI「Using GPT-6.2」on prefix edits); memory, today's overview and the skills loaded for
-  // this message change, so they go at the end.
+  // Stable vs per-run: the identity, rules, tool and skill indexes are the same on every run
+  // (prompt-cache friendly, and a stable prefix keeps the model's earlier reasoning — see OpenAI
+  // 「Using GPT-6.2」on prefix edits); memory, today's overview and this message's skills change.
   const stable = "你是 OfferU 里的求职助手。\n"
     + CORE_RULES
     + `- 最多调用 ${options.maxSteps || MAX_STEPS} 轮工具，先用 overview / search / get 查清楚再写。\n`
@@ -110,5 +126,5 @@ export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, opti
     + `今天是 ${view.today}。\n`
     + `用户现在的情况（overview 摘要）：${pyJson(summary)}\n`
     + loadedSkillsPrompt(matchSkills(options.skillTexts ?? []));
-  return `${stable}\n${perRun}`;
+  return { system: stable, context: perRun };
 }

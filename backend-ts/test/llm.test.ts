@@ -72,7 +72,7 @@ describe("LlmClient (OpenAI-compatible)", () => {
         { choices: [{ delta: { tool_calls: [{ index: 0, function: { name: "get", arguments: "\"job\",\"id\":1}" } }] } }] },
         { choices: [{ delta: { tool_calls: [{ index: 1, function: { arguments: "{}" } }] } }] }, // nameless slot: dropped
         { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
-        { choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } },
+        { choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, prompt_tokens_details: { cached_tokens: 8 } } },
         "[DONE]",
       ],
     }]);
@@ -90,7 +90,7 @@ describe("LlmClient (OpenAI-compatible)", () => {
     expect(done.result.reasoning).toBe("想");
     expect(done.result.finishReason).toBe("tool_calls");
     expect(done.result.toolCalls).toEqual([{ id: "call_a", name: "get", arguments: "{\"type\":\"job\",\"id\":1}", args: { type: "job", id: 1 } }]);
-    expect(done.result.usage).toEqual({ input_tokens: 10, output_tokens: 5, total_tokens: 15, estimated: false });
+    expect(done.result.usage).toEqual({ input_tokens: 10, output_tokens: 5, total_tokens: 15, estimated: false, cached_input_tokens: 8 });
   });
 
   it("retries once without stream_options / reasoning_effort on 400", async () => {
@@ -136,7 +136,7 @@ describe("LlmClient (Anthropic Messages)", () => {
   it("translates messages and streamed blocks", async () => {
     const { fetch, calls } = fakeFetch([{
       chunks: [
-        { type: "message_start", message: { usage: { input_tokens: 7 } } },
+        { type: "message_start", message: { usage: { input_tokens: 7, cache_read_input_tokens: 1200, cache_creation_input_tokens: 30 } } },
         { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "嗨" } },
         { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "tu_1", name: "search" } },
         { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: "{\"q\":\"x\"}" } },
@@ -155,17 +155,19 @@ describe("LlmClient (Anthropic Messages)", () => {
     }));
     expect(calls[0].url).toBe("https://api.anthropic.com/v1/messages");
     expect(calls[0].headers["x-api-key"]).toBe("k");
-    expect(calls[0].body.system).toBe("sys");
+    // prompt caching: one breakpoint after tools + system, one on the newest block
+    expect(calls[0].body.system).toEqual([{ type: "text", text: "sys", cache_control: { type: "ephemeral" } }]);
     expect(calls[0].body.messages).toEqual([
       { role: "user", content: [{ type: "text", text: "q" }] },
       { role: "assistant", content: [{ type: "tool_use", id: "t0", name: "get", input: { id: 1 } }] },
-      { role: "user", content: [{ type: "tool_result", tool_use_id: "t0", content: "{}" }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t0", content: "{}", cache_control: { type: "ephemeral" } }] },
     ]);
     expect(calls[0].body.tools).toEqual([{ name: "search", description: "s", input_schema: { type: "object" } }]);
     const done = events.at(-1);
     if (done?.type !== "done") throw new Error("no done");
     expect(done.result).toMatchObject({ content: "嗨", finishReason: "tool_calls", toolCalls: [{ id: "tu_1", name: "search", args: { q: "x" } }] });
-    expect(done.result.usage).toMatchObject({ input_tokens: 7, output_tokens: 4, estimated: false });
+    // input counts cached and newly cached tokens too; the hit count is kept
+    expect(done.result.usage).toMatchObject({ input_tokens: 1237, output_tokens: 4, cached_input_tokens: 1200, estimated: false });
   });
 });
 
@@ -295,7 +297,7 @@ describe("one LlmClient, every method", () => {
     };
     const client = createLlmClient({ provider: "anthropic", baseUrl: "https://api.anthropic.com", apiKey: "k", model: "claude", apiFormat: "anthropic", models: { fast: "haiku" } }, { fetch: ok });
     expect(await client.chat([{ role: "system", content: "s" }, { role: "user", content: "q" }], { tier: "fast" })).toBe("嗨");
-    expect(seen[0]).toMatchObject({ model: "haiku", system: "s", max_tokens: 4096, temperature: 0.3 });
+    expect(seen[0]).toMatchObject({ model: "haiku", system: [{ type: "text", text: "s", cache_control: { type: "ephemeral" } }], max_tokens: 4096, temperature: 0.3 });
     const denied: FetchLike = async () => ({ ok: false, status: 401, text: async () => "{}" });
     const bad = createLlmClient({ provider: "anthropic", baseUrl: "https://api.anthropic.com", apiKey: "k", model: "claude", apiFormat: "anthropic" }, { fetch: denied });
     await expect(bad.chat([{ role: "user", content: "q" }])).rejects.toMatchObject({ code: "forbidden" });
