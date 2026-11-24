@@ -13,7 +13,7 @@
 //                otherwise (or when the extension fails before the first byte) the Worker's
 //                /llm-proxy
 // Companion-only capabilities (local files, Playwright PDF, poppler, BOSS login, Agent board,
-// MCP) are simply not wired, so their routes answer 501 like on any runtime without them.
+// the offeru CLI) are simply not wired, so their routes answer 501 like on any runtime without them.
 // Nothing here may import node:* (scripts/check-browser-bundle.mjs guards the build).
 
 import { createApp, type AppDeps } from "@offeru/backend/app";

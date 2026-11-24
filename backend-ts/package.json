@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.19",
-    "@modelcontextprotocol/sdk": "^1.32.2",
     "@offeru/core": "file:../packages/core",
     "@offeru/sync": "file:../packages/sync",
     "fast-png": "^8.0.0",

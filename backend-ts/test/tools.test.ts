@@ -1,5 +1,5 @@
 // Contract tests for the shared tool surface (Python app/core/tools.py, main.py /api/tools,
-// mcp_server.py, entry.py `offeru tool`): same tool list, same results, same guards.
+// entry.py `offeru tool`): same tool list, same results, same guards.
 
 import { execFile } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
@@ -8,12 +8,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { enrichJobs, TOOL_SPECS, type LlmChatOptions, type LlmClient, type LlmMessage } from "@offeru/core";
+import { ALL_TOOL_SPECS, enrichJobs, TOOL_SPECS, toolBrief, type LlmChatOptions, type LlmClient, type LlmMessage } from "@offeru/core";
 
 import { createApp, type AppDeps } from "../src/app";
-import { createMcpServer } from "../src/mcp";
 import { createLocalFiles, fnmatchRegex } from "../src/routes/companion/files";
 import { SqliteCoreStore } from "../src/store";
 import { callTool, toolDeps } from "../src/tools";
@@ -284,43 +281,43 @@ describe("evaluate_jobs / enrich_jobs tools", () => {
   });
 });
 
-describe("MCP and CLI surfaces", () => {
-  it("MCP lists Python's tools/schemas and the client name is the actor", async () => {
-    const server = createMcpServer({ store });
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-    const client = new Client({ name: "Claude Code", version: "0.0.0" });
-    await client.connect(clientTransport);
-    try {
-      const listed = await client.listTools();
-      // import_data (replaces every record) is user-only, so MCP clients never see it.
-      expect(listed.tools.map((tool) => tool.name)).toEqual([...PYTHON_TOOL_ORDER, "export_data"]);
-      expect(listed.tools[3].inputSchema).toEqual(TOOL_SPECS[3].inputSchema);
-      const saved = await client.callTool({ name: "save", arguments: { type: "memory", data: { title: "SQL" } } }) as any;
-      expect(JSON.parse(saved.content[0].text).record).toMatchObject({ source: "agent", confirmed: false });
-      expect((await callTool("changes", {}, store)) as any).toMatchObject({ items: [{ actor: "Claude Code" }] });
-      const refused = await client.callTool({ name: "read_file", arguments: { path: "/etc/hosts" } }) as any;
-      expect(refused.isError).toBe(true);
-      expect(refused.content[0].text).toMatch(/^错误：/);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
+describe("CLI surface", () => {
   it("`offeru-ts tool` lists tools, runs as agent by default and prints {error} on failure", async () => {
     const run = (args: string[], env: Record<string, string> = {}) => new Promise<{ code: number; out: string }>((done) => {
       execFile(process.execPath, ["--import", "tsx", join(here, "../src/cli.ts"), ...args], {
         cwd: join(here, ".."), env: { ...process.env, OFFERU_DATA_DIR: tmp, OFFERU_DB_PATH: join(tmp, "offeru.db"), ...env },
       }, (error, stdout) => done({ code: error ? Number(error.code) : 0, out: stdout }));
     });
-    const [listed, saved, failed] = await Promise.all([
+    const [listed, listedJson, help, unknown, recipe, saved, failed] = await Promise.all([
       run(["tool"]),
+      run(["tool", "--json"]),
+      run(["tool", "save", "get", "--help"]),
+      run(["tool", "nope", "--help"]),
+      run(["recipe", "resume.tailor"]),
       run(["tool", "save", "\uFEFF{\"type\":\"memory\",\"data\":{\"title\":\"SQL\"}}"]),
       run(["tool", "get", "{\"type\":\"job\",\"id\":9}"]),
     ]);
-    expect(listed.out.split("\n")[0]).toBe(`overview: ${TOOL_SPECS[0].description}`);
+    // The index is one line per tool (no schemas) and marks the user-only restore.
+    expect(listed.out).toContain(`  overview: ${toolBrief(TOOL_SPECS[0])}`);
+    expect(listed.out).not.toContain("tool_manual");
+    expect(listed.out).toMatch(/import_data: .*（只给用户本人用）/);
+    expect(listed.out).not.toContain("inputSchema");
+    expect(listed.out.length).toBeLessThan(ALL_TOOL_SPECS.map((spec) => JSON.stringify(spec)).join("").length / 3);
+    const items = JSON.parse(listedJson.out) as Array<{ name: string; agent: boolean }>;
+    expect(items.map((item) => item.name)).toEqual([...PYTHON_TOOL_ORDER, "export_data", "import_data"]);
+    expect(items.find((item) => item.name === "import_data")?.agent).toBe(false);
+    // --help gives the full schema, only for the tools asked about.
+    const manual = JSON.parse(help.out);
+    expect(manual.tools.map((tool: { name: string }) => tool.name)).toEqual(["save", "get"]);
+    expect(manual.tools[1].inputSchema).toEqual(TOOL_SPECS[3].inputSchema);
+    expect(unknown.code).toBe(1);
+    expect(JSON.parse(unknown.out).error.code).toBe("not_found");
+    expect(JSON.parse(recipe.out)).toMatchObject({ id: "resume.tailor", steps: expect.arrayContaining([expect.stringContaining("tailor_resume")]) });
     expect(JSON.parse(saved.out).record).toMatchObject({ source: "agent", confirmed: false });
     expect(failed).toEqual({ code: 1, out: "{\"error\":\"job #9 不存在\"}\n" });
+    // --actor (before or after the command) is who the change log credits, as the MCP client name was.
+    expect((await run(["--actor", "Claude Code", "tool", "save", "{\"type\":\"memory\",\"data\":{\"title\":\"Go\"}}"])).code).toBe(0);
+    const log = JSON.parse((await run(["tool", "changes", "{}"])).out) as { items: Array<{ actor: string }> };
+    expect(log.items.map((item) => item.actor)).toContain("Claude Code");
   }, 60_000);
 });

@@ -192,7 +192,6 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     return c.json({
       token: deps.pairingToken(),
       backend: `http://${c.req.header("host") || "127.0.0.1:8767"}`,
-      mcp_stdio: "offeru-ts mcp",
     });
   });
 

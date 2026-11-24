@@ -1,9 +1,9 @@
 // Originally generated from the Python tool registry (backend/app/core/tools.py, tag python-backend-final); now the source of truth, edit by hand.
-// Tool names, descriptions and input schemas exactly as Python exposes them on /api/tools, MCP and `offeru tool`.
+// Tool names, descriptions and input schemas exactly as Python exposes them on /api/tools and `offeru tool`.
 
 import type { ToolSpec } from "./schema";
 
-export const MCP_INSTRUCTIONS = "OfferU 是用户本地的求职工作台。先调 overview 看阶段、下一步和待办；找用户的经历和说过的话用 search。写入直接生效，用户能在「最近改动」里撤销，所以该存就存：用户提到的新经历、偏好、截止时间、面试安排都存下来。只能用用户真实的经历写简历和网申，不编数字。不替用户提交网申、不发消息。";
+export const TOOL_INSTRUCTIONS = "OfferU 是用户本地的求职工作台。先调 overview 看阶段、下一步和待办；找用户的经历和说过的话用 search。写入直接生效，用户能在「最近改动」里撤销，所以该存就存：用户提到的新经历、偏好、截止时间、面试安排都存下来。只能用用户真实的经历写简历和网申，不编数字。不替用户提交网申、不发消息。";
 
 export const TOOL_SPECS: ToolSpec[] = [
   {

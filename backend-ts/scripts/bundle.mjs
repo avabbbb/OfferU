@@ -1,7 +1,7 @@
 // Bundle the Node companion into plain ESM files that the packaged desktop app (bundled Node)
 // and the lite package run without tsx, npm or a source checkout:
 //   <out>/server.mjs   HTTP companion (desktop sidecar entry; listens on OFFERU_PORT)
-//   <out>/cli.mjs      offeru CLI: tool / mcp / serve / start / doctor (the Skill's <offeru> command)
+//   <out>/cli.mjs      offeru CLI: tool / recipe / serve / start / doctor (the Skill's <offeru> command)
 //   <out>/assets/school_logos, <out>/skill/SKILL.md
 //   <out>/node_modules/playwright-core   (optional dependency, loaded with a dynamic import for PDF export)
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";

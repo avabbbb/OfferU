@@ -24,7 +24,7 @@ npm --prefix frontend install
 | 桌面 / 普通构建 | `cd frontend && npm run build`；桌面壳 `npm run tauri -- dev` |
 | 本地跑 Worker | `cd backend-ts && npm run build:web && npm run worker:dev` |
 | 部署检查 | `cd backend-ts && npm run worker:dry-run` |
-| CLI / MCP | `cd backend-ts && npm run cli -- doctor`、`npm run cli -- tool overview`、`npm run cli -- mcp` |
+| CLI | `cd backend-ts && npm run cli -- doctor`、`npm run cli -- tool`、`npm run cli -- tool get --help`、`npm run cli -- tool overview`、`npm run cli -- recipe resume.tailor` |
 
 非网页版构建的前端固定连 `127.0.0.1:8766`（`frontend/src/lib/apiBase.ts`，刻意不允许指向别的地址），所以本机开发时让 TS 伴侣监听 8766；它默认 8767，避免和已装的桌面版抢端口。网页版开发模式下没有 Worker，所以模型服务商不允许浏览器跨域时，「测试连接」会失败；要完整验证转发，用 `npm run worker:dev`。
 

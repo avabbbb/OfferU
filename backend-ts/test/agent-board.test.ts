@@ -82,7 +82,7 @@ describe("agent board matches Python agent_board.py", () => {
     await board.connect("codex", "install");
     const skill = readFileSync(join(home, ".codex/skills/offeru/SKILL.md"), "utf8");
     expect(skill).toContain("name: offeru");
-    expect(skill).toContain("offeru-test tool overview");
+    expect(skill).toContain("offeru-test --actor codex tool overview");
     expect(skill).not.toContain("<offeru>");
     expect(await board.recordClientCall("Codex-MCP-Client")).toBe("codex");
     const row = (await board.list()).agents.find((a) => a.id === "codex")!;

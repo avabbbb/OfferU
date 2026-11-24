@@ -40,7 +40,6 @@ export function AgentConnectionStatus({ compact = false }: { compact?: boolean }
 type AgentConnectionItem = AgentConnectionsSnapshot["items"][number];
 
 const SKILL_LABEL: Record<string, string> = { INSTALLED: "已安装", OUTDATED: "需更新", NOT_INSTALLED: "未安装", ERROR: "异常", NOT_SUPPORTED: "不支持" };
-const MCP_LABEL: Record<string, string> = { REGISTERED: "已注册", NOT_REGISTERED: "未注册", NOT_SUPPORTED: "不适用", UNKNOWN: "无法读取" };
 
 function agentStatusLabel(item: AgentConnectionItem): string {
   if (item.connection_verified && item.status === "ready") return "已验证连接";
@@ -149,7 +148,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
         </p>
       </div>
 
-      {SHOWCASE ? <div role="status" className="space-y-2 p-6 text-sm leading-relaxed text-[var(--foreground-muted)]"><p>展示模式默认使用浏览器里的虚构数据，不会自动连接本机；右上角 OfferU 面板里的内置 Agent 用你自己填的 Key。</p><p>在页面顶部点「连接本机 OfferU」，配对后外置 Agent 通过本机 MCP 读写同一份 <code>offeru.db</code>。</p></div> : <div className="space-y-5 p-5 sm:p-7">
+      {SHOWCASE ? <div role="status" className="space-y-2 p-6 text-sm leading-relaxed text-[var(--foreground-muted)]"><p>展示模式默认使用浏览器里的虚构数据，不会自动连接本机；右上角 OfferU 面板里的内置 Agent 用你自己填的 Key。</p><p>在页面顶部点「连接本机 OfferU」，配对后外置 Agent 通过本机 <code>offeru</code> 命令行读写同一份 <code>offeru.db</code>。</p></div> : <div className="space-y-5 p-5 sm:p-7">
         <AgentConnectPrompt />
         <AgentBoard />
         {desktop ? <div className="space-y-3">
@@ -170,7 +169,6 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                 <dl className="grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1 text-[11px] text-[var(--foreground-muted)]">
                   <dt>程序</dt><dd className="break-all">{item.executable_path || (item.id === "external" ? "通用 Skill 目录，无需程序" : "未发现")}</dd>
                   <dt>Skill</dt><dd className="break-all">{SKILL_LABEL[item.skill_status] || item.skill_status}{item.skill_path ? " · " + item.skill_path : ""}</dd>
-                  <dt>MCP</dt><dd>{MCP_LABEL[item.mcp_status || "UNKNOWN"]}</dd>
                   <dt>最后验证</dt><dd>{item.checked_at ? connectionTime(item.checked_at) : "从未验证"}</dd>
                 </dl>
                 {item.last_error && <p className="break-words text-[11px] text-amber-800">{item.last_error}</p>}

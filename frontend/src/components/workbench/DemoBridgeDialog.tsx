@@ -29,7 +29,7 @@ export function DemoBridgeDialog({ open, onClose }: { open: boolean; onClose: ()
     setProbing(true);
     void probeLocalBridge().then((result) => {
       if (!active) return;
-      if (result.available) setNotice(`发现本机 OfferU ${result.version || ""}${result.mcpEnabled ? " · MCP 已启用" : ""}`);
+      if (result.available) setNotice(`发现本机 OfferU ${result.version || ""}`);
     }).finally(() => {
       if (active) setProbing(false);
     });
@@ -44,7 +44,7 @@ export function DemoBridgeDialog({ open, onClose }: { open: boolean; onClose: ()
     setNotice("");
     try {
       const result = await probeLocalBridge();
-      if (result.available) setNotice(`发现本机 OfferU ${result.version || ""}${result.mcpEnabled ? " · MCP 已启用" : ""}`);
+      if (result.available) setNotice(`发现本机 OfferU ${result.version || ""}`);
     } finally {
       setProbing(false);
     }
@@ -82,7 +82,7 @@ export function DemoBridgeDialog({ open, onClose }: { open: boolean; onClose: ()
         {bridge.active ? (
           <>
             <p className="mt-2 leading-relaxed text-[var(--foreground-muted)]">
-              当前页面读写本机 <code>offeru.db</code>，外置 Agent 通过本机 MCP 操作同一份数据。断开后回到浏览器示例数据，两边不自动同步。
+              当前页面读写本机 <code>offeru.db</code>，外置 Agent 通过本机 <code>offeru</code> 命令行操作同一份数据。断开后回到浏览器示例数据，两边不自动同步。
             </p>
             <p className="mt-3 text-[12px] text-[var(--foreground)]">已连接 127.0.0.1:8766{bridge.version ? ` · ${bridge.version}` : ""}</p>
             <div className="mt-4 flex gap-2">
@@ -93,7 +93,7 @@ export function DemoBridgeDialog({ open, onClose }: { open: boolean; onClose: ()
         ) : (
           <>
             <p className="mt-2 leading-relaxed text-[var(--foreground-muted)]">
-              连接后，这个页面会读写本机 <code>offeru.db</code>，外置 Agent 通过本机 MCP 操作同一份数据。断开后回到浏览器示例数据，两边不自动同步。
+              连接后，这个页面会读写本机 <code>offeru.db</code>，外置 Agent 通过本机 <code>offeru</code> 命令行操作同一份数据。断开后回到浏览器示例数据，两边不自动同步。
             </p>
             <div className="mt-3 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-[12px] leading-relaxed text-[var(--foreground-muted)]">
               <p>1. 在本机运行 <code>offeru start</code>。</p>
@@ -123,7 +123,7 @@ export function DemoBridgeDialog({ open, onClose }: { open: boolean; onClose: ()
               <span className="text-[12px] text-[var(--foreground-muted)]">{notice}</span>
             </div>
             <p className="mt-4 border-t border-[var(--border)] pt-3 text-[12px] leading-relaxed text-[var(--foreground-muted)]">
-              外置 Agent：在工作台「设置 → 我的 Agent」点「连接」装 Skill，MCP 用 <code>offeru mcp</code> 注册；命令行用 <code>offeru tool overview '{"{}"}'</code>。线上静态页本身不提供 MCP。
+              外置 Agent：在工作台「设置 → 我的 Agent」点「连接」装 Skill，之后它用命令行调工具，比如 <code>offeru tool overview</code>。线上静态页的数据在浏览器里，外置 Agent 读不到，要连本机才行。
             </p>
           </>
         )}

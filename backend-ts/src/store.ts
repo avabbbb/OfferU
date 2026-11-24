@@ -89,7 +89,7 @@ export class SqliteCoreStore implements CoreStore {
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
-    // The desktop app, `offeru tool` and MCP can open the same file at once: wait for a lock instead of failing with SQLITE_BUSY.
+    // The desktop app and `offeru tool` can open the same file at once: wait for a lock instead of failing with SQLITE_BUSY.
     this.db.exec("PRAGMA busy_timeout=5000;");
     this.db.exec("PRAGMA journal_mode=WAL;");
     this.db.exec(SCHEMA);

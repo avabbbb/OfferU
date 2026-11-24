@@ -13,6 +13,6 @@ export const OFFERU_SKILL_URL = ["https:", "", "raw.githubusercontent.com", "ava
 export const OFFERU_AGENT_CONNECT_PROMPT = [
   "请帮我把 OfferU 接入你（我现在正在用的这个 Agent）。先按下面的顺序判断属于哪种情况，告诉我判断结果，再动手。",
   "1. 首次安装：运行 offeru doctor。找不到 offeru 命令，说明这台电脑还没装 OfferU。读取 " + OFFERU_SKILL_URL + " ，按其中「首次使用」一节装好并运行 offeru start；然后用 overview 看我的现状，和我一起建立第一份职业档案。",
-  "2. 已经装好：按 OfferU Skill「首次使用」第 4 步把 MCP 注册给你（offeru mcp），并确认 Skill 已经装进你的 Skill 目录（工作台「设置 → 我的 Agent」点「连接」，或手动复制）。注册后调用一次 overview，确认能读到数据。",
+  "2. 已经装好：确认 OfferU Skill 已经装进你的 Skill 目录（工作台「设置 → 我的 Agent」点「连接」，或按 Skill「首次使用」第 4 步手动复制）。不需要注册 MCP，OfferU 只走命令行。然后运行一次 offeru tool overview，确认能读到数据。",
   "规则：不要改动你的账号、模型、凭据、代理或其他设置；不要替我投递、发消息或联系第三方。需要重开会话才能识别 Skill 时直接告诉我。完成后用两三句话说明：属于哪种情况、做了什么、还需要我做什么。",
 ].join("\n\n");

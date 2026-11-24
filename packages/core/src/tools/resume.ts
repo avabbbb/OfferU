@@ -1,6 +1,6 @@
 // tailor_resume / export_resume_pdf: the same tailoring pipeline the resume page runs
 // (draft → review → grounding checks, one undoable change) and the runtime's PDF export,
-// as registry tools so the Agent, MCP and CLI reach them too.
+// as registry tools so the Agent and CLI reach them too.
 
 import { runTailor, type TailorEvent } from "../resume/tailor";
 import { CoreError, type Json, type StoredRecord } from "../types";

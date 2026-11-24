@@ -1,5 +1,5 @@
 // Agent board rules (Python services/agent_board.py + agent_host_registry.py):
-// the built-in Skill hosts, custom-Agent validation, MCP-client → Agent matching,
+// the built-in Skill hosts, custom-Agent validation, client (CLI --actor) → Agent matching,
 // the "connected" rule and the row shape the workbench renders. Everything that
 // touches the machine (board JSON file, PATH lookup, process list, Skill files,
 // opening a terminal) is the companion's BoardHost; the board only exists there,
@@ -102,7 +102,7 @@ const stem = (command: string): string => {
   return (dot > 0 ? base.slice(0, dot) : base).toLowerCase();
 };
 
-/** Names that identify this Agent in the process list and in an MCP client name. */
+/** Names that identify this Agent in the process list and in a client / --actor name. */
 export function matchNames(data: BoardData, id: string): string[] {
   const custom = customAgent(data, id);
   if (custom) return [...new Set([id, stem(custom.executable ?? "")].filter(Boolean))];

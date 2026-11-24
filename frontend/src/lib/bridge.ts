@@ -1,4 +1,4 @@
-// Optional local bridge for the static showcase. The page never hosts MCP;
+// Optional local bridge for the static showcase. The page hosts no agent surface;
 // it only talks to a loopback OfferU backend the user explicitly pairs with.
 // The pairing token stays in memory for this tab.
 
@@ -10,12 +10,11 @@ export type BridgeState = {
   active: boolean;
   checking: boolean;
   version: string;
-  mcpEnabled: boolean;
   error: string;
 };
 
 let token = "";
-let state: BridgeState = { active: false, checking: false, version: "", mcpEnabled: false, error: "" };
+let state: BridgeState = { active: false, checking: false, version: "", error: "" };
 const listeners = new Set<() => void>();
 
 function publish(next: Partial<BridgeState>): void {
@@ -40,7 +39,7 @@ export function bridgeHeaders(): Record<string, string> {
   return state.active && token ? { "X-OfferU-Pairing": token } : {};
 }
 
-export async function probeLocalBridge(): Promise<{ available: boolean; version?: string; mcpEnabled?: boolean }> {
+export async function probeLocalBridge(): Promise<{ available: boolean; version?: string }> {
   publish({ checking: true, error: "" });
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 1800);
@@ -55,8 +54,8 @@ export async function probeLocalBridge(): Promise<{ available: boolean; version?
       publish({ checking: false, error: "本机 8766 有响应，但不是 OfferU 后端。" });
       return { available: false };
     }
-    publish({ checking: false, version: String(payload.version || ""), mcpEnabled: Boolean(payload.mcp_enabled) });
-    return { available: true, version: String(payload.version || ""), mcpEnabled: Boolean(payload.mcp_enabled) };
+    publish({ checking: false, version: String(payload.version || "") });
+    return { available: true, version: String(payload.version || "") };
   } catch {
     publish({ checking: false, error: "没有发现本机 OfferU。请先运行 offeru start（127.0.0.1:8766）。" });
     return { available: false };

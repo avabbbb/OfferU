@@ -1,5 +1,5 @@
 // The shared tool registry (Python backend/app/core/tools.py TOOLS + call).
-// HTTP /api/tools, MCP and the CLI all list TOOL_SPECS and dispatch through
+// HTTP /api/tools and the CLI all list TOOL_SPECS and dispatch through
 // callTool; a runtime adds what only it can do (local files, PDF export,
 // mail sync) through `extra` handlers.
 
@@ -27,7 +27,7 @@ import { TOOL_SPECS } from "./specs";
 
 /**
  * TS-only tools (no Python TOOLS counterpart): whole-store backup / restore.
- * `agent: false` keeps a tool off the Agent and MCP lists (restore replaces
+ * `agent: false` keeps a tool off the Agent lists (restore replaces
  * every record, so only the user runs it, from settings / CLI / HTTP).
  */
 export type ExtraToolSpec = ToolSpec & { agent: boolean };
@@ -54,7 +54,7 @@ export const TS_TOOL_SPECS: ExtraToolSpec[] = [
 
 /** Python's 21 tools, then the TS-only ones: what HTTP /api/tools and the CLI list. */
 export const ALL_TOOL_SPECS: ToolSpec[] = [...TOOL_SPECS, ...TS_TOOL_SPECS.map(({ agent: _agent, ...spec }) => spec)];
-/** What agents (built-in Agent, MCP clients) see. */
+/** What agents (built-in Agent, external Agents via the CLI) see. */
 export const AGENT_TOOL_SPECS: ToolSpec[] = [...TOOL_SPECS, ...TS_TOOL_SPECS.filter((spec) => spec.agent).map(({ agent: _agent, ...spec }) => spec)];
 
 export type { ToolDeps } from "./deps";
@@ -62,7 +62,7 @@ export type { JsonSchema, ToolSpec } from "./schema";
 export { validateArgs } from "./schema";
 export * from "./catalog";
 export * from "./preflight";
-export { MCP_INSTRUCTIONS, TOOL_SPECS } from "./specs";
+export { TOOL_INSTRUCTIONS, TOOL_SPECS } from "./specs";
 export { cleanHtml, cleanText, guard as guardPosting, guardCounts, guardWarning, unescapeHtml } from "./posting-guard";
 export type { GuardCounts, GuardFindings } from "./posting-guard";
 export { createSearchClient, fetchPage, webSearch, NO_SEARCH, PASTE_ONLY_DOMAINS, RESTRICTED_DOMAINS } from "./net";

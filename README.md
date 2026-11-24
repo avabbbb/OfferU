@@ -306,7 +306,7 @@ One set of rules, three places it runs:
 flowchart LR
     UI[React UI] -->|fetch /api/*| APP[Hono app<br/>backend-ts createApp]
     EXT[Browser extension] --> APP
-    AG[Codex / Claude Code] -->|MCP stdio / CLI| APP
+    AG[Codex / Claude Code] -->|offeru CLI| APP
     APP --> CORE[packages/core<br/>tools, rules, undo, Agent loop]
     CORE --> IDB[(IndexedDB<br/>web version)]
     CORE --> SQL[(SQLite<br/>desktop companion)]
@@ -382,11 +382,11 @@ Open the site, add your model API key under Settings → Model, and start. See
 npm --prefix backend-ts install && npm --prefix frontend install
 npm --prefix frontend run build
 npm --prefix backend-ts run cli -- start     # workbench + API on http://127.0.0.1:8766
-claude mcp add offeru -- npm --prefix "$PWD/backend-ts" run --silent cli -- mcp   # or: codex mcp add …
+npm --prefix backend-ts run --silent cli -- tool          # what external Agents call: one line per tool; `tool <name> --help` for its schema
 ```
 
 Node 22.19+. The old Python package (`v0.2.0-lite`) is retired. The Agent Skill is
-[`.agents/skills/offeru/SKILL.md`](./.agents/skills/offeru/SKILL.md); Settings → My Agent → Connect installs it.
+[`.agents/skills/offeru/SKILL.md`](./.agents/skills/offeru/SKILL.md); Settings → My Agent → Connect installs it with this machine's `offeru` command filled in. There is no MCP server: Agents call the CLI.
 
 **Source development** — [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) (npm commands, tests, contract tests).
 

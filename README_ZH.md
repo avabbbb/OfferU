@@ -294,7 +294,7 @@ Runtime 诊断、实验性 Provider 和 Provider Health 都属于高级/开发�
 flowchart LR
     UI[React 界面] -->|fetch /api/*| APP[Hono 应用<br/>backend-ts createApp]
     EXT[浏览器插件] --> APP
-    AG[Codex / Claude Code] -->|MCP stdio / CLI| APP
+    AG[Codex / Claude Code] -->|offeru 命令行| APP
     APP --> CORE[packages/core<br/>工具、规则、撤销、Agent 循环]
     CORE --> IDB[(IndexedDB<br/>网页版)]
     CORE --> SQL[(SQLite<br/>桌面伴侣)]
@@ -360,11 +360,11 @@ npx wrangler deploy      # Cloudflare Workers 免费计划；本地预览用 npm
 npm --prefix backend-ts install && npm --prefix frontend install
 npm --prefix frontend run build
 npm --prefix backend-ts run cli -- start     # 工作台和 API：http://127.0.0.1:8766
-claude mcp add offeru -- npm --prefix "$PWD/backend-ts" run --silent cli -- mcp   # 或 codex mcp add …
+npm --prefix backend-ts run --silent cli -- tool          # 外置 Agent 调的就是它：每个工具一行；tool <名字> --help 看参数
 ```
 
 需要 Node 22.19+。旧的 Python 安装包（`v0.2.0-lite`）已停用。Agent Skill 在
-[`.agents/skills/offeru/SKILL.md`](./.agents/skills/offeru/SKILL.md)，工作台「设置 → 我的 Agent」点「连接」即可装上。
+[`.agents/skills/offeru/SKILL.md`](./.agents/skills/offeru/SKILL.md)，工作台「设置 → 我的 Agent」点「连接」即可装上，命令会换成本机的 `offeru`。没有 MCP，外置 Agent 只走命令行。
 
 **源码开发** —— [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md)（npm 命令、测试、契约测试）。
 

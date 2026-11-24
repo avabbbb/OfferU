@@ -69,7 +69,7 @@ describe("install docs and Skill match the TS runtime", () => {
 
   it("every documented `offeru <command>` exists in the CLI", () => {
     const known = cliCommands();
-    expect(known.has("start") && known.has("mcp") && known.has("tool")).toBe(true);
+    expect(known.has("start") && known.has("recipe") && known.has("tool") && !known.has("mcp")).toBe(true);
     const hits: string[] = [];
     for (const path of DOCS) {
       for (const match of read(path).matchAll(/(?<![\w/.-])offeru(?:-ts)? ([a-z][\w-]*)/g)) {

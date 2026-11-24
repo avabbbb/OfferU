@@ -45,7 +45,7 @@ SECURITY_NOT_VERIFIED
 ## Stable security boundary
 
 - Career Truth 的 mutation 必须经过 Operation Registry、验证、权限、持久化与审计；
-- Agent、Automation、CLI、MCP、Plugin、Browser Extension 不得绕过 Registry；
+- Agent、Automation、CLI、Plugin、Browser Extension 不得绕过 Registry；
 - 外部不可逆写入始终由用户本人完成；
 - API key、OAuth token、password、cookie、keychain secret 不进入源码、SQLite、日志、trace、diagnostic bundle 或 Agent context；
 - `.env.example` 不提供可用凭据，Docker Compose 要求使用者显式提供唯一的 `DB_PASSWORD` 与 `SECRET_KEY`，缺失时 fail-closed；

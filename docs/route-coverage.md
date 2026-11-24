@@ -5,7 +5,7 @@ Python 后端（FastAPI，`backend/`）已在 `chore/remove-python` 删除，最
 - Python 路由共 **157** 条（含 `main.py` 里直接注册的 19 条）；TS 已提供 **135** 条，未迁 **22** 条（全部有意不迁，原因见下）。
 - 同一个 Hono 应用跑在三处：网页版页面内（IndexedDB）、Cloudflare Worker（只发静态文件和 `/llm-proxy`）、桌面 / lite 伴侣（Node + SQLite）。只靠本机能力的路由（本机文件、Playwright PDF、BOSS 登录、Agent 看板、配置文件）在网页版回 501，不假装成功。
 - 前端和扩展调用的每个 `/api` 路径都由 `backend-ts/test/route-coverage.test.ts` 检查：新增前端调用若没有 TS 路由，测试失败；`KNOWN_UNSERVED` 只列 Python 自己也从没有过的死接口（`python_never`）和不迁的 `/api/research/*`（`research_dropped`）。
-- 非 `/api` 的挂载：`/uploads` 静态目录由 `/api/files/*` 替代；HTTP `/mcp`（Streamable）未迁，MCP 走 stdio（`backend-ts` 的 `mcp` 命令）；工作台静态页由伴侣 `server.ts` / `offeru start` 提供。
+- 非 `/api` 的挂载：`/uploads` 静态目录由 `/api/files/*` 替代；MCP 已移除（2026-11-24），外置 Agent 走 `offeru tool`；工作台静态页由伴侣 `server.ts` / `offeru start` 提供。
 
 ## 未迁的路由
 

@@ -15,7 +15,7 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
   - Cloudflare Worker（`backend-ts/src/worker.ts`）：只发静态文件和转发模型请求（`/llm-proxy`，主机白名单），**不存任何用户数据**，不加 D1 / KV / DO / R2；
   - 桌面伴侣（`backend-ts/src/server.ts`，Node，SQLite `records / changes` 表）：唯一有本机能力的地方。
 - **本机专属（companion-only）**：本机文件、Playwright PDF、poppler、BOSS 登录、Agent 看板、配置文件等只放 `backend-ts/src/routes/companion/`，在 `server.ts` 注入。浏览器和 Worker 永远不 import 它们；那里缺的能力回 501，不假装成功。
-- **加工具 / 路由**：core 写规则 → 工具表登记（HTTP / MCP / CLI / 内置 Agent 自动可用）或 `routes/` 加模块并在 `routes/index.ts` 加一行 → 新依赖加到 `AppDeps` 并在 `server.ts` 和 `lib/local/backend.ts` 各自接上或明确不接 → **每个工具 / 路由一条契约用例** + 一条走 HTTP 的测试；`backend-ts/test/fixtures/` 里已有的夹具是旧 Python 版生成的期望值，改行为时直接更新夹具并在 PR 里说明。步骤见 `docs/ARCHITECTURE.md` §5。
+- **加工具 / 路由**：core 写规则 → 工具表登记（HTTP / CLI / 内置 Agent 自动可用）或 `routes/` 加模块并在 `routes/index.ts` 加一行 → 新依赖加到 `AppDeps` 并在 `server.ts` 和 `lib/local/backend.ts` 各自接上或明确不接 → **每个工具 / 路由一条契约用例** + 一条走 HTTP 的测试；`backend-ts/test/fixtures/` 里已有的夹具是旧 Python 版生成的期望值，改行为时直接更新夹具并在 PR 里说明。步骤见 `docs/ARCHITECTURE.md` §5。
 - 数据只有 5 种 type：profile / memory / job / event / doc。新功能优先用它们和现有工具表达。
 - 写操作直接生效，记一条 change，可以撤销。不加确认流程；只有对外发送和批量删除需要用户点头。
 - 前端页面只通过 `frontend/src/lib/core.ts` 调工具。
@@ -33,7 +33,7 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
 ## 写代码
 
 - 测试环境的情况，没有真实用户，旧代码和旧数据可以直接删，不写迁移和兼容层。
-- 不写防御性代码和只为覆盖率的测试。每个新工具一条走真实 HTTP / MCP 的端到端测试。
+- 不写防御性代码和只为覆盖率的测试。每个新工具一条走真实 HTTP / CLI 的端到端测试。
 - 后端改动提交前：`cd backend-ts && npm test && npm run typecheck`；动到 `app.ts` / `routes/` / core 时再跑 `cd frontend && npm run build:web` 和 `cd backend-ts && npm run worker:dry-run`，确认浏览器和 Worker 都还能打包。
 - 视觉：参照 `docs/design/visual-system.md`（v3 Glass，2026-11-13 起，参考 Inspora · Bleep App）：冷暖渐变画布（只此一处渐变）+ 磨砂玻璃侧栏 + 半透明白纸面，几乎不用 1px 描边（靠透明度和柔和大阴影分层），大圆角，悬停 / 选中是白胶囊；**墨黑胶囊主按钮**，橙色只表示紧急 / 委托给 Agent，紫色只属于 Agent；状态 / 标签是浅底深字胶囊。新 UI 只用 `frontend/src/styles/design-tokens.css` 的语义 Token（`--ou-bg-*`、`--ou-glass-*`、`--ou-capsule-*`、`--ou-text-*`、`--ou-line-*`、`--ou-tone-*`、`--ou-elev-*`、`--ou-radius-*`），不自行写新色值、字体 px、阴影、圆角或 z-index。正文约 13–15px，文档视图 16px；不用 KPI 卡堆砌、彩色大底、卡片 / 按钮渐变和超大衬线标题。
 - **先找参考**：做新界面、改版或新动效之前，先读 `docs/design/DESIGN.md`，再按 `docs/design/references.md` 在 Inspora / Awwwards / GSAP Showcase / Refero 找 2–3 个参考，把链接和「借什么」写进 PR 描述的「参考」一节。动效落地用 CSS + `--ou-motion-*` Token，不随手引入动画库。

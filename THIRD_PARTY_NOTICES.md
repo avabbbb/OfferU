@@ -12,7 +12,7 @@ OfferU 自有代码使用本仓库 [MIT License](./LICENSE)。
 
 以下是当前直接依赖入口；传递依赖以对应 lockfile 为准：
 
-- TS 后端 / 桌面伴侣：Hono、@hono/node-server、MCP TypeScript SDK、fast-png、jpeg-js、可选 playwright-core（见 `backend-ts/package-lock.json`）；桌面安装包附带 Node.js 运行时（MIT 及其附带的第三方许可）；
+- TS 后端 / 桌面伴侣：Hono、@hono/node-server、fast-png、jpeg-js、可选 playwright-core（见 `backend-ts/package-lock.json`）；桌面安装包附带 Node.js 运行时（MIT 及其附带的第三方许可）；
 - Frontend：React、React DOM、Vite、TypeScript、Tauri CLI、NextUI、TipTap、Puck、React PDF、FullCalendar、MediaPipe、dnd-kit、Framer Motion、Recharts、SWR 和 Lucide；
 - Desktop runtime：Tauri、Rust crates、WebView2 和随平台提供的系统组件。
 

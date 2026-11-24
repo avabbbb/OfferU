@@ -59,7 +59,7 @@ export function agentHost(deps: AppDeps): AgentHost {
       store: deps.store,
       runs: deps.agentRuns ?? new MemoryAgentRunStore(),
       llm: (options) => deps.llm?.({ llmConfigId: options.llm_config_id, model: options.model }) ?? null,
-      // Every registry tool this runtime can run, with the same deps HTTP / MCP / CLI get (tools.ts toolDeps):
+      // Every registry tool this runtime can run, with the same deps HTTP / CLI get (tools.ts toolDeps):
       // search / fetch / model tools, companion files, PDF export, page measuring. The call's abort signal and
       // tool-call id ride along so a long tool stops with its run and a write can be matched on resume.
       toolDeps: (ctx, call) => {

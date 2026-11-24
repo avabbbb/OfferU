@@ -129,9 +129,8 @@ export function connectionFromBoardRow(row: Record<string, unknown>, now: string
     web_search_state: notChecked,
     routing_eval_state: notChecked,
     conformance_checked_at: null,
-    transport: "mcp",
+    transport: "cli",
     skill_path: String(row.skill_path ?? ""),
-    mcp_status: "UNKNOWN",
   };
 }
 

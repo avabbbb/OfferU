@@ -13,7 +13,7 @@ export interface AgentBoardService {
   connect(id: string, action: string): Promise<Record<string, unknown>>;
   check(id: string): Promise<Record<string, unknown>>;
   launch(id: string): Promise<Record<string, unknown>>;
-  /** MCP client name / CLI actor → board Agent; records the call. "" when none matches. */
+  /** CLI actor (--actor / OFFERU_ACTOR) → board Agent; records the call. "" when none matches. */
   recordClientCall(client: string): Promise<string>;
 }
 

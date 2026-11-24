@@ -128,11 +128,16 @@ export class NodeAgentBoard implements AgentBoardService {
     return `npm --prefix ${JSON.stringify(BACKEND_TS)} run -s cli -- ${dataDir}`;
   }
 
-  /** _installed_content: the Skill with <offeru> filled for this install. */
-  skillContent(): string {
+  /**
+   * _installed_content: the Skill with <offeru> filled for this install. With an Agent id the
+   * command also carries `--actor <id>`, so that Agent's CLI calls show up under its name in the
+   * change log and on the board.
+   */
+  skillContent(id = ""): string {
     const source = readFileSync(SOURCE_SKILL, "utf8");
     if (!source.includes("<offeru>")) throw new CoreError("OfferU Skill is missing its command placeholder; reinstall OfferU.");
-    return source.split("<offeru>").join(this.toolCommand());
+    const actor = id ? ` --actor ${/^[\w.-]+$/.test(id) ? id : JSON.stringify(id)}` : "";
+    return source.split("<offeru>").join(`${this.toolCommand()}${actor}`);
   }
 
   private skillRoot(data: BoardData, id: string): string {
@@ -145,7 +150,7 @@ export class NodeAgentBoard implements AgentBoardService {
 
   /** AgentIntegrationAdapter.inspect. */
   private inspect(data: BoardData, id: string): SkillInspection {
-    const expected = this.skillContent();
+    const expected = this.skillContent(id);
     const path = this.skillPath(data, id);
     const result: SkillInspection = {
       skill_status: "NOT_INSTALLED", skill_version: "", skill_hash: "",
@@ -180,7 +185,7 @@ export class NodeAgentBoard implements AgentBoardService {
     if (rel.startsWith("..") || isAbsolute(rel)) throw new CoreError("OfferU Skill 目标路径越过允许目录");
     mkdirSync(dirname(path), { recursive: true });
     const tmp = `${path}.${process.pid}.tmp`;
-    writeFileSync(tmp, this.skillContent(), "utf8");
+    writeFileSync(tmp, this.skillContent(id), "utf8");
     renameSync(tmp, path);
     const base = dirname(path);
     for (const old of ["skills/profile_onboarding/SKILL.md", "skills/research/SKILL.md", "skills/tailor_resume/SKILL.md"]) {

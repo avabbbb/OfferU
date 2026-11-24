@@ -13,7 +13,7 @@ import {
 } from "@offeru/core";
 
 /**
- * What a runtime gives the shared tools. HTTP (/api/tools), MCP and the CLI all
+ * What a runtime gives the shared tools. HTTP (/api/tools) and the CLI all
  * build one and dispatch through @offeru/core callCoreTool, so the three surfaces
  * list and run exactly the same 21 tools as Python app/core/tools.py.
  *
@@ -45,7 +45,7 @@ export { TOOL_NAMES };
 const isStore = (value: ToolRuntime | CoreStore): value is CoreStore => typeof (value as CoreStore).transaction === "function";
 
 /**
- * The one place a runtime's capabilities become ToolDeps. HTTP, MCP, the CLI and the
+ * The one place a runtime's capabilities become ToolDeps. HTTP, the CLI and the
  * built-in Agent all build their deps here, so a capability wired for one surface
  * (PDF export, page measuring) is never silently missing on another.
  */

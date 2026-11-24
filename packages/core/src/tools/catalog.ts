@@ -1,7 +1,7 @@
 // Progressive tool disclosure for the built-in Agent (pattern from Flovart
 // workflow.node.tool.list + nodeToolCatalog: a short catalog every turn, the
 // full manual on demand). The registry (specs.ts) stays the one source of
-// names, full descriptions and JSON schemas; HTTP / MCP / CLI keep listing it
+// names, full descriptions and JSON schemas; HTTP keeps listing it (the CLI on --help)
 // unchanged. The Agent sees, per turn, a one-line brief and a slim schema
 // (same types / enums / required / bounds, no titles or prose) and reads the
 // full manual with `tool_manual`.

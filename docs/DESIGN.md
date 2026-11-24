@@ -14,7 +14,7 @@
 
 - 不做权限审批流、提案队列、Run 生命周期、Operation Registry。旧版的这些设计已归档。
 - 不做多用户；不在服务器上存用户数据。网页版部署在 Cloudflare Worker 上，但 Worker 只发静态文件和转发模型请求（见 [DEPLOY-CLOUDFLARE](./DEPLOY-CLOUDFLARE.md)）。跨设备同步只用用户自己的 S3 / R2 存储桶，端到端加密（见 10.1 和 [sync.md](./sync.md)）。
-- 不为每种 Agent 宿主写适配层，只提供 MCP 和命令行两种接入。
+- 不为每种 Agent 宿主写适配层，外置 Agent 只走命令行（`offeru tool`）。MCP 于 2026-11-24 移除：每次会话要把全部工具 schema 塞进上下文，还要在每个宿主各注册一次；命令行按需 `--help`，装上 Skill 就能用。
 
 ## 2. 总体结构
 
@@ -22,7 +22,7 @@
 
 ```text
  网页（Vite + React）  浏览器插件     Codex / Claude Code       内置 Agent
-        │ fetch /api/*     │ HTTP          │ MCP stdio / offeru-ts tool │
+        │ fetch /api/*     │ HTTP          │ offeru tool（命令行）      │
         └─────────┬────────┴───────────────┴────────────┬───────────────┘
                   ▼                                     ▼
    createApp(deps)（Hono）  /api/tools/{name}  /api/agent/*  /api/config  …
@@ -35,7 +35,7 @@
  IndexedDB（网页版，页面内）   SQLite offeru.db（桌面伴侣）：records + changes
 ```
 
-谁调用的工具，就记谁的名字（actor）：网页是「你」，MCP 取客户端名（codex / claude），命令行取 `OFFERU_ACTOR`，内置 Agent 是「助手」。
+谁调用的工具，就记谁的名字（actor）：网页是「你」，命令行取 `--actor`（看板装 Skill 时按 Agent 填好，如 codex），没有就 `OFFERU_ACTOR`，再没有是 agent；内置 Agent 是「助手」。
 
 ## 3. 数据模型
 
@@ -116,17 +116,16 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | 入口 | 地址 | 说明 |
 | --- | --- | --- |
 | HTTP | `GET /api/tools`、`POST /api/tools/{name}` | 网页、插件、小球都用这个。请求头 `x-offeru-actor` 指定 actor。 |
-| MCP | `/mcp`（Streamable HTTP）和 `offeru mcp`（stdio） | `claude mcp add offeru -- offeru mcp` / `codex mcp add offeru -- offeru mcp` 注册；Skill 由 Agent 看板「连接」装进 Agent 的 Skill 目录（见 7.1）。 |
-| 命令行 | `offeru tool <name> '<json>'` | MCP 连不上时的备用，也方便脚本和测试。参数也可以写 @文件路径（UTF-8 JSON）或 -（标准输入），避开 PowerShell 吞引号。 |
+| 命令行 | `offeru tool <name> '<json>'` | 外置 Agent 的唯一入口，Skill 由 Agent 看板「连接」装进 Agent 的 Skill 目录（见 7.1）。渐进披露：`offeru tool` 每个工具一行（`--json` 给机器读），`offeru tool <name> --help` 给完整说明和 schema，`offeru recipe <id>` 给常用流程。参数也可以写 @文件路径（UTF-8 JSON）或 -（标准输入），避开 PowerShell 吞引号。 |
 
-三个入口最后都调用 `tools.call(name, args, actor=)`，没有各自的业务逻辑。
+两个入口最后都调用 `tools.call(name, args, actor=)`，没有各自的业务逻辑。
 
 ### 7.1 Agent 看板（设置 > 我的 Agent）
 
 - 一行一个 Agent：内置宿主（codex / claude / opencode / pi / omp / gemini / codebuddy / dsh）加使用者自己添加的。数据在数据目录的 agent_board.json，字段 custom / hidden / memory / checks / calls。
 - 在线 = 正在运行 且 最近 10 分钟内有对话调用过 OfferU。Skill 文件在磁盘上、旧的 nonce 回读都不算。
   - 正在运行：每次列看板扫一次进程表（Windows 用 Get-CimInstance Win32_Process，其他系统用 ps），缓存 5 秒；命令行按空白、斜杠、引号切成词，匹配内置表里的名字（如 gemini-cli、oh-my-pi），自定义 Agent 匹配 id 和启动命令名。
-  - 调用过：MCP 取客户端名（无状态 HTTP 取 User-Agent），命令行取 OFFERU_ACTOR，映射到看板上的 Agent 后记一条 calls（时间、客户端、对话提示、thread）。没有对话提示的普通调用同一个 Agent 30 秒最多写一次；记账失败不影响工具调用。
+  - 调用过：命令行取 `--actor` / OFFERU_ACTOR（无状态 HTTP 取 User-Agent），映射到看板上的 Agent 后记一条 calls（时间、客户端、对话提示、thread）。没有对话提示的普通调用同一个 Agent 30 秒最多写一次；记账失败不影响工具调用。
 - 摘要行（在线 · 运行中 · Skill 已安装 · 需处理）由前端按当前显示的行计算，所以和看到的行永远一致；后端不返回汇总。
 - 打开对话：POST /api/agent-board/{id}/launch，和确认动作一样要工作台的 Authorization，在用户目录下开一个新终端窗口运行 Agent 的交互式 CLI。命令只来自内置表或自定义 Agent 保存的裸命令名，从不来自请求。只在工作台里操作，没有对应的命令行。
 - 看板不改 Agent 的设置或记忆文件。
@@ -141,8 +140,8 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 事务不嵌套（CoreStore 契约）：组合写入用 `saveRecordInTx` / `deleteRecordInTx`；SQLite 遇到嵌套直接报错，网页版所有事务严格排队（独立请求不再加入别人的事务、跟着回滚）。
 - 改写简历：网页走 SSE（`POST /api/resume/{id}/tailor`），工具 tailor_resume 在 core 里消费同一个 `runTailor` 生成器，只回摘要。锁按目标岗位（同一主简历可并行给不同岗位改写）；保存时在事务里重读 JD 和目标简历，生成期间被改就不覆盖，error 事件带 conflict 和 draft。
 - 系统提示词只有三件事：今天日期和 overview 摘要、工具说明、规则（不编造经历；对外的事只写草稿；长任务调用 handoff）。
-- 工具说明渐进披露（`packages/core/src/tools/catalog.ts`，借 Flovart `workflow.node.tool.list`）：每轮只给模型一行简述（`TOOL_BRIEFS`）+ 去掉 title / 长描述的精简 schema（校验仍用工具表原 schema），系统提示里放分组工具索引；要完整字段和规则时模型调只读的 `tool_manual(names=[…])`，常用流程（`role.research` / `evidence.map` / `resume.tailor` / `interview.prepare`）用 `tool_manual(capability=…)` 取步骤，流程只是现有工具的调用顺序，不新增业务逻辑。HTTP / MCP / CLI 仍列完整说明。
-- 工具报错结构化（`packages/core/src/tools/preflight.ts`）：内置 Agent 拿到的失败一律是 `{ok:false, error:{code, message, retryable, suggestedAction}}`（code：invalid_args / invalid / not_found / conflict / forbidden / unsupported / unknown_tool / upstream_unavailable / aborted / internal；只有 upstream_unavailable 可重试），不再是 `ERROR: …` 文本。执行前先过 schema 校验和预检（引用的岗位 / 记录 / 改动是否存在、简历 id 是不是 resume、改动是否已撤销），预检失败不执行，回修复建议（比如最近几条可用的 id）。HTTP / MCP / CLI 的报错形状不变。
+- 工具说明渐进披露（`packages/core/src/tools/catalog.ts`，借 Flovart `workflow.node.tool.list`）：每轮只给模型一行简述（`TOOL_BRIEFS`）+ 去掉 title / 长描述的精简 schema（校验仍用工具表原 schema），系统提示里放分组工具索引；要完整字段和规则时模型调只读的 `tool_manual(names=[…])`，常用流程（`role.research` / `evidence.map` / `resume.tailor` / `interview.prepare`）用 `tool_manual(capability=…)` 取步骤，流程只是现有工具的调用顺序，不新增业务逻辑。HTTP 仍列完整说明；CLI 默认只列一行简述，`--help` 才给完整说明。
+- 工具报错结构化（`packages/core/src/tools/preflight.ts`）：内置 Agent 拿到的失败一律是 `{ok:false, error:{code, message, retryable, suggestedAction}}`（code：invalid_args / invalid / not_found / conflict / forbidden / unsupported / unknown_tool / upstream_unavailable / aborted / internal；只有 upstream_unavailable 可重试），不再是 `ERROR: …` 文本。执行前先过 schema 校验和预检（引用的岗位 / 记录 / 改动是否存在、简历 id 是不是 resume、改动是否已撤销），预检失败不执行，回修复建议（比如最近几条可用的 id）。HTTP / CLI 的报错形状不变。
 - Skill 渐进加载（`packages/core/src/agent/skills.ts`，借 Flovart `agentSkills.ts`）：系统提示只放通用规则（`CORE_RULES`）+ 技能索引；`interview-practice` / `role-research` / `resume-tailoring` / `job-evaluation` / `email-writing` 的方法按需用 `skill_read(id)` 读。用户这条消息或最近 6 条对话命中技能的触发词（如「模拟面试」「第 N 题」「调研」「简历」）时，该技能正文直接放进系统提示，经过评测的模拟面试 / 调研规则（DOGFOOD 2026-11-07，v4）原文搬过去、不改写。技能只是现有工具的用法，不新增业务逻辑。
 - 流式可靠性（`packages/core/src/agent/stream-guard.ts`，借 Flovart 内核）：首包 90 秒、空闲 60 秒超时；**还没有任何输出时**遇到 408/429/5xx、网络错误或首包超时最多重试 2 次（间隔 1s、3s），每次重试记一条 `runtime.retry_started`；已经输出文字或工具调用后不重放（避免重复文字和重复写入），空闲超时直接让 Run 失败、可恢复。401/403 等不重试。
 - 上下文压缩（`packages/core/src/agent/compaction.ts`，借 Flovart `agentCompaction.ts`，不调模型）：每轮请求前估算「系统提示 + 工具 + 会话」，超过「窗口 − 预留」时，把最近一段（keep-recent）之外的旧工具结果压成摘要——保留记录 / 岗位 / 文档 / 改动 id、错误、remaining / asks 等未完成标记、已确认记忆的正文，去掉网页正文、长 JD / 简历原文；用户目标、消息角色和 tool_call 配对不动。系统提示末尾追加引用清单（岗位 #、文档 #、已确认证据 #、本轮改动 #、未完成）。模型报上下文超长时更狠地压一次再重试本轮。记一条 `runtime.compaction_completed`；`status().features.compaction = true`。
@@ -153,8 +152,8 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ## 9. 后台 Codex 交接（PR5）
 
-- `handoff(task, job_id?)` 在后台启动 `codex exec`，带上 OfferU MCP 和 Skill，工作目录在数据目录下的 `runs/<id>/`。
-- 先验证能否无人值守：非交互模式、MCP 是否自动可用、沙箱是否允许访问 127.0.0.1。验证不过就退回「复制这段话到 Codex」。
+- `handoff(task, job_id?)` 在后台启动 `codex exec`，带上 OfferU Skill（命令行），工作目录在数据目录下的 `runs/<id>/`。
+- 先验证能否无人值守：非交互模式、`offeru` 命令是否可用、沙箱是否允许访问 127.0.0.1。验证不过就退回「复制这段话到 Codex」。
 - 进度只看两样：进程是否还在、它写了哪些 change。完成后今天页的最近改动里出现「codex：……」。
 - 同时只跑一个后台任务。
 
@@ -183,7 +182,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
 - 共用组件：EventList、RecentChanges、JobBoard（今天页投递看板，前端直接 list job 和未完成 event）、TagInput、ChatDoc（PR3）、CommandK（PR3）。简历编辑器：顶栏一行（简历名下拉切换 / 新建 / 改名 / 复制 / 删除 | 排版工具栏，数值是「输入 + 下拉常用值」 | 下载 PDF）；左侧结构化表单，正文是所见即所得编辑框（存轻量标记）；右侧中性浅灰画布上的 A4 预览（只用一层浅阴影托出纸面），悬停模块显示蓝色虚线框，点击定位左侧；第一页分页线是中性灰虚线。简历编辑器配色和岗位页同一套 Notion 式中性色：底色、文字、细线继承全局，卡片纯白、输入框浅灰、标题无衬线、卡片圆角 10px（--radius-card）；主操作（下载 PDF）用墨黑主按钮，和「添加岗位」同一种，报错统一用 --primary-red。对齐：顶栏和左栏内边距都是 0.75rem，左栏卡片左缘对齐顶栏内容，卡片顶对齐右侧画布顶部。
-- 岗位页 /jobs 是多维表格（参考飞书多维表格，调研见 docs/design/jobs-table-research.md）：视图 tab 表格 / 看板 / 甘特；顶栏有搜索、筛选、分组、排序、字段显隐、行高、重置和添加岗位。评估未评估的岗位时走 `POST /api/jobs/evaluate`（SSE：start → job_start / job … → done），按钮显示「正在评估 3/7」；工具 evaluate_jobs 仍是同步调用，供 Agent 和 MCP 用。表格用 @tanstack/react-table，冻结公司列，悬停行出勾选框和「打开」，勾选后出批量栏，单元格直接改；「打开」进右侧详情抽屉（∧∨ 按当前顺序切换，Esc 关闭，失焦即存）。看板 tab 复用 JobBoard（embedded，不显示标题）。筛选 / 分组 / 排序是 lib/jobView.ts 里的纯函数；视图配置存 localStorage，自动保存。list 结果保留 created_at，给甘特当起点。甘特视图（components/jobs/JobsGantt.tsx，时间计算在 lib/jobGantt.ts，有单测）：左侧冻结岗位列（« / » 可折叠成窄边）、右侧时间轴，周 / 月两档缩放和「今天」按钮，竖红线标今天；条从收藏日画到最后一件事项（进行中的画到今天），颜色跟状态，已结束的变淡；条上菱形是截止 / 笔试 / 面试 / 待办，悬停出事项卡片（标题、类型、时间、备注），拖动按整天改 event.at（保留时刻），工具栏出「撤销」；条是推算的，不能拖。点行内空白处弹小表单，在那天给该岗位加事项（类型 + 标题，回车存、Esc 或失焦取消，表单夹在可视区内）。条整个在可视区外时行内贴边出 ← / →，点了滚到条起点。短条的文字画在条右边；网格按可视宽度往右补满；点条或岗位名打开详情抽屉；筛选 / 分组 / 排序用甘特视图自己的配置。看板列宽随窗口流动（`--ou-kanban-column`，16–22rem），放不下时在看板轨道内横向滚动、按列吸附。
+- 岗位页 /jobs 是多维表格（参考飞书多维表格，调研见 docs/design/jobs-table-research.md）：视图 tab 表格 / 看板 / 甘特；顶栏有搜索、筛选、分组、排序、字段显隐、行高、重置和添加岗位。评估未评估的岗位时走 `POST /api/jobs/evaluate`（SSE：start → job_start / job … → done），按钮显示「正在评估 3/7」；工具 evaluate_jobs 仍是同步调用，供 Agent 和命令行用。表格用 @tanstack/react-table，冻结公司列，悬停行出勾选框和「打开」，勾选后出批量栏，单元格直接改；「打开」进右侧详情抽屉（∧∨ 按当前顺序切换，Esc 关闭，失焦即存）。看板 tab 复用 JobBoard（embedded，不显示标题）。筛选 / 分组 / 排序是 lib/jobView.ts 里的纯函数；视图配置存 localStorage，自动保存。list 结果保留 created_at，给甘特当起点。甘特视图（components/jobs/JobsGantt.tsx，时间计算在 lib/jobGantt.ts，有单测）：左侧冻结岗位列（« / » 可折叠成窄边）、右侧时间轴，周 / 月两档缩放和「今天」按钮，竖红线标今天；条从收藏日画到最后一件事项（进行中的画到今天），颜色跟状态，已结束的变淡；条上菱形是截止 / 笔试 / 面试 / 待办，悬停出事项卡片（标题、类型、时间、备注），拖动按整天改 event.at（保留时刻），工具栏出「撤销」；条是推算的，不能拖。点行内空白处弹小表单，在那天给该岗位加事项（类型 + 标题，回车存、Esc 或失焦取消，表单夹在可视区内）。条整个在可视区外时行内贴边出 ← / →，点了滚到条起点。短条的文字画在条右边；网格按可视宽度往右补满；点条或岗位名打开详情抽屉；筛选 / 分组 / 排序用甘特视图自己的配置。看板列宽随窗口流动（`--ou-kanban-column`，16–22rem），放不下时在看板轨道内横向滚动、按列吸附。
 - 岗位页视觉照 Notion 数据库：表格白底、无外框、无竖线、无行号，只留淡横线；组头「▸ 状态胶囊 数量」，组末「+ 新建」。状态和单选 / 标签是色卡 v2 浅色胶囊：浅底 + 深字 + 同色 1px 描边 + 小圆点；状态下拉按 待办 / 进行中 / 已完成 分组。顶栏是一排灰色图标（生效的变深并带计数），视图 tab 是浅灰圆角底，搜索点了才展开，最右墨黑主按钮「添加岗位」。看板列底 N3 中性色，颜色只留给列头胶囊；卡片是 L2（白底 + 1px 分隔线 + 小阴影，悬停抬起一级），列底「+ 新建」是灰字。甘特左列无竖线、网格更淡，条用状态色浅底，今天是细红线加表头小圆点。
 - 视觉：色卡 v2（Minimal）：暖中性色阶为主、墨黑主按钮、橙色只表示紧急 / 委托、紫色只属于 Agent；字号和间距弹性适配（字号走 Token + clamp()，正文约 13–15px，间距 rem）；页面容器分 reading / default / wide 三种宽度，留白随视口流动；不用徽章、统计卡、彩色按钮、网格背景。状态六色：灰（想投、不投了）、蓝（已投递）、黄（笔试 / 测评）、橙（面试中）、绿（offer）、红（未通过）；单选 / 标签按文字哈希取九色之一，同一个值永远同一色。红色另用于截止和今天线。
 

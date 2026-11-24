@@ -21,7 +21,7 @@ backend-ts/src/routes/    运行时无关的路由模块，每个领域一个文
 backend-ts/src/routes/companion/
                           只在 Node 伴侣上有的适配器和路由（磁盘文件、Playwright、poppler、BOSS CLI、Agent 看板、配置文件）
 backend-ts/src/server.ts  Node 伴侣入口（@hono/node-server，127.0.0.1:8767），组装 SQLite + companion 适配器
-backend-ts/src/cli.ts     offeru-ts CLI（doctor / tool / mcp / serve），mcp.ts 是 stdio MCP
+backend-ts/src/cli.ts     offeru-ts CLI（doctor / tool / recipe / serve / start），外置 Agent 唯一入口
 backend-ts/src/worker.ts  Cloudflare Worker 入口：静态资源 + 无状态模型转发，不碰数据
 backend-ts/wrangler.toml  Worker 配置（assets 指向 frontend/dist）
 frontend/src/lib/local/   网页版的页面内后端：把 backend-ts 的 createApp 跑在浏览器里（IndexedDB 适配器）
@@ -64,13 +64,13 @@ frontend/src/lib/demo/    展示站 demo 的 BrowserDemoStore（网页版复用�
 | 本机文件工具（read_file / find_files） | ❌ 501 | ❌ | ✅ | |
 | BOSS 扫码登录 | ❌ 501 | ❌ | ✅ 需本机自装 boss CLI | 安装包不再附带 boss 可执行文件 |
 | Agent 看板（外置 Agent） | ❌ 501 | ❌ | ✅ | |
-| MCP | ❌ | ❌ | ✅ stdio（HTTP `/mcp` 未迁） | |
+| 外置 Agent 命令行（`offeru tool`） | ❌ | ❌ | ✅ | MCP 已于 2026-11-24 移除 |
 | 邮箱同步（IMAP） | ❌ | ❌ | ❌ 未迁 | Python 版有，删除时未迁移 |
 
 ## 5. 加工具 / 加路由
 
 1. **规则进 core**：在 `packages/core/src/<领域>/` 写纯函数或工具 handler，依赖（store、llm、fetch、files……）从参数注入。不 import `node:*`、DOM、React。
-2. **工具**：在 core 的工具表（`tools/index.ts` 的 `ALL_TOOL_SPECS`）登记 schema；`/api/tools/:name`、MCP、CLI、内置 Agent 自动可用。
+2. **工具**：在 core 的工具表（`tools/index.ts` 的 `ALL_TOOL_SPECS`）登记 schema；`/api/tools/:name`、CLI、内置 Agent 自动可用。
 3. **路由**：`backend-ts/src/routes/<领域>.ts` 导出 `registerX(app)`，在 `routes/index.ts` 加一行。只解析输入、调 core、回 JSON；预期错误抛 `CoreError(message, code)`。依赖从 `c.get("deps")` 取，缺了就 501。
 4. **只在本机能做的**：适配器和路由放 `routes/companion/`，在 `server.ts` 注入、在 `routes/companion/index.ts` 注册。Worker 和浏览器永远不 import 这里。
 5. **新依赖**：给 `AppDeps` 加可选字段，并分别在 `server.ts`（Node）和 `frontend/src/lib/local/backend.ts`（浏览器）里接上或明确不接。
@@ -79,4 +79,4 @@ frontend/src/lib/demo/    展示站 demo 的 BrowserDemoStore（网页版复用�
 
 ## 6. Python 后端（已删除）
 
-`backend/`（FastAPI）和只给它用的 `agent-runtime/`（外置 Claude 执行器）已删除，最后一版在 tag `python-backend-final`。157 条旧路由中 135 条由 TS 提供，其余 22 条（`/api/research/*`、`/api/bridge/proposals/*`、`/api/agent/runtime/skill`）按决定不迁，见 [route-coverage](./route-coverage.md)。没迁的能力：邮箱同步（IMAP）、HTTP `/mcp`、系统钥匙串。
+`backend/`（FastAPI）和只给它用的 `agent-runtime/`（外置 Claude 执行器）已删除，最后一版在 tag `python-backend-final`。157 条旧路由中 135 条由 TS 提供，其余 22 条（`/api/research/*`、`/api/bridge/proposals/*`、`/api/agent/runtime/skill`）按决定不迁，见 [route-coverage](./route-coverage.md)。没迁的能力：邮箱同步（IMAP）、系统钥匙串。MCP 已于 2026-11-24 移除，外置 Agent 只走 CLI。

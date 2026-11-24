@@ -1,16 +1,22 @@
 ---
 name: offeru
 description: OfferU 本机求职工作台：岗位、简历、档案、日程、网申和邮件草稿都存在用户电脑上。用户谈求职、实习、JD、简历、网申、笔试面试、offer 时用。
-version: 2026-11-18
+version: 2026-11-24
 ---
 
 # OfferU
 
-工作台、内置助手、MCP 和命令行用的是同一张工具表（`<offeru> tool` 列出全部）。写入直接生效，用户可在「最近改动」撤销，不用先问。对外的事（网申、邮件、联系 HR）只写草稿，用户自己发。
+工作台、内置助手和命令行用的是同一张工具表。外置 Agent 只走命令行，不用注册 MCP。写入直接生效，用户可在「最近改动」撤销，不用先问。对外的事（网申、邮件、联系 HR）只写草稿，用户自己发。
 
 ## 调用
 
-优先 MCP。没有就用命令行（输出 JSON）：`<offeru> tool overview`、`<offeru> tool get '{"type":"job","id":3}'`。参数含中文或在 PowerShell 里，先写成 UTF-8 的 JSON 文件，再 `<offeru> tool save @args.json`。报错就按提示改参数；命令不通看文末。
+全部走命令行，输出 JSON：
+
+- `<offeru> tool`：工具清单，每个一行（`--json` 给机器读的版本）。开场先看一次，不用背。
+- `<offeru> tool <名字> [<名字>…] --help`：完整说明和参数 schema。参数不确定时先查，只查要用的。
+- `<offeru> recipe <id>`：常用流程（调研、证据对照、改简历、面试准备）该按什么顺序调哪些工具。
+- `<offeru> tool overview`、`<offeru> tool get '{"type":"job","id":3}'`：调用。参数含中文或在 PowerShell 里，先写成 UTF-8 的 JSON 文件，再 `<offeru> tool save @args.json`（或 `-` 走标准输入）。
+- 输出是 JSON，可以接 `jq` 或写文件；失败时打印 `{"error": …}` 并以 1 退出，按提示改参数。命令不通看文末。
 
 `<offeru>` 是装好的 `offeru` 命令；从源码运行时是 `npm --prefix <仓库>/backend-ts run --silent cli --`。
 
@@ -51,7 +57,4 @@ profile 档案；memory 职业记忆（一条一件事）；job 岗位；event �
    - `npm --prefix frontend run build`（打包工作台页面）。
    发布了 `v*-lite` 版本后也可以 `npm install -g <Release 里的 offeru-lite-*.tgz 链接>`，得到 `offeru` 命令。
 3. 启动工作台：`<offeru> start`（http://127.0.0.1:8766，保持运行，首次会打开一个配对链接）。`<offeru> doctor` 检查数据库和工具表。
-4. 接入 Agent：
-   - MCP（stdio）：`claude mcp add offeru -- <offeru> mcp` 或 `codex mcp add offeru -- <offeru> mcp`；
-   - Skill：在工作台「设置 → 我的 Agent」（Agent 看板）点「连接」，会把这份 SKILL.md 装进对应 Agent 的 Skill 目录；也可以手动复制 `backend-ts/skill/SKILL.md`。
-   然后开新会话。
+4. 接入 Agent：在工作台「设置 → 我的 Agent」（Agent 看板）点「连接」，会把这份 SKILL.md 装进对应 Agent 的 Skill 目录，命令里带好 `--data-dir` 和 `--actor`；也可以手动复制 `backend-ts/skill/SKILL.md`，把 `<offeru>` 换成本机命令。然后开新会话，跑一次 `<offeru> tool overview` 确认能读到数据。

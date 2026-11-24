@@ -8,7 +8,7 @@
 // with a fix suggestion instead of letting the tool fail half-way. JSON
 // Schema validation stays where it was (callCoreTool → validateArgs).
 //
-// HTTP / MCP / CLI keep their existing error shapes; only the Agent binding
+// HTTP / CLI keep their existing error shapes; only the Agent binding
 // uses this.
 
 import { isCoreError, type CoreStore, type RecordType } from "../types";

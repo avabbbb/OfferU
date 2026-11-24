@@ -1,5 +1,5 @@
 // Tool specs the built-in Agent shows the model, derived from the shared
-// registry (tools/specs.ts TOOL_SPECS). One source: HTTP /api/tools, MCP, CLI
+// registry (tools/specs.ts TOOL_SPECS). One source: HTTP /api/tools, CLI
 // and the Agent list the same names and validate against the same JSON
 // schemas. The Agent gets the progressive form each turn (tools/catalog.ts:
 // one-line brief + slim schema) and reads the full manual with tool_manual.

@@ -4,11 +4,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runMcpServer } from "./mcp";
 import { NodeAgentBoard } from "./routes/companion/agent-board";
 import { dbPath } from "./paths";
 import { startHttpServer } from "./server";
-import { ALL_TOOL_SPECS } from "@offeru/core";
+import { AGENT_TOOL_SPECS, ALL_TOOL_SPECS, CAPABILITIES, TOOL_GROUPS, TOOL_INSTRUCTIONS, toolBrief, toolManual } from "@offeru/core";
 
 import { nodeToolRuntime } from "./node-runtime";
 import { callTool, TOOL_NAMES } from "./tools";
@@ -18,14 +17,18 @@ import { APP_VERSION } from "./runtime-identity";
 const HELP = `OfferU TS CLI
 
 usage:
-  offeru-ts tool [<name> [json|@file|-]] [--actor name] [--pretty]
-      no name: list the tools. Actor: --actor, else $OFFERU_ACTOR, else "agent" (like Python).
-  offeru-ts mcp
+  offeru-ts tool                         tools, grouped, one line each
+  offeru-ts tool --json                  the same list as JSON
+  offeru-ts tool <name> [<name>…] --help full description and input schema
+  offeru-ts tool <name> [json|@file|-]   run a tool; prints JSON, {"error"} + exit 1 on failure
+  offeru-ts recipe [<id>]                common flows (which tools, in what order, rules)
   offeru-ts serve
   offeru-ts doctor
   offeru-ts start [--no-browser]
       serve the built workbench (frontend/dist) and the API on 127.0.0.1:8766, open #/pair/<code>.
 global: --data-dir <dir> (else $OFFERU_DATA_DIR)
+        --actor <name> (else $OFFERU_ACTOR, else "agent"): who the change log and the Agent board credit
+        --pretty
 
 tools: ${TOOL_NAMES.join(", ")}
 `;
@@ -49,6 +52,47 @@ function takeFlag(args: string[], name: string): string | undefined {
   return value;
 }
 
+function takeSwitch(args: string[], name: string): boolean {
+  const index = args.indexOf(name);
+  if (index < 0) return false;
+  args.splice(index, 1);
+  return true;
+}
+
+const AGENT_TOOLS = new Set(AGENT_TOOL_SPECS.map((spec) => spec.name));
+
+/** The built-in Agent's one-line brief, with its tool_manual pointers turned into the CLI's --help. */
+function cliBrief(spec: (typeof ALL_TOOL_SPECS)[number]): string {
+  return toolBrief(spec)
+    .replace(/tool_manual\(names=\["(\w+)"\]\)/g, "offeru tool $1 --help")
+    .replace(/tool_manual/g, `offeru tool ${spec.name} --help`);
+}
+
+/** `offeru tool`: what an agent reads first. One line per tool, grouped; full schemas only on --help. */
+function toolIndex(): string {
+  const byName = new Map(ALL_TOOL_SPECS.map((spec) => [spec.name, spec]));
+  const seen = new Set<string>();
+  const lines = [TOOL_INSTRUCTIONS, ""];
+  const line = (name: string) => {
+    const spec = byName.get(name);
+    if (!spec || seen.has(name)) return;
+    seen.add(name);
+    lines.push(`  ${name}: ${cliBrief(spec)}${AGENT_TOOLS.has(name) ? "" : "（只给用户本人用）"}`);
+  };
+  for (const group of TOOL_GROUPS) {
+    lines.push(`${group.title}`);
+    group.tools.forEach(line);
+  }
+  const rest = ALL_TOOL_SPECS.filter((spec) => !seen.has(spec.name));
+  if (rest.length) {
+    lines.push("其他");
+    rest.forEach((spec) => line(spec.name));
+  }
+  lines.push("", `常用流程（offeru recipe <id>）：${CAPABILITIES.filter((cap) => cap.steps.length).map((cap) => `${cap.id} ${cap.title}`).join("；")}`);
+  lines.push("参数和字段：offeru tool <name> --help。调用：offeru tool <name> '<json>'，中文或 PowerShell 用 @args.json。");
+  return lines.join("\n") + "\n";
+}
+
 function payloadOf(raw: string | undefined): unknown {
   // utf-8-sig like Python: PowerShell writes a BOM.
   const text = raw === "-"
@@ -64,9 +108,9 @@ async function main(): Promise<number> {
   // Python `offeru --data-dir <dir> ...`: the Skill command pins the database of this install.
   const dataDir = takeFlag(args, "--data-dir");
   if (dataDir) process.env.OFFERU_DATA_DIR = dataDir;
+  const actor = takeFlag(args, "--actor") || process.env.OFFERU_ACTOR || "agent";
   const command = args.shift() || "help";
   const pretty = args.includes("--pretty");
-  const actor = takeFlag(args, "--actor") || process.env.OFFERU_ACTOR || "agent";
   const prettyIndex = args.indexOf("--pretty");
   if (prettyIndex >= 0) args.splice(prettyIndex, 1);
 
@@ -86,9 +130,29 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  const asJson = takeSwitch(args, "--json");
+  const wantsHelp = takeSwitch(args, "--help") || takeSwitch(args, "-h");
+  const print = (value: unknown) => process.stdout.write(JSON.stringify(value, null, pretty || wantsHelp ? 2 : 0) + "\n");
+
   if (command === "tool" && !args[0]) {
-    for (const spec of ALL_TOOL_SPECS) process.stdout.write(`${spec.name}: ${spec.description}\n`);
+    if (asJson) {
+      print(ALL_TOOL_SPECS.map((spec) => ({ name: spec.name, brief: cliBrief(spec), agent: AGENT_TOOLS.has(spec.name) })));
+    } else {
+      process.stdout.write(toolIndex());
+    }
     return 0;
+  }
+
+  if (command === "tool" && wantsHelp) {
+    const result = toolManual(ALL_TOOL_SPECS, { names: args });
+    print(result);
+    return result.ok ? 0 : 1;
+  }
+
+  if (command === "recipe") {
+    const result = toolManual(ALL_TOOL_SPECS, args[0] ? { capability: args[0] } : {});
+    print(result.ok && !args[0] ? result.index?.capabilities : result.ok ? result.capability : result);
+    return result.ok ? 0 : 1;
   }
 
   const store = openStore(dbPath());
@@ -97,6 +161,8 @@ async function main(): Promise<number> {
     if (command === "tool") {
       const name = args.shift()!;
       try {
+        // Agent board bookkeeping: --actor is the calling Agent; never fails the call.
+        await new NodeAgentBoard({ dataDir: dirname(dbPath()) }).recordClientCall(actor).catch(() => "");
         const result = await callTool(name, payloadOf(args[0]), runtime, actor);
         process.stdout.write(JSON.stringify(result, null, pretty ? 2 : 0) + "\n");
         return 0;
@@ -105,12 +171,6 @@ async function main(): Promise<number> {
         process.stdout.write(JSON.stringify({ error: cause instanceof Error ? cause.message : String(cause) }) + "\n");
         return 1;
       }
-    }
-
-    if (command === "mcp") {
-      const board = new NodeAgentBoard({ dataDir: dirname(dbPath()) });
-      await runMcpServer(runtime, { onClientCall: (client) => board.recordClientCall(client) });
-      return 0;
     }
 
     if (command === "start") {
@@ -147,7 +207,7 @@ async function main(): Promise<number> {
     process.stderr.write(HELP);
     return 2;
   } finally {
-    if (command !== "mcp" && command !== "serve" && command !== "start") store.close();
+    if (command !== "serve" && command !== "start") store.close();
   }
 }
 
