@@ -1591,3 +1591,233 @@ input {
   border-radius: 999px;
   background: #cbd5e1;
 }
+
+/* ── v3 Glass（浅色）────────────────────────────────────────────────
+ * 与网页版 docs/design/visual-system.md 一致：冷暖渐变画布 + 磨砂侧栏 + 半透明白纸面，
+ * 层级靠柔和阴影不靠 1px 描边；选中 / 悬停 = 实白胶囊浮起；主按钮墨黑胶囊。
+ * 参考 Inspora「Soft glass workspace picker」。数值抄自 frontend/src/styles/design-tokens.css。
+ * 深色主题仍走上面的 data-theme="dark" 规则。 */
+:root:not([data-theme="dark"]) {
+  --ou-bg-wash:
+    radial-gradient(110% 80% at 0% 0%, rgba(201, 214, 242, 0.95) 0%, rgba(201, 214, 242, 0) 60%),
+    radial-gradient(110% 90% at 100% 100%, rgba(246, 227, 210, 0.95) 0%, rgba(246, 227, 210, 0) 62%),
+    linear-gradient(135deg, #dfe6f5 0%, #eeecf1 48%, #f6e9df 100%);
+  --ou-glass-bg: rgba(255, 255, 255, 0.55);
+  --ou-glass-strong: rgba(255, 255, 255, 0.9);
+  --ou-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --ou-bg-surface: rgba(255, 255, 255, 0.84);
+  --ou-bg-field: rgba(60, 50, 80, 0.04);
+  --ou-bg-hover: rgba(60, 50, 80, 0.055);
+  --ou-capsule-bg: #ffffff;
+  --ou-capsule-hover: rgba(255, 255, 255, 0.62);
+  --ou-capsule-shadow: 0 1px 2px rgba(60, 50, 80, 0.06), 0 4px 12px rgba(60, 50, 80, 0.07);
+  --ou-tile-bg: rgba(255, 255, 255, 0.72);
+  --ou-elev-1: 0 1px 2px rgba(60, 50, 80, 0.04), 0 6px 20px rgba(60, 50, 80, 0.06);
+  --ou-elev-2-hover: 0 2px 4px rgba(60, 50, 80, 0.06), 0 18px 44px rgba(60, 50, 80, 0.16);
+  --ou-elev-3: 0 0 0 0.5px rgba(60, 50, 80, 0.08), 0 12px 32px rgba(60, 50, 80, 0.16);
+  --ou-elev-4: 0 0 0 0.5px rgba(60, 50, 80, 0.08), 0 28px 72px rgba(60, 50, 80, 0.24);
+  --ou-line-separator: rgba(60, 50, 80, 0.08);
+  --ou-line-control: rgba(60, 50, 80, 0.14);
+  --ou-text-primary: #231d19;
+  --ou-text-secondary: #69625d;
+  --ou-text-tertiary: #827a75;
+  --ou-action-primary: #231d19;
+  --ou-tone-green-bg: #e5f5e8; --ou-tone-green-dot: #63ab74; --ou-tone-green-text: #2e693e;
+  --ou-tone-yellow-bg: #f9efdb; --ou-tone-yellow-dot: #bd9121; --ou-tone-yellow-text: #775400;
+  --ou-tone-red-bg: #ffe8e5; --ou-tone-red-dot: #e66e68; --ou-tone-red-text: #953734;
+  --ou-tone-blue-bg: #e3f2ff; --ou-tone-blue-dot: #5b9ddf; --ou-tone-blue-text: #275e91;
+  --ou-motion-fast: 120ms;
+  --ou-motion-base: 200ms;
+  --ou-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ou-ease-spring-soft: cubic-bezier(0.2, 0.9, 0.25, 1.2);
+  --primary: #231d19;
+  --primary-strong: #000000;
+  --text-main: #231d19;
+  --text-muted: #69625d;
+  --line: rgba(60, 50, 80, 0.08);
+  --surface: rgba(255, 255, 255, 0.84);
+  --surface-soft: rgba(255, 255, 255, 0.5);
+  --page-bg: transparent;
+  --ok-bg: #e5f5e8; --ok-text: #2e693e;
+  --warn-bg: #f9efdb; --warn-text: #775400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-theme="dark"]) { --ou-motion-fast: 0ms; --ou-motion-base: 0ms; }
+}
+
+:root:not([data-theme="dark"]) body { background: var(--ou-bg-wash); color: var(--ou-text-primary); }
+:root:not([data-theme="dark"])[data-embed="drawer"] body { background: var(--ou-bg-wash); }
+
+/* 窗体：一整块磨砂玻璃，无描边 */
+:root:not([data-theme="dark"]) .popup-shell {
+  border: 0;
+  border-radius: 22px;
+  background: var(--ou-glass-bg);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: var(--ou-glass-highlight), var(--ou-elev-3);
+}
+:root:not([data-theme="dark"])[data-embed="drawer"] .popup-shell { border-radius: 0; box-shadow: none; }
+
+/* 侧栏：透明压在玻璃上；图标放进磨砂小方块，选中是浮起的白胶囊 */
+:root:not([data-theme="dark"]) .side-nav { background: transparent; border-right: 0; padding-top: 14px; gap: 8px; }
+:root:not([data-theme="dark"]) .brand-mark {
+  width: 16px; height: 16px; border-radius: 6px; margin-bottom: 8px;
+  background: var(--ou-action-primary); box-shadow: var(--ou-capsule-shadow);
+}
+:root:not([data-theme="dark"]) .tab-btn {
+  border: 0; border-radius: 14px; color: var(--ou-text-tertiary);
+  transition: background-color var(--ou-motion-base) var(--ou-ease-standard),
+    box-shadow var(--ou-motion-base) var(--ou-ease-standard),
+    color var(--ou-motion-fast) var(--ou-ease-standard),
+    transform var(--ou-motion-base) var(--ou-ease-spring-soft);
+}
+:root:not([data-theme="dark"]) .tab-btn:hover { background: var(--ou-capsule-hover); color: var(--ou-text-secondary); }
+:root:not([data-theme="dark"]) .tab-btn:active { transform: scale(0.94); }
+:root:not([data-theme="dark"]) .tab-btn.active {
+  background: var(--ou-capsule-bg); color: var(--ou-text-primary); box-shadow: var(--ou-capsule-shadow);
+}
+
+/* 主区：半透明白纸面，与侧栏之间只靠明度区分 */
+:root:not([data-theme="dark"]) .main-shell {
+  margin: 8px 8px 8px 0;
+  height: calc(100% - 16px);
+  border-radius: 18px;
+  background: var(--ou-bg-surface);
+  box-shadow: var(--ou-elev-1);
+}
+:root:not([data-theme="dark"])[data-embed="drawer"] .main-shell { margin: 0; height: 100%; border-radius: 0; }
+:root:not([data-theme="dark"]) .topbar { border-bottom: 0; }
+:root:not([data-theme="dark"]) .top-title { color: var(--ou-text-primary); font-weight: 650; letter-spacing: -0.01em; }
+:root:not([data-theme="dark"]) .open-web-button,
+:root:not([data-theme="dark"]) .open-button {
+  border: 0; border-radius: 999px; background: var(--ou-bg-field); color: var(--ou-text-secondary);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+}
+:root:not([data-theme="dark"]) .open-web-button:hover,
+:root:not([data-theme="dark"]) .open-button:hover {
+  background: var(--ou-capsule-bg); color: var(--ou-text-primary); box-shadow: var(--ou-capsule-shadow);
+}
+
+/* 提示条：浮层玻璃 + 状态圆点，从上方轻弹入 */
+:root:not([data-theme="dark"]) .message {
+  border-radius: 999px;
+  transition: opacity var(--ou-motion-base) var(--ou-ease-standard), transform var(--ou-motion-base) var(--ou-ease-spring-soft);
+}
+:root:not([data-theme="dark"]) .message.success,
+:root:not([data-theme="dark"]) .message.error,
+:root:not([data-theme="dark"]) .message.info {
+  border: 0; padding: 6px 12px 6px 22px; color: var(--ou-text-primary);
+  background: var(--ou-glass-strong);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  box-shadow: var(--ou-elev-3);
+}
+:root:not([data-theme="dark"]) .message::before {
+  content: ""; position: absolute; left: 10px; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%;
+}
+:root:not([data-theme="dark"]) .message.success::before { background: var(--ou-tone-green-dot); }
+:root:not([data-theme="dark"]) .message.error::before { background: var(--ou-tone-red-dot); }
+:root:not([data-theme="dark"]) .message.info::before { background: var(--ou-tone-blue-dot); }
+
+/* 标题行与文字动作 */
+:root:not([data-theme="dark"]) .panel-title { color: var(--ou-text-primary); font-size: 13px; font-weight: 650; }
+:root:not([data-theme="dark"]) .round-badge { background: var(--ou-bg-field); color: var(--ou-text-secondary); }
+:root:not([data-theme="dark"]) .text-action {
+  font-size: 11px; color: var(--ou-text-secondary); padding: 4px 9px; border-radius: 999px;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+:root:not([data-theme="dark"]) .text-action:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+:root:not([data-theme="dark"]) #addCurrentBtn { background: var(--ou-action-primary); color: #ffffff; }
+:root:not([data-theme="dark"]) #addCurrentBtn:hover { background: #000000; }
+
+/* 列表与卡片：无描边，柔和阴影，悬停浮起 */
+:root:not([data-theme="dark"]) .splitter,
+:root:not([data-theme="dark"]) .list-wrap { border: 0; background: transparent; padding: 2px; }
+:root:not([data-theme="dark"]) .empty-state {
+  border: 0; border-radius: 14px; background: var(--ou-bg-field); color: var(--ou-text-tertiary);
+}
+:root:not([data-theme="dark"]) .job-card,
+:root:not([data-theme="dark"]) .resume-card {
+  border: 0; border-radius: 16px; background: var(--ou-capsule-bg); box-shadow: var(--ou-elev-1);
+  transition: box-shadow var(--ou-motion-base) var(--ou-ease-standard), transform var(--ou-motion-base) var(--ou-ease-standard);
+}
+:root:not([data-theme="dark"]) .job-card:hover,
+:root:not([data-theme="dark"]) .resume-card:hover { box-shadow: var(--ou-elev-2-hover); transform: translateY(-1px); }
+:root:not([data-theme="dark"]) .job-card.is-selected,
+:root:not([data-theme="dark"]) .resume-card.is-selected { box-shadow: 0 0 0 1.5px var(--ou-action-primary), var(--ou-elev-1); }
+:root:not([data-theme="dark"]) .resume-thumb { border: 0; border-radius: 10px; background: var(--ou-bg-field); }
+:root:not([data-theme="dark"]) .resume-thumb-media.placeholder { background: var(--ou-bg-field); color: var(--ou-text-tertiary); }
+:root:not([data-theme="dark"]) .pick-button { border-radius: 999px; border-color: var(--ou-line-control);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), transform var(--ou-motion-base) var(--ou-ease-spring-soft); }
+:root:not([data-theme="dark"]) .pick-button.is-picked { border-color: var(--ou-action-primary); background: var(--ou-action-primary); transform: scale(1.06); }
+:root:not([data-theme="dark"]) .card-title { color: var(--ou-text-primary); font-weight: 650; }
+:root:not([data-theme="dark"]) .card-meta { color: var(--ou-text-tertiary); }
+:root:not([data-theme="dark"]) .meta-chip { border-radius: 999px; background: var(--ou-bg-field); color: var(--ou-text-secondary); }
+
+/* 状态胶囊：浅底 + 深字 + 圆点 */
+:root:not([data-theme="dark"]) .status-pill { border: 0; border-radius: 999px; padding: 1px 8px 1px 16px; position: relative; font-weight: 600; }
+:root:not([data-theme="dark"]) .status-pill::before {
+  content: ""; position: absolute; left: 7px; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: currentColor; opacity: 0.7;
+}
+:root:not([data-theme="dark"]) .status-pill.ready { background: var(--ou-tone-green-bg); color: var(--ou-tone-green-text); }
+:root:not([data-theme="dark"]) .status-pill.draft { background: var(--ou-tone-yellow-bg); color: var(--ou-tone-yellow-text); }
+
+/* 按钮：墨黑主胶囊 + 白胶囊次按钮 */
+:root:not([data-theme="dark"]) #panel-cart .footer-actions,
+:root:not([data-theme="dark"]) #panel-resumes .footer-actions { background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.9) 30%); }
+:root:not([data-theme="dark"]) .btn {
+  border-radius: 999px; font-weight: 600;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-base) var(--ou-ease-standard), transform var(--ou-motion-fast) var(--ou-ease-standard);
+}
+:root:not([data-theme="dark"]) .btn:active:not(:disabled) { transform: scale(0.97); }
+:root:not([data-theme="dark"]) .btn-primary { border: 0; background: var(--ou-action-primary); color: #ffffff; }
+:root:not([data-theme="dark"]) .btn-primary:hover:not(:disabled) { background: #000000; box-shadow: var(--ou-capsule-shadow); }
+:root:not([data-theme="dark"]) .btn-outline,
+:root:not([data-theme="dark"]) .btn-secondary { border: 0; background: var(--ou-capsule-bg); color: var(--ou-text-primary); box-shadow: var(--ou-capsule-shadow); }
+:root:not([data-theme="dark"]) .btn-outline:hover:not(:disabled),
+:root:not([data-theme="dark"]) .btn-secondary:hover:not(:disabled) { background: #ffffff; box-shadow: var(--ou-elev-2-hover); }
+
+/* 设置：白卡无描边，行间不画线，输入框是浅灰填充 */
+:root:not([data-theme="dark"]) .settings-title { color: var(--ou-text-primary); font-weight: 650; }
+:root:not([data-theme="dark"]) .settings-card { border: 0; border-radius: 16px; background: var(--ou-capsule-bg); box-shadow: var(--ou-elev-1); padding: 10px 12px; }
+:root:not([data-theme="dark"]) .settings-card .settings-row + .settings-row { border-top: 0; }
+:root:not([data-theme="dark"]) .settings-label { color: var(--ou-text-primary); }
+:root:not([data-theme="dark"]) .settings-value,
+:root:not([data-theme="dark"]) .settings-hint,
+:root:not([data-theme="dark"]) .settings-section-title { color: var(--ou-text-tertiary); }
+:root:not([data-theme="dark"]) .settings-value-btn { color: var(--ou-text-primary); text-decoration: underline; text-decoration-color: var(--ou-line-control); text-underline-offset: 2px; }
+:root:not([data-theme="dark"]) .settings-card.stack input,
+:root:not([data-theme="dark"]) .settings-card.stack select,
+:root:not([data-theme="dark"]) .filter-field input,
+:root:not([data-theme="dark"]) .search-row input,
+:root:not([data-theme="dark"]) .desktop-launcher-row input {
+  border: 0; border-radius: 12px; background: var(--ou-bg-field); color: var(--ou-text-primary);
+  transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard), background-color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+:root:not([data-theme="dark"]) .settings-card.stack input:focus,
+:root:not([data-theme="dark"]) .settings-card.stack select:focus,
+:root:not([data-theme="dark"]) .filter-field input:focus,
+:root:not([data-theme="dark"]) .search-row input:focus,
+:root:not([data-theme="dark"]) .desktop-launcher-row input:focus {
+  outline: none; background: #ffffff; box-shadow: 0 0 0 1.5px var(--ou-text-primary);
+}
+:root:not([data-theme="dark"]) .segment-group { border: 0; border-radius: 999px; background: var(--ou-bg-field); padding: 2px; }
+:root:not([data-theme="dark"]) .segment-btn { border: 0; border-radius: 999px; background: transparent; color: var(--ou-text-secondary);
+  transition: background-color var(--ou-motion-base) var(--ou-ease-standard), box-shadow var(--ou-motion-base) var(--ou-ease-standard); }
+:root:not([data-theme="dark"]) .segment-btn.active { background: var(--ou-capsule-bg); color: var(--ou-text-primary); box-shadow: var(--ou-capsule-shadow); }
+:root:not([data-theme="dark"]) .mini-tag,
+:root:not([data-theme="dark"]) .city-chip { border: 0; border-radius: 999px; background: var(--ou-bg-field); color: var(--ou-text-secondary); }
+:root:not([data-theme="dark"]) .mini-tag.active { background: var(--ou-action-primary); color: #ffffff; }
+:root:not([data-theme="dark"]) .slider { background: rgba(60, 50, 80, 0.16); }
+:root:not([data-theme="dark"]) .switch input:checked + .slider { background: var(--ou-action-primary); }
+:root:not([data-theme="dark"]) .service-dot.ok { background: var(--ou-tone-green-dot); }
+:root:not([data-theme="dark"]) .service-dot.err { background: var(--ou-tone-red-dot); }
+
+/* 底栏：不画线，链接是安静的胶囊 */
+:root:not([data-theme="dark"]) .panel-footer { border-top: 0; background: transparent; }
+:root:not([data-theme="dark"]) .footer-link { color: var(--ou-text-secondary); font-weight: 600; border-radius: 999px; padding: 6px 14px; }
+:root:not([data-theme="dark"]) .footer-link:hover { color: var(--ou-text-primary); background: var(--ou-bg-hover); text-decoration: none; }
+
+:root:not([data-theme="dark"]) .modal-content { border: 0; border-radius: 20px; background: var(--ou-glass-strong);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: var(--ou-elev-4); }
