@@ -9,7 +9,7 @@ import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
 import { createApp, type AppDeps } from "./app";
 import { SqliteAgentRunStore } from "./agent-store";
-import { nodeToolRuntime } from "./node-runtime";
+import { nodeConfigRuntime, nodeToolRuntime } from "./node-runtime";
 import { agentHost } from "./routes/agent";
 import { registerCompanionRoutes } from "./routes/companion";
 import { nodeAttachmentFiles, popplerPdfText } from "./routes/companion/attachments";
@@ -17,8 +17,6 @@ import { NodeAgentBoard } from "./routes/companion/agent-board";
 import { nodeBackupFiles } from "./routes/companion/backups";
 import { nodeBossLogin } from "./routes/companion/boss-cli";
 import { exportResumePdf, filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
-import { ConfigRuntime } from "./routes/config";
-import { nodeConfigFile } from "./routes/companion/config-file";
 import { nodeConsentFile } from "./routes/companion/consent-file";
 import { llmFromEnv } from "./llm-env";
 import { openStore } from "./store";
@@ -32,8 +30,8 @@ export interface ServerOptions {
 }
 
 export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDeps> = {}, options: ServerOptions = {}): Server {
-  const { search, fetch, companion } = nodeToolRuntime(store);
-  const config = new ConfigRuntime(nodeConfigFile(join(dirname(dbPath()), "offeru-ts-config.json"), join(dirname(dbPath()), "config.json")), (input, init) => globalThis.fetch(input, init), (name) => process.env[name]);
+  const config = nodeConfigRuntime();
+  const { search, fetch, companion } = nodeToolRuntime(store, config);
   void config.get().catch(() => undefined);
   const deps: AppDeps = {
     store,

@@ -17,6 +17,15 @@ version: 2026-11-24
 - `<offeru> recipe <id>`：常用流程（调研、证据对照、改简历、面试准备）该按什么顺序调哪些工具。
 - `<offeru> tool overview`、`<offeru> tool get '{"type":"job","id":3}'`：调用。参数含中文或在 PowerShell 里，先写成 UTF-8 的 JSON 文件，再 `<offeru> tool save @args.json`（或 `-` 走标准输入）。
 - 输出是 JSON，可以接 `jq` 或写文件；失败时打印 `{"error": …}` 并以 1 退出，按提示改参数。命令不通看文末。
+- 会调模型的工具（evaluate_jobs、tailor_resume、split_resume 等）用工作台「设置 → 模型」里存的模型，和工作台同一个；报「没配模型」就请用户去设置里填，不要自己找 key。
+
+## 数据在网页版时：同步
+
+网页版（浏览器里）的数据不在本机命令行能读的库里。用户在网页版设置里开了 S3 / R2 端到端加密同步后，命令行用同一个桶和口令接上：
+
+- `<offeru> sync`：看同步状态（是否设置、待推送条数、上次结果）。
+- `<offeru> sync configure @sync.json`：`{endpoint, bucket, region, accessKeyId, secretAccessKey, prefix, pathStyle, passphrase}`，由用户自己填文件，不要在对话里要密钥和口令。
+- `<offeru> sync now`：先拉再推。开工前跑一次拿到最新数据，改完再跑一次推回去，网页版同步后就能看到。
 
 `<offeru>` 是装好的 `offeru` 命令；从源码运行时是 `npm --prefix <仓库>/backend-ts run --silent cli --`。
 

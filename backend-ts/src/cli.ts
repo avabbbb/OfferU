@@ -9,7 +9,8 @@ import { dbPath } from "./paths";
 import { startHttpServer } from "./server";
 import { AGENT_TOOL_SPECS, ALL_TOOL_SPECS, CAPABILITIES, TOOL_GROUPS, TOOL_INSTRUCTIONS, toolBrief, toolManual } from "@offeru/core";
 
-import { nodeToolRuntime } from "./node-runtime";
+import { nodeConfigRuntime, nodeToolRuntime } from "./node-runtime";
+import { CompanionSync } from "./sync";
 import { callTool, TOOL_NAMES } from "./tools";
 import { openStore } from "./store";
 import { APP_VERSION } from "./runtime-identity";
@@ -22,6 +23,9 @@ usage:
   offeru-ts tool <name> [<name>…] --help full description and input schema
   offeru-ts tool <name> [json|@file|-]   run a tool; prints JSON, {"error"} + exit 1 on failure
   offeru-ts recipe [<id>]                common flows (which tools, in what order, rules)
+  offeru-ts sync [status]                end-to-end encrypted S3 / R2 sync: settings, pending changes, last result
+  offeru-ts sync now                     pull + push now (same engine and bucket as the workbench, web version included)
+  offeru-ts sync configure [json|@file|-] {endpoint, bucket, region, accessKeyId, secretAccessKey, prefix, pathStyle, passphrase} | {"clear":true}
   offeru-ts serve
   offeru-ts doctor
   offeru-ts start [--no-browser]
@@ -156,8 +160,35 @@ async function main(): Promise<number> {
   }
 
   const store = openStore(dbPath());
-  const runtime = nodeToolRuntime(store);
+  // The model the workbench saved (设置 → 模型), loaded before the first call; OFFERU_LLM_* env is the fallback.
+  const config = nodeConfigRuntime();
+  await config.get().catch(() => undefined);
+  const runtime = nodeToolRuntime(store, config);
   try {
+    if (command === "sync") {
+      const sub = args.shift() || "status";
+      const sync = new CompanionSync(store, dirname(dbPath()));
+      try {
+        const result = sub === "status"
+          ? await sync.status()
+          : sub === "now"
+            ? await sync.syncNow()
+            : sub === "configure"
+              ? await sync.configure(payloadOf(args[0]) as Record<string, unknown>)
+              : null;
+        if (result === null) {
+          process.stderr.write(HELP);
+          return 2;
+        }
+        print(result);
+        return 0;
+      } catch (cause) {
+        const code = (cause as { code?: unknown })?.code;
+        process.stdout.write(JSON.stringify({ error: cause instanceof Error ? cause.message : String(cause), ...(typeof code === "string" ? { code: `sync_${code}` } : {}) }) + "\n");
+        return 1;
+      }
+    }
+
     if (command === "tool") {
       const name = args.shift()!;
       try {
