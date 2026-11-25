@@ -2,39 +2,13 @@
    三栏各自滚动，顶栏下面不再有内容滚过去（修「顶栏微微透出下面的字」）。只用 --ou-* 语义 Token。
    旧的 .rs-* / .rf-* / .rt-* 仍在 globals.css，这里只放新布局和覆盖。 */
 
-.resume-shell.re-shell {
-  display: flex; flex: 1; flex-direction: column; gap: var(--ou-space-3); min-width: 0;
-  /* --re-fill = 视口高 − 自己离视口顶的距离（页面里量），减去 workbench-main 的底部留白（2rem）；整页不滚，三栏各自滚。 */
-  height: calc(var(--re-fill, 100dvh) - var(--ou-space-8)); min-height: 34rem;
-}
-
-/* 顶栏：不再 sticky 盖在内容上；用实白纸面，玻璃只留高光，后面没有字可透。 */
-.resume-shell.re-shell .rs-head {
-  position: relative; flex: none; margin-right: 2.75rem;
-  background: var(--ou-bg-surface-solid); box-shadow: var(--ou-glass-highlight), var(--ou-elev-1);
-  -webkit-backdrop-filter: none; backdrop-filter: none;
-}
-
-.re-grid {
-  display: grid; flex: 1; min-height: 0; gap: var(--ou-space-4);
-  grid-template-columns: minmax(11.5rem, 13.5rem) minmax(0, 1fr) minmax(21rem, 26rem);
-  grid-template-areas: "rail preview editor";
-}
-.re-rail, .re-editor {
-  min-height: 0; overflow-y: auto; overscroll-behavior: contain;
-  border-radius: var(--ou-radius-panel); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-2);
-}
-.re-rail { grid-area: rail; padding: var(--ou-space-4) var(--ou-space-3); }
-/* 右栏：标签条固定在顶上（不浮在内容上），下面的内容自己滚。 */
-.re-editor { grid-area: editor; display: flex; flex-direction: column; overflow: hidden; }
+/* 外壳、页头、版本列、文档卡和编辑栏的布局在 styles/resume.css（2026-11-25 Apple HIG 改版）；这里只留编辑栏里面的东西。 */
+.re-editor { display: flex; flex-direction: column; overflow: hidden; }
 .re-tabs { display: flex; flex: none; margin: var(--ou-space-3) var(--ou-space-4) 0; }
 .re-tabs .ou-segment-item { flex: 1; justify-content: center; }
 .re-tabpanel { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.re-preview { grid-area: preview; display: flex; min-width: 0; min-height: 0; flex-direction: column; }
-.re-preview .rp-canvas { padding-top: 0; }
 
-/* ── 顶栏：返回 · 简历名 · 保存状态 ……… 保存 · 导出 · 分享 ── */
-.re-back { margin-left: calc(-1 * var(--ou-space-2)); }
+/* ── 页头右侧：状态 · 立即保存 · 分享 · 导出 ── */
 .re-actions { display: flex; flex: none; align-items: center; gap: var(--ou-space-2); margin-left: auto; }
 .re-actions-status { color: var(--ou-text-secondary); font-size: var(--ou-type-xs); white-space: nowrap; }
 
@@ -59,7 +33,7 @@ input.re-module-title:focus { background: var(--ou-bg-field); }
 .re-item + .re-item { margin-top: var(--ou-space-2); }
 .re-item-head { display: flex; align-items: center; gap: 0.125rem; min-width: 0; }
 .re-item-title { flex: none; max-width: 60%; overflow: hidden; margin: 0 var(--ou-space-1) 0 0; text-overflow: ellipsis; white-space: nowrap; color: var(--ou-text-primary); font-size: var(--ou-type-body); font-weight: 600; }
-.re-item-rule { flex: 1; min-width: var(--ou-space-4); margin: 0 var(--ou-space-2); border-top: 1px dashed var(--ou-line-control); }
+.re-item-rule { flex: 1; min-width: var(--ou-space-4); }
 .re-item-head .ou-icon-button { width: 1.75rem; height: 1.75rem; }
 .re-item-head .ou-icon-button:disabled { opacity: 0.3; cursor: default; }
 .re-icon-danger:hover { background: var(--ou-tone-red-bg); color: var(--ou-color-danger); }
@@ -81,8 +55,9 @@ input.re-module-title:focus { background: var(--ou-bg-field); }
 /* 富文本：一张实白框，顶上常驻格式条（B I U · 列表 · 链接），正文 14px。 */
 .resume-shell .rt.rt-boxed { border-radius: var(--ou-radius-control); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-capsule-shadow); }
 .resume-shell .rt.rt-boxed:focus-within { box-shadow: var(--ou-ring-focus); }
-.rt-fixedbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.125rem; padding: var(--ou-space-1); color: var(--ou-text-secondary); border-bottom: 1px solid var(--ou-line-separator); }
-.rt-fixedbar-sep { width: 1px; height: 1rem; margin: 0 var(--ou-space-1); background: var(--ou-line-separator); }
+/* 格式条：浅底一条和正文分开，不画分隔线；组之间只留空。 */
+.rt-fixedbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.125rem; padding: var(--ou-space-1); border-radius: var(--ou-radius-control) var(--ou-radius-control) 0 0; background: var(--ou-bg-control); color: var(--ou-text-secondary); }
+.rt-fixedbar-sep { width: var(--ou-space-2); height: 1rem; }
 .resume-shell .rt.rt-boxed .rt-edit { padding: var(--ou-space-2) 2.25rem var(--ou-space-3) var(--ou-space-3); font-size: var(--ou-type-body); line-height: 1.6; }
 .resume-shell .rt.rt-boxed .rt-zoom-btn { top: 0.25rem; right: 0.25rem; }
 .resume-shell .rt-edit u { text-underline-offset: 2px; }
@@ -132,22 +107,6 @@ input.re-module-title:focus { background: var(--ou-bg-field); }
 }
 .rm-add:hover { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
 
-/* ── 窄窗口（按编辑器自己的宽度，不按视口：开着侧栏 / Agent 栏时也对）──
-   ≥ 66rem 三栏；40–66rem 模块 + 编辑并排、预览放到下面；< 40rem 一列。后两档整页滚，三栏不再各自滚。 */
-.resume-shell.re-shell { container-type: inline-size; container-name: re; }
-@container re (max-width: 66rem) {
-  .re-grid { flex: none; grid-template-columns: minmax(10.5rem, 12rem) minmax(0, 1fr); grid-template-areas: "rail editor" "preview preview"; }
-  .re-rail, .re-editor, .re-tabpanel { overflow: visible; align-self: start; }
-  .re-preview { height: 85dvh; }
-  .resume-shell.re-shell .rs-head { flex-wrap: wrap; }
-}
-@container re (max-width: 40rem) {
-  .re-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "rail" "editor" "preview"; }
-  .resume-shell.re-shell .rs-head { margin-right: 0; }
-}
-@container re (max-width: 40rem) {
-  .re-module { padding-inline: var(--ou-space-4); }
-}
 @media (prefers-reduced-motion: reduce) { .rm-row, .rm-more, .re-item, .re-swatch, .re-template { transition: none; } }
 .re-editor .rt .rt-edit { width: 100%; }
 

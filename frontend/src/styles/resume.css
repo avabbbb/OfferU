@@ -1,0 +1,247 @@
+/* ── 简历（2026-11-25 改版，Apple HIG + v3 Glass）──
+   一屏一个焦点：文档本身（磨砂文档卡里的 A4 纸）。页头只有一个墨黑主操作「导出」，「分享」「立即保存」是安静的文字钮。
+   版本（我的简历）宽屏在左侧一列，窄屏是一排横滑胶囊；编辑区按模块收成可展开的分组行，一次只展开一块；
+   AI（按岗位定制、润色）先收着，点开才露出。布局按编辑器自己的宽度（容器查询 re），不按视口：开着侧栏 / Agent 栏也对。
+   只用 --ou-* Token；动效走 framer 弹簧或 --ou-motion-* / --ou-ease-*；减少动态效果时归零。 */
+
+/* ── 外壳：宽 / 中两档占满视口剩下的高度，各栏自己滚；窄档整页滚 ── */
+.resume-shell.re-shell {
+  container-type: inline-size; container-name: re;
+  display: flex; flex: 1; flex-direction: column; gap: var(--ou-space-4); min-width: 0;
+  /* --re-fill = 视口高 − 自己离视口顶的距离（页面里量），减去 workbench-main 的底部留白。 */
+  height: calc(var(--re-fill, 100dvh) - var(--ou-space-8)); min-height: 34rem;
+}
+
+/* ── 页头：返回 · 大标题 + 一行状态 ……… 分享 · 导出 ── */
+.rz-head { display: flex; flex: none; align-items: center; gap: var(--ou-space-3); min-width: 0; margin-right: 2.75rem; }
+.rz-back { width: 2.75rem; height: 2.75rem; margin-left: calc(-1 * var(--ou-space-2)); }
+.rz-heading { display: flex; flex: 1; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.rz-title-row { display: flex; align-items: center; gap: var(--ou-space-1); min-width: 0; }
+.rz-title {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--ou-text-primary); font-size: var(--ou-type-page); font-weight: 650; line-height: 1.2; letter-spacing: -0.02em;
+}
+.rz-rename { opacity: 0; transition: opacity var(--ou-motion-fast) var(--ou-ease-standard); }
+.rz-title-row:hover .rz-rename, .rz-rename:focus-visible { opacity: 1; }
+.rz-title-input {
+  width: min(100%, 22rem); min-height: 2.75rem; padding: 0 var(--ou-space-3); border: 0; border-radius: var(--ou-radius-control);
+  background: var(--ou-bg-surface-solid); box-shadow: var(--ou-ring-focus); outline: none;
+  color: var(--ou-text-primary); font: inherit; font-size: var(--ou-type-section); font-weight: 600;
+}
+.rz-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-1) var(--ou-space-3); min-width: 0; color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
+.rz-joblink { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ou-text-secondary); }
+.rz-joblink:hover { color: var(--ou-text-primary); text-decoration: underline; text-underline-offset: 2px; }
+.re-actions { gap: var(--ou-space-1); }
+.re-actions .ou-button { min-height: 2.75rem; font-size: var(--ou-type-body); }
+.re-action-primary { padding: 0 var(--ou-space-4) 0 var(--ou-space-4); font-weight: 600; }
+.re-action-quiet { padding: 0 var(--ou-space-3); font-weight: 550; }
+
+/* ── 主体三区：版本 · 文档 · 编辑 ── */
+.rz-body {
+  display: grid; flex: 1; min-height: 0; gap: var(--ou-space-4);
+  grid-template-columns: minmax(11rem, 13rem) minmax(0, 1fr) minmax(21rem, 25rem);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "versions doc inspector";
+}
+.rz-versions { grid-area: versions; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.rz-doc {
+  grid-area: doc; position: relative; display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden;
+  border-radius: var(--ou-radius-panel); background: var(--ou-glass-subtle); box-shadow: var(--ou-glass-highlight), var(--ou-elev-1);
+}
+.rz-inspector {
+  grid-area: inspector; min-width: 0; min-height: 0;
+  border-radius: var(--ou-radius-panel); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-2);
+}
+
+/* ── 版本：宽屏一列，选中的是一颗滑动的白胶囊 ── */
+.rv { display: flex; flex-direction: column; gap: var(--ou-space-2); padding: var(--ou-space-1) 0; }
+.rv-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ou-space-2); padding: 0 var(--ou-space-3); }
+.rv-heading { color: var(--ou-text-primary); font-size: var(--ou-type-section); font-weight: 600; }
+.rv-count { color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
+.rv-list { display: flex; flex-direction: column; gap: 0.125rem; margin: 0; padding: 0; list-style: none; }
+.rv-row {
+  position: relative; display: flex; align-items: center; min-width: 0; min-height: 3.25rem; border-radius: var(--ou-radius-card);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.rv-row:not([data-current]):hover { background: var(--ou-capsule-hover); }
+.rv-highlight { position: absolute; inset: 0; border-radius: inherit; background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+.rv-link {
+  position: relative; display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 0.125rem; min-width: 0; min-height: 3.25rem;
+  padding: var(--ou-space-2) var(--ou-space-3); border-radius: inherit;
+}
+.rv-link:focus-visible, .rv-more:focus-visible, .rv-new:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.rv-title, .rv-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-title { color: var(--ou-text-secondary); font-size: var(--ou-type-body); font-weight: 550; }
+.rv-row[data-current] .rv-title { color: var(--ou-text-primary); font-weight: 650; }
+.rv-sub { color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); }
+.rv-more {
+  position: relative; display: inline-flex; flex: none; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; margin-right: var(--ou-space-1);
+  border-radius: var(--ou-radius-pill); color: var(--ou-text-tertiary); opacity: 0;
+  transition: opacity var(--ou-motion-fast) var(--ou-ease-standard), background-color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.rv-row:hover .rv-more, .rv-row:focus-within .rv-more, .rv-row[data-current] .rv-more, .rv-more[data-state="open"] { opacity: 1; }
+.rv-more:hover, .rv-more[data-state="open"] { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.rv-input {
+  position: relative; flex: 1; min-width: 0; min-height: 2.75rem; margin: var(--ou-space-1); padding: 0 var(--ou-space-3); border: 0; border-radius: var(--ou-radius-control);
+  background: var(--ou-bg-surface-solid); box-shadow: var(--ou-ring-focus); outline: none; color: var(--ou-text-primary); font: inherit; font-size: var(--ou-type-body);
+}
+.rv-new-cell { display: flex; }
+.rv-new {
+  display: inline-flex; min-height: 2.75rem; align-items: center; gap: var(--ou-space-2); margin-top: var(--ou-space-1); padding: 0 var(--ou-space-3);
+  border-radius: var(--ou-radius-pill); color: var(--ou-text-secondary); font-size: var(--ou-type-sm); font-weight: 550;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.rv-new:hover, .rv-new[data-state="open"] { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
+
+/* ── 文档卡：顶上一条收着的「按岗位定制」，下面是 A4 纸 ── */
+.rz-tailor { flex: none; padding: var(--ou-space-3) var(--ou-space-3) 0; }
+.rz-tailor .iv-disclosure { background: var(--ou-bg-surface); box-shadow: var(--ou-capsule-shadow); }
+.rz-tailor .iv-disclosure-toggle { color: var(--ou-text-primary); }
+.rz-tailor .iv-disclosure-inner { max-height: 42dvh; overflow-y: auto; overscroll-behavior: contain; }
+.rz-agent-icon { flex: none; color: var(--ou-tone-purple-dot); }
+.rz-doc .rp-canvas { padding: var(--ou-space-4) var(--ou-space-4) calc(var(--ou-space-8) * 2); }
+.rz-doc .rp-paper { box-shadow: var(--ou-elev-2); }
+.rz-doc .rp-zoom-dock { padding: 0 var(--ou-space-4); }
+
+/* 按岗位定制（TailorBar）：岗位下拉 + 一个次按钮；结果和追问在下面逐段出现。 */
+.tb { display: flex; flex-direction: column; gap: var(--ou-space-3); color: var(--ou-text-secondary); font-size: var(--ou-type-sm); line-height: var(--ou-line-body); }
+.tb-run { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); }
+.tb-select { flex: 1 1 12rem; min-width: 0; max-width: 22rem; }
+.tb-action { min-height: 2.75rem; }
+.tb-go svg { color: var(--ou-tone-purple-dot); }
+.tb-progress { flex: 1; min-width: 0; }
+.tb-muted { color: var(--ou-text-tertiary); }
+.tb-message { margin: 0; color: var(--ou-text-primary); white-space: pre-line; }
+.tb-list { display: flex; flex-direction: column; gap: var(--ou-space-1); margin: 0; padding: var(--ou-space-3); border-radius: var(--ou-radius-card); background: var(--ou-bg-control); list-style: none; }
+.tb-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--ou-space-1) var(--ou-space-2); }
+.tb-done { color: var(--ou-tone-green-text); }
+.tb-link {
+  min-height: 2rem; padding: 0 var(--ou-space-2); border-radius: var(--ou-radius-pill); color: var(--ou-text-primary); font-weight: 600;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.tb-link:hover { background: var(--ou-bg-hover); }
+.tb-link:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.tb-lead { margin: 0; color: var(--ou-text-secondary); }
+.tb-flag[data-tone="block"] { color: var(--ou-tone-red-text); }
+.tb-flag[data-tone="warn"] { color: var(--ou-tone-yellow-text); }
+.tb-asks { display: flex; flex-direction: column; gap: var(--ou-space-3); padding: var(--ou-space-3); border-radius: var(--ou-radius-card); background: var(--ou-bg-control); }
+.tb-ask, .tb-draft { display: flex; flex-direction: column; gap: var(--ou-space-1); }
+.tb-quote { color: var(--ou-text-tertiary); }
+.tb-question { color: var(--ou-text-primary); font-weight: 550; }
+.tb-add { display: block; }
+.tb-answer {
+  display: block; width: 100%; min-height: 2.75rem; resize: vertical; padding: var(--ou-space-2) var(--ou-space-3); border: 0; border-radius: var(--ou-radius-control);
+  background: var(--ou-bg-surface-solid); box-shadow: var(--ou-capsule-shadow); outline: none; color: var(--ou-text-primary); font: inherit; font-size: var(--ou-type-body);
+  transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.tb-answer:focus-visible { box-shadow: var(--ou-ring-focus); }
+.tb-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); }
+.tb-stored { color: var(--ou-text-secondary); }
+
+/* ── 编辑栏：模块是一组可展开的分组行（手风琴），展开的那块是浅底卡片 ── */
+.rz-modules { padding: var(--ou-space-3) var(--ou-space-3) var(--ou-space-6); }
+.rm[data-accordion] { gap: var(--ou-space-2); }
+.rm[data-accordion] .rm-heading { margin: var(--ou-space-1) 0 0; padding: 0 var(--ou-space-3); color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); font-weight: 600; letter-spacing: 0.02em; }
+.rm[data-accordion] .rm-heading-more { margin-top: var(--ou-space-4); }
+.rm[data-accordion] .rm-list { gap: var(--ou-space-1); }
+.rm-group {
+  position: relative; border-radius: var(--ou-radius-card); list-style: none;
+  transition: background-color var(--ou-motion-base) var(--ou-ease-standard), box-shadow var(--ou-motion-base) var(--ou-ease-standard);
+}
+.rm-group[data-open] { background: var(--ou-bg-control); }
+.rm-group[data-dragging] { z-index: var(--ou-layer-popover); }
+.rm[data-accordion] .rm-row { min-height: 2.75rem; padding-right: var(--ou-space-3); border-radius: var(--ou-radius-card); }
+.rm[data-accordion] .rm-name { flex: 0 1 auto; padding: var(--ou-space-2) 0; font-weight: 550; }
+.rm[data-accordion] .rm-row[data-selected] .rm-name { font-weight: 650; }
+.rm[data-accordion] .rm-name:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 3px; }
+.rm-meta {
+  display: flex; flex: 1; align-self: stretch; align-items: center; justify-content: flex-end; gap: var(--ou-space-1); min-width: 0; padding-left: var(--ou-space-2);
+  overflow: hidden; color: var(--ou-text-tertiary); font-size: var(--ou-type-xs); white-space: nowrap; cursor: pointer;
+}
+.rm-chevron { flex: none; transition: transform var(--ou-motion-base) var(--ou-ease-spring); }
+.rm-group[data-open] > .rm-row .rm-chevron { transform: rotate(180deg); }
+.rm-body { overflow: hidden; }
+.rm-body > .re-module[data-bare] { gap: var(--ou-space-3); padding: var(--ou-space-1) var(--ou-space-3) var(--ou-space-4); }
+.rm[data-accordion] .rm-list-more .rm-row { min-height: 2.75rem; }
+.rm[data-accordion] .rm-name-static { flex: 1; font-weight: 500; }
+.rm[data-accordion] .rm-add { min-height: 2.75rem; margin-top: var(--ou-space-2); }
+.re-module[data-bare] .re-hidden-note { margin: 0; }
+
+/* 排版美化 / 更换模版：分组卡片 */
+.rz-inspector .re-style .re-style-group { padding: var(--ou-space-4); border-radius: var(--ou-radius-card); background: var(--ou-bg-control); }
+.rz-inspector .re-module { padding-inline: var(--ou-space-4); }
+.rz-inspector .rm-body > .re-module[data-bare] { padding-inline: var(--ou-space-3); }
+
+/* ── 空状态：一张卡、一个主操作 ── */
+.rz-empty-page { display: grid; min-height: min(70dvh, 40rem); place-items: center; }
+.rz-empty {
+  display: flex; width: 100%; max-width: 28rem; flex-direction: column; align-items: center; gap: var(--ou-space-3); padding: var(--ou-space-8) var(--ou-space-6);
+  border-radius: var(--ou-radius-panel); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-2); text-align: center;
+}
+.rz-empty-tile { width: 3rem; height: 3rem; border-radius: var(--ou-radius-card); color: var(--ou-text-primary); }
+.rz-empty-title { margin-top: var(--ou-space-1); color: var(--ou-text-primary); font-size: var(--ou-type-page); font-weight: 650; letter-spacing: -0.02em; }
+.rz-empty-lead { max-width: 22rem; color: var(--ou-text-secondary); font-size: var(--ou-type-body); line-height: var(--ou-line-body); }
+.rz-empty-primary { width: 100%; max-width: 16rem; min-height: 2.75rem; margin-top: var(--ou-space-3); font-size: var(--ou-type-body); font-weight: 600; }
+.rz-empty-quiet { min-height: 2.75rem; font-size: var(--ou-type-body); font-weight: 550; }
+.rz-empty-note { margin-top: var(--ou-space-2); color: var(--ou-text-tertiary); font-size: var(--ou-type-sm); }
+.rz-inline-link { color: var(--ou-text-secondary); text-decoration: underline; text-decoration-color: var(--ou-line-strong); text-underline-offset: 2px; }
+.rz-inline-link:hover { color: var(--ou-text-primary); }
+
+/* 触屏没有悬停：行尾的「…」常显。 */
+@media (hover: none) { .rv-more, .rm-more, .rz-rename { opacity: 1; } }
+
+/* ── 中档（40–68rem，约 1024–1280 视口）：版本变成顶上一排胶囊；文档 + 编辑两栏 ── */
+@container re (max-width: 68rem) {
+  .rz-body {
+    grid-template-columns: minmax(0, 1fr) minmax(19rem, 23rem);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "versions versions" "doc inspector";
+  }
+  .rz-versions { overflow: visible; }
+  .rv { flex-direction: row; align-items: center; padding: 0; }
+  .rv-head { display: none; }
+  .rv-list {
+    flex-direction: row; gap: var(--ou-space-1); min-width: 0; overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity; scrollbar-width: none; padding: var(--ou-space-1);
+  }
+  .rv-list::-webkit-scrollbar { display: none; }
+  .rv-row { flex: none; max-width: 15rem; min-height: 2.75rem; border-radius: var(--ou-radius-pill); scroll-snap-align: start; }
+  .rv-link { flex-direction: row; align-items: center; gap: var(--ou-space-2); min-height: 2.75rem; padding: 0 var(--ou-space-4); }
+  .rv-row[data-current] .rv-link { padding-right: var(--ou-space-1); }
+  .rv-row:not([data-current]) .rv-more { display: none; }
+  .rv-more { margin-right: var(--ou-space-1); }
+  .rv-new { margin-top: 0; }
+}
+
+/* ── 窄档（< 40rem，手机 / 平板竖屏）：一列，整页滚：版本胶囊 → 文档 → 编辑 ── */
+@container re (max-width: 40rem) {
+  .resume-shell.re-shell { height: auto; min-height: 0; }
+  .rz-head { flex-wrap: wrap; margin-right: 0; row-gap: var(--ou-space-3); }
+  .rz-title { font-size: var(--ou-type-doc-heading); }
+  .re-actions { width: 100%; margin-left: 0; }
+  .re-actions .re-action-primary { flex: 1; justify-content: center; }
+  .re-actions .re-actions-status { flex: 1; white-space: normal; }
+  .rz-body { display: flex; flex: none; flex-direction: column; }
+  .rz-versions, .rz-doc, .rz-inspector { flex: none; height: auto; }
+  .rz-versions { margin-inline: calc(-1 * var(--ou-space-1)); }
+  .rv-sub { display: none; }
+  .rz-doc, .rz-inspector { overflow: visible; }
+  /* 整页滚：画布按内容撑高，不在卡里再滚一层。 */
+  .rz-doc .rp-canvas { flex: none; overflow: visible; padding: var(--ou-space-3) var(--ou-space-2) calc(var(--ou-space-8) * 2); }
+  .rz-inspector .re-tabpanel { overflow: visible; }
+  .rz-tailor { padding: var(--ou-space-2) var(--ou-space-2) 0; }
+  .rz-tailor .iv-disclosure-toggle > .iv-disclosure-summary { display: none; }
+  .tb-select { max-width: none; flex-basis: 100%; }
+  .tb-go { flex: 1; }
+  .re-tabs .ou-segment-item { min-height: 2.5rem; }
+  /* 触控目标 44px */
+  .re-item-head .ou-icon-button, .re-contact .ou-icon-button, .re-stepper .ou-icon-button { width: 2.75rem; height: 2.75rem; }
+  .rm-more { width: 2.25rem; height: 2.25rem; }
+  .rm-grip { height: 2.75rem; }
+  .re-fields { grid-template-columns: minmax(0, 1fr); }
+  .rz-modules { padding-inline: var(--ou-space-2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rz-rename, .rv-row, .rv-more, .rv-new, .rm-group, .rm-chevron, .tb-link, .tb-answer { transition: none; }
+}

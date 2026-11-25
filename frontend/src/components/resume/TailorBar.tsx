@@ -8,7 +8,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { tool, type Job } from "@/lib/core";
-import { Select } from "@/components/ui";
+import { Sparkles } from "lucide-react";
+
+import { Button, Select } from "@/components/ui";
 import { captureImpact, tailorNotes, tailorResume, type ImpactDraft, type ImpactDropped, type TailorAsk, type TailorChecks, type TailorEdit } from "@/lib/tailor";
 
 type Props = {
@@ -16,9 +18,6 @@ type Props = {
   // 改写开始 / 结束时告诉上层，让左侧表单只读：否则写完那一刻你这边的自动保存会盖掉改写结果。
   onRunning?: (running: boolean) => void;
 };
-
-const muted = "text-[var(--foreground-muted)]";
-const action = "text-[12.5px] font-medium text-[var(--foreground)] disabled:text-[var(--foreground-muted)]";
 
 // 主简历改写完会跳到定制简历：Editor 按 doc id 重挂，TailorBar 跟着重挂，组件状态会丢。
 // 结果按写入的 doc id 暂存在模块里，新挂载的 TailorBar 取回。
@@ -45,7 +44,8 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
   const [stored, setStored] = useState(false);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
-  const target = jobId ?? saved?.job ?? picked;
+  // 岗位列表晚于本组件到达时 picked 还是 null：退回第一个有 JD 的岗位（修「下拉是空的」）。
+  const target = jobId ?? saved?.job ?? picked ?? withJd[0]?.id ?? null;
 
   const resetAsks = (next: TailorAsk[]) => {
     setAsks(next);
@@ -160,103 +160,111 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
   };
 
   const answered = answers.some((a) => a.trim());
+  const pickedValue = picked ?? withJd[0]?.id ?? null;
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[12px]" style={{ fontSize: 12 }}>
-      {jobId == null && (withJd.length ? (
-        <Select aria-label="按哪个岗位改" size="sm" className="max-w-[220px]" disabled={running}
-          value={picked != null ? String(picked) : undefined} onValueChange={(v) => setPicked(Number(v))}
-          options={withJd.map((job) => ({ value: String(job.id), label: job.label ?? [job.company, job.title].filter(Boolean).join(" · ") }))} />
-      ) : <span className={muted}>先在岗位页贴上 JD，才能按岗位改</span>)}
-      {running ? (
-        <>
-          <span className={muted}>{phase ?? "Agent 在写… " + chars + " 字"}</span>
-          <button type="button" className={action} style={{ fontSize: 12.5 }} onClick={() => abort.current?.abort()}>取消</button>
-        </>
-      ) : (
-        <button type="button" className={action} style={{ fontSize: 12.5 }} disabled={disabled || !target}
-          title={disabled ? "等当前修改存好再改写" : undefined} onClick={() => void start()}>按岗位改写</button>
-      )}
-      {message && <span className={muted + " basis-full whitespace-pre-line text-left"}>{message}</span>}
+    <div className="tb" data-running={running || undefined}>
+      <div className="tb-run">
+        {jobId == null && (withJd.length ? (
+          <Select aria-label="按哪个岗位改" className="tb-select" disabled={running}
+            value={pickedValue != null ? String(pickedValue) : undefined} onValueChange={(v) => setPicked(Number(v))}
+            options={withJd.map((job) => ({ value: String(job.id), label: job.label ?? [job.company, job.title].filter(Boolean).join(" · ") }))} />
+        ) : <span className="tb-muted">先在岗位页贴上 JD，才能按岗位改</span>)}
+        {running ? (
+          <>
+            <span className="tb-progress ou-shimmer" role="status">{phase ?? "Agent 在写… " + chars + " 字"}</span>
+            <Button variant="ghost" className="tb-action" onClick={() => abort.current?.abort()}>取消</Button>
+          </>
+        ) : (
+          <Button variant="secondary" className="tb-action tb-go" disabled={disabled || !target}
+            title={disabled ? "等当前修改存好再改写" : undefined} onClick={() => void start()}>
+            <Sparkles size={15} aria-hidden />按岗位改写
+          </Button>
+        )}
+      </div>
+      {message && <p className="tb-message" role="status">{message}</p>}
       {grounding.length > 0 && (
-        <ul className={muted + " basis-full text-left"}>
+        <ul className="tb-list">
           {grounding.map((edit, index) => (
-            <li key={index} className="flex flex-wrap items-baseline gap-x-2">
+            <li key={index} className="tb-line">
               <span>审稿找不到出处，改掉了「{edit.old}」{edit.reason ? "：" + edit.reason : ""}</span>
-              {kept.has(index) ? <span>已存进档案，再改写一次就能用上</span> : (
-                <button type="button" className={action} style={{ fontSize: 12.5 }} onClick={() => void keep(index, edit)}>是真的，存进档案</button>
+              {kept.has(index) ? <span className="tb-done">已存进档案，再改写一次就能用上</span> : (
+                <button type="button" className="tb-link" onClick={() => void keep(index, edit)}>是真的，存进档案</button>
               )}
             </li>
           ))}
         </ul>
       )}
       {checks && (checks.block.length > 0 || checks.warn.length > 0 || checks.unchecked || (checks.dropped?.length ?? 0) > 0) && (
-        <ul className={muted + " basis-full text-left"} aria-label="改写结果核对">
-          <li>程序把改好的简历逐行对了一遍档案和原简历，只提醒，简历没动：</li>
+        <ul className="tb-list tb-checks" aria-label="改写结果核对">
+          <li className="tb-lead">程序把改好的简历逐行对了一遍档案和原简历，只提醒，简历没动：</li>
           {checks.unchecked && <li>{checks.unchecked}</li>}
           {checks.block.map((check, i) => (
-            <li key={"b" + i} className="text-red-600">「{check.line}」{check.detail}，投之前请改掉或补进档案</li>
+            <li key={"b" + i} className="tb-flag" data-tone="block">「{check.line}」{check.detail}，投之前请改掉或补进档案</li>
           ))}
           {checks.warn.map((check, i) => (
-            <li key={"w" + i} className="text-amber-600">留意：「{check.line}」{check.detail}</li>
+            <li key={"w" + i} className="tb-flag" data-tone="warn">留意：「{check.line}」{check.detail}</li>
           ))}
           {(checks.dropped ?? []).map((item) => (
-            <li key={"d" + item.memory_id} className="text-amber-600">「{item.title}」留在简历里，但档案里的 {item.missing.join("、")} 没写进去，确认是有意删的再投</li>
+            <li key={"d" + item.memory_id} className="tb-flag" data-tone="warn">「{item.title}」留在简历里，但档案里的 {item.missing.join("、")} 没写进去，确认是有意删的再投</li>
           ))}
         </ul>
       )}
       {!running && asks.length > 0 && !drafts && (
-        <div className="basis-full text-left" aria-label="追问成果">
-          <p className={muted}>这几句只写了做了什么，补一句结果会更有说服力。记不清数字就写「大概……」或「没有数据，但结果是……」，不想答就空着。</p>
+        <div className="tb-asks" aria-label="追问成果">
+          <p className="tb-lead">这几句只写了做了什么，补一句结果会更有说服力。记不清数字就写「大概……」或「没有数据，但结果是……」，不想答就空着。</p>
           {asks.map((ask, i) => (
-            <label key={i} className="mt-1 block">
-              <span className={muted}>「{ask.old.replace(/^[-\u002a·•]\s{0,3}/, "")}」</span>
-              <span className="block text-[var(--foreground)]">{ask.question}</span>
-              <textarea aria-label={ask.question} rows={1} value={answers[i]} disabled={busy}
+            <label key={i} className="tb-ask">
+              <span className="tb-quote">「{ask.old.replace(/^[-\u002a·•]\s{0,3}/, "")}」</span>
+              <span className="tb-question">{ask.question}</span>
+              <textarea aria-label={ask.question} rows={2} value={answers[i]} disabled={busy}
                 onChange={(e) => setAnswers((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
-                className="mt-0.5 w-full resize-y rounded border border-[var(--border)] bg-transparent px-2 py-1 text-[12px] outline-none" />
+                className="tb-answer" />
             </label>
           ))}
-          <div className="mt-1 flex gap-x-3">
-            <button type="button" className={action} style={{ fontSize: 12.5 }} disabled={busy || !answered} onClick={() => void organize()}>
+          <div className="tb-foot">
+            <Button variant="secondary" className="tb-action" disabled={busy || !answered} onClick={() => void organize()}>
               {busy ? "整理中…" : "整理一下"}
-            </button>
-            <button type="button" className={action} style={{ fontSize: 12.5 }} disabled={busy} onClick={forget}>先不答</button>
+            </Button>
+            <Button variant="ghost" className="tb-action" disabled={busy} onClick={forget}>先不答</Button>
           </div>
         </div>
       )}
       {!running && drafts && !stored && (
-        <div className="basis-full text-left" aria-label="记忆草稿">
-          {drafts.length > 0 && <p className={muted}>我会这样记进档案（带上你的原话和今天的日期），标了「留意」的请看一眼再存：</p>}
+        <div className="tb-asks" aria-label="记忆草稿">
+          {drafts.length > 0 && <p className="tb-lead">我会这样记进档案（带上你的原话和今天的日期），标了「留意」的请看一眼再存：</p>}
           {drafts.map((draft, i) => (
-            <div key={i} className="mt-1">
-              <span className="text-[var(--foreground)]">{draft.title}{draft.memory_id ? "（补到已有经历）" : "（新建一条）"}</span>
+            <div key={i} className="tb-draft">
+              <span className="tb-question">{draft.title}{draft.memory_id ? "（补到已有经历）" : "（新建一条）"}</span>
               {draft.answers.map((a, j) => (
-                <span key={j} className={muted + " block"}>+ {a.add}
-                  {a.flags?.length ? <span className="ml-1 text-amber-600">（留意：{a.flags.join("；")}）</span> : null}
+                <span key={j} className="tb-add">+ {a.add}
+                  {a.flags?.length ? <span className="tb-flag" data-tone="warn">（留意：{a.flags.join("；")}）</span> : null}
                 </span>
               ))}
             </div>
           ))}
           {dropped.map((d, i) => (
-            <span key={i} className={muted + " mt-1 block"}>没记：「{d.quote}」，{d.why}</span>
+            <span key={i} className="tb-add tb-muted">没记：「{d.quote}」，{d.why}</span>
           ))}
-          <div className="mt-1 flex gap-x-3">
+          <div className="tb-foot">
             {drafts.length > 0 && (
-              <button type="button" className={action} style={{ fontSize: 12.5 }} disabled={busy} onClick={() => void storeAll()}>
+              <Button variant="secondary" className="tb-action" disabled={busy} onClick={() => void storeAll()}>
                 {busy ? "存入中…" : "存进档案"}
-              </button>
+              </Button>
             )}
-            <button type="button" className={action} style={{ fontSize: 12.5 }} disabled={busy} onClick={() => { setDrafts(null); setDropped([]); }}>改一下</button>
+            <Button variant="ghost" className="tb-action" disabled={busy} onClick={() => { setDrafts(null); setDropped([]); }}>改一下</Button>
           </div>
         </div>
       )}
       {!running && stored && (
-        <div className={muted + " basis-full flex flex-wrap items-baseline gap-x-2 text-left"}>
+        <div className="tb-foot tb-stored">
           <span>已存进档案，可在最近改动里撤销。</span>
-          <button type="button" className={action} style={{ fontSize: 12.5 }} disabled={disabled || !target} onClick={() => void start(true)}>用新成果再改一下</button>
+          <Button variant="ghost" className="tb-action" disabled={disabled || !target} onClick={() => void start(true)}>用新成果再改一下</Button>
         </div>
       )}
     </div>
   );
 }
+
+/** 这份简历有没有刚跑完、还没看完的改写结果（换到定制简历后重挂时用来默认展开）。 */
+export const hasTailorResult = (docId: number) => results.has(docId);

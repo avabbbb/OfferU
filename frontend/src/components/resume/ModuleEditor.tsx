@@ -125,7 +125,7 @@ function ItemBlock({ section, item, index, count, single, doc, canPolish, flash,
         </div>
       )}
       <footer className="re-item-foot">
-        <Button size="sm" variant="secondary" className="re-polish" disabled={!canPolish} title={canPolish ? "交给右侧 OfferU 润色这一条，改完可在「最近改动」撤销" : "保存中，存好再润色"}
+        <Button size="sm" variant="ghost" className="re-polish" disabled={!canPolish} title={canPolish ? "交给右侧 OfferU 润色这一条，改完可在「最近改动」撤销" : "保存中，存好再润色"}
           onClick={() => composeToAgent({ message: polishPrompt(doc, section, index, item) })}>
           <Sparkles size={14} aria-hidden />AI 润色
         </Button>
@@ -191,16 +191,18 @@ type Props = {
   focus?: EditorFocus | null;
   basicsExtra?: ReactNode;
   readOnly?: boolean;
+  /** 嵌在模块行下面展开时（手风琴）：行上已经有模块名，不再重复模块标题；切模块也不把整栏滚回顶。 */
+  bare?: boolean;
 };
 
-export function ModuleEditor({ resume, onChange, selected, doc, canPolish, focus, basicsExtra, readOnly }: Props) {
+export function ModuleEditor({ resume, onChange, selected, doc, canPolish, focus, basicsExtra, readOnly, bare }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const section = resume.sections.find((s) => s.id === selected);
 
   // 切模块回到顶上；预览里点到的条目滚过去、闪一下，并把光标放进第一个输入框。
-  useEffect(() => { root.current?.closest(".re-tabpanel, .re-editor")?.scrollTo({ top: 0 }); }, [selected]);
+  useEffect(() => { if (!bare) root.current?.closest(".re-tabpanel, .re-editor")?.scrollTo({ top: 0 }); }, [selected, bare]);
   useEffect(() => {
     if (!focus?.itemId) return;
     const id = focus.itemId;
@@ -218,8 +220,8 @@ export function ModuleEditor({ resume, onChange, selected, doc, canPolish, focus
 
   if (!section) {
     return (
-      <div ref={root} className="re-module" aria-readonly={readOnly || undefined} {...inert}>
-        <header className="re-module-head"><h2 className="re-module-title">基础信息</h2></header>
+      <div ref={root} className="re-module" data-bare={bare || undefined} aria-readonly={readOnly || undefined} {...inert}>
+        {!bare && <header className="re-module-head"><h2 className="re-module-title">基础信息</h2></header>}
         <BasicsEditor basics={resume.basics} onChange={(patch) => onChange({ ...resume, basics: { ...resume.basics, ...patch } })} extra={basicsExtra} />
       </div>
     );
@@ -235,15 +237,15 @@ export function ModuleEditor({ resume, onChange, selected, doc, canPolish, focus
   };
 
   return (
-    <div ref={root} className="re-module" aria-readonly={readOnly || undefined} title={readOnly ? "正在按岗位改写，写完再改" : undefined} {...inert}>
-      <header className="re-module-head">
+    <div ref={root} className="re-module" data-bare={bare || undefined} aria-readonly={readOnly || undefined} title={readOnly ? "正在按岗位改写，写完再改" : undefined} {...inert}>
+      {bare ? (section.hidden && <p className="re-hidden-note">已关掉，暂不显示在简历里</p>) : <header className="re-module-head">
         <input ref={titleRef} value={section.title} aria-label="模块名称" className="re-module-title" size={Math.max(4, section.title.length + 1)}
           placeholder={SECTION_LABEL[section.type]} onChange={(e) => patch((s) => ({ ...s, title: e.target.value }))} />
         <button type="button" className="ou-icon-button" aria-label="改模块名" title="改模块名" onClick={() => titleRef.current?.select()}>
           <Pencil size={15} aria-hidden />
         </button>
         {section.hidden && <span className="re-hidden-note">已在左栏关掉，暂不显示在简历里</span>}
-      </header>
+      </header>}
       {items.map((item, j) => (
         <ItemBlock key={item.id} section={section} item={item} index={j} count={items.length} single={single && items.length === 1}
           doc={doc} canPolish={canPolish} flash={flash === item.id}
@@ -252,7 +254,7 @@ export function ModuleEditor({ resume, onChange, selected, doc, canPolish, focus
           onDelete={() => patch((s) => ({ ...s, items: s.items.filter((it) => it.id !== item.id) }))} />
       ))}
       {(!single || items.length === 0) && (
-        <Button variant="secondary" className="re-add-item" onClick={add}><Plus size={15} aria-hidden />{single ? "填写" + (section.title || SECTION_LABEL[section.type]) : "添加条目"}</Button>
+        <Button variant="ghost" className="re-add-item" onClick={add}><Plus size={15} aria-hidden />{single ? "填写" + (section.title || SECTION_LABEL[section.type]) : "添加条目"}</Button>
       )}
     </div>
   );

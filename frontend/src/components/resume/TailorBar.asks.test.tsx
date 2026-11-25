@@ -102,7 +102,7 @@ describe("TailorBar 追问成果", () => {
     fireEvent.click(screen.getByRole("button", { name: "整理一下" }));
     await screen.findByText(/标了「留意」的请看一眼再存/);
     const note = screen.getByText("（留意：" + flags.join("；") + "）");
-    expect(note).toHaveClass("text-amber-600");
+    expect(note).toHaveAttribute("data-tone", "warn");
     expect(save).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "存进档案" }));

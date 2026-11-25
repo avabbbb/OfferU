@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { motion } from "framer-motion";
+import { ArrowLeft, FileText, Pencil, Sparkles } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { mutate } from "swr";
 
@@ -10,11 +11,12 @@ import { BasicsMedia } from "@/components/resume/BasicsMedia";
 import { BASICS, ModuleList } from "@/components/resume/ModuleList";
 import { type EditorFocus, ModuleEditor } from "@/components/resume/ModuleEditor";
 import { type PreviewHandle, ResumePreview } from "@/components/resume/ResumePreview";
-import { ResumeSwitcher } from "@/components/resume/ResumeSwitcher";
 import { ResumeActions } from "@/components/resume/ResumeActions";
 import { StyleTab } from "@/components/resume/StyleTab";
-import { TailorBar } from "@/components/resume/TailorBar";
+import { hasTailorResult, TailorBar } from "@/components/resume/TailorBar";
 import { TemplateTab } from "@/components/resume/TemplateTab";
+import { VersionList } from "@/components/resume/VersionList";
+import { Disclosure, Reveal, SPRING } from "@/app/interview/kit";
 import { ActivePill, Button } from "@/components/ui";
 import { type Doc, type Job, type Memory, type Profile, tool, useTool, write } from "@/lib/core";
 import { resumeFromProfile } from "@/lib/resumeDraft";
@@ -23,6 +25,7 @@ import { resumeToText } from "@/lib/resumeText";
 import { PageError, PageLoading } from "@/components/layout/PageState";
 import { type FitOutcome, fitOnePage, resolveStyle, type ResumeStyle } from "@/lib/resumeStyle";
 import "@/styles/resume-editor.css";
+import "@/styles/resume.css";
 
 const FIT_NOTICE: Record<FitOutcome, string> = {
   fits: "已经刚好一页",
@@ -31,7 +34,7 @@ const FIT_NOTICE: Record<FitOutcome, string> = {
   overflow: "压到下限还是超过一页，建议删减内容",
 };
 
-// 三栏要正好占满视口剩下的高度（各栏自己滚，整页不滚，顶栏下面没有内容滚过去）。
+// 宽窗口里各栏要正好占满视口剩下的高度（各栏自己滚，整页不滚，顶栏下面没有内容滚过去）；窄窗口整页滚（见 resume.css）。
 // 上面有没有「简历 / 档案」分段、外层留白多少都不固定，所以按自己离视口顶的距离量。
 function useFillViewport() {
   const ref = useRef<HTMLDivElement>(null);
@@ -46,7 +49,7 @@ function useFillViewport() {
   return ref;
 }
 
-// 右栏三个标签（参考 offershow）：编辑内容 / 排版美化 / 更换模版。
+// 编辑栏三个标签：编辑内容 / 排版美化 / 更换模版。
 const TABS = [["content", "编辑内容"], ["style", "排版美化"], ["template", "更换模版"]] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -62,10 +65,13 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
   const latest = useRef(resume);
   latest.current = resume;
   const [focus, setFocus] = useState<EditorFocus | null>(null);
-  // 左栏选中的模块（BASICS 或 section.id）：右栏只编辑这一个；预览里点到哪一条就切到它所在的模块并滚过去。
-  const [selected, setSelected] = useState<string>(BASICS);
+  // 展开的模块（BASICS 或 section.id）：一次只展开一块；预览里点到哪一条就展开它所在的模块并滚过去。
+  // 默认全部收起（渐进式披露：先看文档，再展开要改的那一块）；空字符串 = 没有展开的模块。
+  const [selected, setSelected] = useState<string>("");
   const [tab, setTab] = useState<Tab>("content");
   const pick = (id: string) => { setSelected(id); setTab("content"); };
+  const toggle = (id: string) => setSelected((now) => (now === id ? "" : id));
+  const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(doc.title ?? "");
   const [saved, setSaved] = useState(true);
   const [style, setStyle] = useState<ResumeStyle>(() => resolveStyle(doc.style, doc.template));
@@ -143,35 +149,74 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
 
   const job = jobs.find((j) => j.id === doc.job_id);
   const school = resume.sections.find((s) => s.type === "education")?.items[0]?.title.trim() ?? "";
+  const allSaved = saved && styleSaved;
+  const finishRename = (value: string) => {
+    setRenaming(false);
+    const next = value.trim();
+    if (next && next !== title) rename(doc, next);
+  };
   return (
-    <div ref={shell} className="resume-shell re-shell">
-      <header className="rs-head">
-        <button type="button" className="ou-icon-button re-back" aria-label="返回" title="返回"
+    <div ref={shell} className="resume-shell re-shell rz">
+      {/* 页头：返回 · 大标题（当前这份简历）+ 一行状态 ……… 安静的「分享」· 墨黑的「导出」 */}
+      <header className="rz-head">
+        <button type="button" className="ou-icon-button rz-back" aria-label="返回" title="返回"
           onClick={() => ((window.history.state as { idx?: number } | null)?.idx ? router.back() : router.push("/"))}>
-          <ArrowLeft size={16} aria-hidden />
+          <ArrowLeft size={18} aria-hidden />
         </button>
-        <ResumeSwitcher docs={docs} current={doc} jobs={jobs} title={title} onRename={rename} onCreate={onCreate} onCopy={copy}
-          onDelete={(d) => void remove(d)} />
-        {job && <Link href={"/jobs/" + job.id} className="rs-joblink">{job.label}</Link>}
-        <span className="rs-saved" data-pending={saved && styleSaved ? undefined : ""} aria-live="polite">{saved && styleSaved ? "已保存" : "保存中…"}</span>
-        <ResumeActions docId={doc.id} dirty={!saved || !styleSaved} saveNow={saveNow} plainText={() => resumeToText(latest.current)} />
+        <div className="rz-heading">
+          <div className="rz-title-row">
+            {renaming ? (
+              <input autoFocus defaultValue={title} aria-label="简历名称" className="rz-title-input"
+                onFocus={(e) => e.currentTarget.select()} onBlur={(e) => finishRename(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.nativeEvent.isComposing) return;
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") { e.currentTarget.value = title; e.currentTarget.blur(); }
+                }} />
+            ) : (
+              <>
+                <h1 className="rz-title" title={title.trim() || "未命名简历"}>{title.trim() || "未命名简历"}</h1>
+                <button type="button" className="ou-icon-button rz-rename" aria-label="改简历名" title="改简历名" onClick={() => setRenaming(true)}>
+                  <Pencil size={15} aria-hidden />
+                </button>
+              </>
+            )}
+          </div>
+          <p className="rz-meta">
+            <span className="rs-saved" data-pending={allSaved ? undefined : ""} aria-live="polite">{allSaved ? "已保存" : "保存中…"}</span>
+            {job ? <Link href={"/jobs/" + job.id} className="rz-joblink">为「{job.label}」定制</Link> : <span>通用版，按岗位复制一份再改</span>}
+          </p>
+        </div>
+        <ResumeActions docId={doc.id} dirty={!allSaved} saveNow={saveNow} plainText={() => resumeToText(latest.current)} />
       </header>
-      <div className="re-grid">
-        <aside className="re-rail">
-          <ModuleList resume={resume} onChange={changeResume} selected={selected} onSelect={pick} />
+
+      <div className="rz-body">
+        <aside className="rz-versions">
+          <VersionList docs={docs} current={doc} jobs={jobs} title={title} onRename={rename} onCreate={onCreate} onCopy={copy}
+            onDelete={(d) => void remove(d)} />
         </aside>
-        <div className="re-preview">
+
+        {/* 焦点：文档本身。上面一条安静的「按岗位定制」，点开才露出岗位选择和 AI 结果。 */}
+        <motion.section className="rz-doc" aria-label="简历预览" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
+          <div className="rz-tailor">
+            <Disclosure testId="resume-tailor" defaultOpen={hasTailorResult(doc.id)}
+              icon={<Sparkles size={15} className="rz-agent-icon" aria-hidden />}
+              title={job ? "按「" + job.label + "」再改一版" : "按岗位定制"}
+              summary={tailoring ? "Agent 在改写…" : "Agent 起草 · 审稿 · 可撤销"}>
+              <TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!allSaved} onRunning={setTailoring}
+                onDone={async (id) => { await mutate((k) => Array.isArray(k) && k[0] === "tool"); if (id !== doc.id) router.push("/resume/" + id); }} />
+            </Disclosure>
+          </div>
           <ResumePreview ref={preview} resume={resume} style={style}
-            toolbar={<TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved} onRunning={setTailoring}
-              onDone={async (id) => { await mutate((k) => Array.isArray(k) && k[0] === "tool"); if (id !== doc.id) router.push("/resume/" + id); }} />}
             onLocate={(path) => {
               const at = locatePath(resume, path);
               pick(at.sectionId ?? BASICS);
               setFocus({ itemId: at.itemId ?? (at.basics ? BASICS : undefined), at: Date.now() });
             }} />
-        </div>
-        <section className="re-editor" aria-label="编辑与排版">
-          <div className="re-tabs ou-segment ou-pill-host" role="tablist" aria-label="右栏">
+        </motion.section>
+
+        <section className="rz-inspector re-editor" aria-label="编辑与排版">
+          <div className="re-tabs ou-segment ou-pill-host" role="tablist" aria-label="编辑栏">
             <ActivePill />
             {TABS.map(([id, label]) => (
               <button key={id} type="button" role="tab" id={"re-tab-" + id} aria-selected={tab === id} aria-controls="re-tabpanel"
@@ -182,10 +227,15 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
           </div>
           <div id="re-tabpanel" role="tabpanel" className="re-tabpanel" aria-labelledby={"re-tab-" + tab}>
             {tab === "content" && (
-              <ModuleEditor resume={resume} onChange={changeResume} selected={selected} focus={focus} readOnly={tailoring}
-                doc={{ id: doc.id, title }} canPolish={saved && styleSaved && !tailoring}
-                basicsExtra={<BasicsMedia style={style} onStyle={changeStyle} photo={photo} school={school}
-                  onPhoto={() => void mutate((k) => Array.isArray(k) && k[0] === "tool")} />} />
+              <div className="rz-modules">
+                <ModuleList resume={resume} onChange={changeResume} selected={selected} onSelect={toggle}
+                  renderBody={(id) => (
+                    <ModuleEditor bare resume={resume} onChange={changeResume} selected={id} focus={focus} readOnly={tailoring}
+                      doc={{ id: doc.id, title }} canPolish={allSaved && !tailoring}
+                      basicsExtra={<BasicsMedia style={style} onStyle={changeStyle} photo={photo} school={school}
+                        onPhoto={() => void mutate((k) => Array.isArray(k) && k[0] === "tool")} />} />
+                  )} />
+              </div>
             )}
             {tab === "style" && <StyleTab style={style} onChange={changeStyle} onFit={() => void fit()} fitting={fitting} notice={notice} />}
             {tab === "template" && <TemplateTab resume={resume} style={style} onChange={changeStyle} />}
@@ -230,15 +280,17 @@ export default function ResumePage() {
   const copy = (doc: Doc) => void open({ title: (doc.title || "简历") + " 副本", resume: doc.resume, style: doc.style, job_id: doc.job_id ?? null });
 
   if (!current) {
+    // 空状态：一张卡、一个墨黑主操作；「空白开始」是安静的文字钮。
     return (
-      <div className="ou-page ou-page-default">
-        <h1 className="rs-empty-title">简历</h1>
-        <p className="rs-empty-lead">先有一份主简历，再按岗位复制一份改。左边按块写，右边就是导出的 PDF。</p>
-        <div className="rs-empty-actions">
-          <Button variant="primary" onClick={() => void create(true)}>从档案生成</Button>
-          <Button variant="secondary" onClick={() => void create(false)}>空白开始</Button>
-        </div>
-        <p className="rs-empty-note">档案还空着？先去 <Link href="/profile" className="underline">档案</Link> 填经历，或者导入旧简历。</p>
+      <div className="ou-page ou-page-reading rz-empty-page">
+        <Reveal className="rz-empty">
+          <span className="ou-tile rz-empty-tile" aria-hidden><FileText size={22} /></span>
+          <h1 className="rz-empty-title">先做一份主简历</h1>
+          <p className="rz-empty-lead">从档案里的经历起草，右边就是导出的 PDF。之后按岗位复制一份改。</p>
+          <Button variant="primary" className="rz-empty-primary" onClick={() => void create(true)}>从档案生成</Button>
+          <Button variant="ghost" className="rz-empty-quiet" onClick={() => void create(false)}>或者空白开始</Button>
+          <p className="rz-empty-note">档案还空着？先去 <Link href="/profile" className="rz-inline-link">档案</Link> 填经历，或者导入旧简历。</p>
+        </Reveal>
       </div>
     );
   }
