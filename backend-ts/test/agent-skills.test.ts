@@ -47,7 +47,9 @@ function setup(turns: Turn[]) {
 }
 
 const MOCK_RULE = "这条回复只用一个问题追问他具体做了什么或结果";
-const system = (request: ChatRequest) => String(request.messages[0].content);
+/** The system prompt plus the per-run context the loop carries on this run's user message. */
+const system = (request: ChatRequest) => request.messages.filter((message) => message.role === "system" || message.role === "user").map((message) => String(message.content)).join("\n");
+const systemOnly = (request: ChatRequest) => String(request.messages[0].content);
 
 describe("progressive skills", () => {
   it("a plain request gets the core rules and the index, not the skill bodies", async () => {
@@ -81,5 +83,25 @@ describe("progressive skills", () => {
     expect(replies[0].body).toContain("## 面试方案 里加「Gap 质疑题」");
     expect(replies[1]).toMatchObject({ ok: false, error: { code: "not_found" } });
     expect(replies[1].error.suggestedAction).toContain("interview-practice");
+  });
+
+  it("the system prompt is identical across runs; memory, overview and loaded skills ride on the run's user message", async () => {
+    const { send, seen } = setup([{ text: "好。" }, { text: "第 1 题：讲讲你自己。" }]);
+    const first = await send("今天要做什么");
+    await send("帮我模拟面试这个岗位", first.conversation_id);
+    const [plain, mock] = [systemOnly(seen[0]), systemOnly(seen[1])];
+    expect(plain.length).toBeGreaterThan(200);
+    expect(plain).toBe(mock);
+    expect(plain).toContain("技能索引");
+    expect(plain).not.toContain("今天是");
+    expect(plain).not.toContain(MOCK_RULE);
+    const user = String(seen[1].messages.at(-1)?.content);
+    // earlier turns come first (part of the cacheable prefix), then this run's context, then the request
+    expect(user.startsWith("Prior task conversation")).toBe(true);
+    expect(user.indexOf("今天要做什么")).toBeLessThan(user.indexOf("今天是"));
+    expect(user).toContain(MOCK_RULE);
+    expect(user.endsWith("Current user request:\n帮我模拟面试这个岗位")).toBe(true);
+    // a first run has no earlier turns: the context leads the message
+    expect(String(seen[0].messages.at(-1)?.content).endsWith("今天要做什么")).toBe(true);
   });
 });

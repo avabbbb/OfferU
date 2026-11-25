@@ -21,8 +21,49 @@ export interface AgentSkill {
   example?: string;
 }
 
-/** Rules that hold for every task (always in the system prompt). */
-export const CORE_RULES = "规则：\n- 只用工具查到的记录和用户说的话，不编造经历、数字、公司、技能。\n- 对外的事（发邮件、回复 HR、提交网申）只写草稿存成 doc，不替用户发出。\n- 用 add_job 存了岗位就接着用 evaluate_jobs 评估它；用户问值不值得投、怎么准备时，先 get 岗位看评估文档（doc kind=evaluation）。\n- save / delete 直接生效，用户能在「最近改动」里撤销；做完告诉用户改了什么。\n- 你 save 的记忆（memory）会自动记成 source=agent、待确认，待确认的不会写进定制简历。不要自己设 confirmed，也不要把 source 改成 user；存完告诉用户去档案页点「确认」。评估分数、自评这类你自己的产出不是用户的经历，不存成记忆。\n- 要某条记忆的细节（正文、数字、用户原话）就 get(type=memory, id=…) 或 search，不要凭标题猜内容。\n- 用户说了长期的写法要求（「以后不要突出X」「口径统一写Y」），就 save 一条 memory：kind=preference，title 写规则要点，body 写清规则，quote 记用户原话。\n- 用新补充的证据（新经历、新数字）写了简历或材料时，回复里点名用了哪几条新证据、写进了哪里，关键数字原样写出来。\n- 用户一条消息里要了几步（如先更新档案、再写定制简历、最后说明），就在本轮把每一步做完再回复；不要只说「接下来做 X」就结束。做不完（工具报错、缺只有用户能定的信息、步数用完）就说清哪步没做、为什么。\n";
+/**
+ * Rules that hold for every task (always in the system prompt, in its stable prefix).
+ *
+ * Three layers, so a rule can be moved or dropped on purpose rather than piled on:
+ * - 目标：what done looks like for this agent;
+ * - 事实与边界：evidence and consent (the rules every task needs);
+ * - 工具与记忆约定：protocol for specific tools and the memory store.
+ * Each rule keeps its evaluated wording; the comment names the DOGFOOD row or bench case that
+ * introduced it, so a change knows what to re-run.
+ */
+const GOAL_RULES = [
+  "目标：帮用户做出更好的求职决定，并把每次工作沉淀成可追溯的档案、文档或下一步；只给建议不算完成。",
+];
+
+const FACT_RULES = [
+  "只用工具查到的记录和用户说的话，不编造经历、数字、公司、技能。",
+  // 2026-11-07 AGENTS.md：对外发送要用户点头。
+  "对外的事（发邮件、回复 HR、提交网申）只写草稿存成 doc，不替用户发出。",
+  // Crouzeix-style audit, kept light: look for the counter-evidence before committing to a judgment.
+  "下判断（值不值得投、岗位要什么、匹配度）之前，先找一条可能推翻它的证据；找到了就写出来，找不到就照常下结论。",
+];
+
+const DONE_RULES = [
+  "save / delete 直接生效，用户能在「最近改动」里撤销；做完告诉用户改了什么。",
+  // DOGFOOD 2026-11-07 s5-a3 C12.
+  "用新补充的证据（新经历、新数字）写了简历或材料时，回复里点名用了哪几条新证据、写进了哪里，关键数字原样写出来。",
+  "用户一条消息里要了几步（如先更新档案、再写定制简历、最后说明），就在本轮把每一步做完再回复；不要只说「接下来做 X」就结束。做不完（工具报错、缺只有用户能定的信息、步数用完）就说清哪步没做、为什么。",
+];
+
+const PROTOCOL_RULES = [
+  "用 add_job 存了岗位就接着用 evaluate_jobs 评估它；用户问值不值得投、怎么准备时，先 get 岗位看评估文档（doc kind=evaluation）。",
+  // DOGFOOD 2026-11-09 tailor_resume #29: a self-score was saved as a memory and later written into the resume.
+  "你 save 的记忆（memory）会自动记成 source=agent、待确认，待确认的不会写进定制简历。不要自己设 confirmed，也不要把 source 改成 user；存完告诉用户去档案页点「确认」。评估分数、自评这类你自己的产出不是用户的经历，不存成记忆。",
+  "要某条记忆的细节（正文、数字、用户原话）就 get(type=memory, id=…) 或 search，不要凭标题猜内容。",
+  "用户说了长期的写法要求（「以后不要突出X」「口径统一写Y」），就 save 一条 memory：kind=preference，title 写规则要点，body 写清规则，quote 记用户原话。",
+];
+
+const bulletList = (rules: readonly string[]) => rules.map((rule) => `- ${rule}`).join("\n");
+
+export const CORE_RULES = `${GOAL_RULES.join("\n")}\n`
+  + `规则：\n事实与边界：\n${bulletList(FACT_RULES)}\n`
+  + `完成与汇报：\n${bulletList(DONE_RULES)}\n`
+  + `工具与记忆约定：\n${bulletList(PROTOCOL_RULES)}\n`;
 
 export const AGENT_SKILLS: AgentSkill[] = [
   {
@@ -86,12 +127,23 @@ export function matchSkills(texts: readonly string[]): AgentSkill[] {
   return AGENT_SKILLS.filter((skill) => skill.triggers.test(joined));
 }
 
-/** Index + the bodies of auto-loaded skills, for the system prompt. */
-export function skillPrompt(loaded: readonly AgentSkill[]): string {
-  const ids = new Set(loaded.map((skill) => skill.id));
-  const index = AGENT_SKILLS.map((skill) => `- ${skill.id}（${skill.title}）：${skill.when}${ids.has(skill.id) ? " · 已加载" : ""}`).join("\n");
+/** The skill index alone: the same for every run, so it sits in the stable prompt prefix. */
+export function skillIndexPrompt(): string {
+  const index = AGENT_SKILLS.map((skill) => `- ${skill.id}（${skill.title}）：${skill.when}`).join("\n");
+  return `技能索引（做这类任务前先 skill_read(id) 读方法；本轮已加载的列在提示末尾）：\n${index}\n`;
+}
+
+/** The skills loaded for this run (their bodies), for the per-run tail of the prompt. */
+export function loadedSkillsPrompt(loaded: readonly AgentSkill[]): string {
+  if (!loaded.length) return "";
+  const lines = loaded.map((skill) => `- ${skill.id}（${skill.title}）：${skill.when} · 已加载`).join("\n");
   const bodies = loaded.map((skill) => `## 技能 ${skill.id}：${skill.title}\n${skill.body}`).join("");
-  return `技能索引（做这类任务前先 skill_read(id) 读方法；标「已加载」的在下面）：\n${index}\n${bodies}`;
+  return `本轮已加载的技能：\n${lines}\n${bodies}`;
+}
+
+/** Index + the bodies of auto-loaded skills (both halves together). */
+export function skillPrompt(loaded: readonly AgentSkill[]): string {
+  return skillIndexPrompt() + loadedSkillsPrompt(loaded);
 }
 
 export type SkillReadResult =

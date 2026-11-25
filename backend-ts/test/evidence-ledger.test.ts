@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildJobEvidenceLedger, saveRecord, validateTailoredResume } from "@offeru/core";
+import { buildJobEvidenceLedger, runTailor, saveRecord, validateTailoredResume, type LlmClient } from "@offeru/core";
 
 import { SqliteCoreStore } from "../src/store";
 import { at, BEFORE, seedDogfood1109 } from "./helpers/dogfood";
@@ -68,5 +68,38 @@ describe("job evidence ledger", () => {
     expect(ledger.pendingQuestions[0]).toMatch(/重新 evaluate_jobs/);
     const issues = await validateTailoredResume({ ledger, job: (await store.get("job", ids.jobId))!, before: BEFORE, after: BEFORE, memories: await store.all("memory") });
     expect(issues).toMatchObject([{ code: "jd_changed" }]);
+  });
+
+  it("a re-tailor that drops a confirmed point or writes a self-score is not saved (hard gate)", async () => {
+    const store = new SqliteCoreStore(":memory:");
+    stores.push(store);
+    const ids = await seedDogfood1109(store);
+    const resume = (await store.all("doc", ids.jobId)).find((doc) => doc.kind === "resume")!;
+    const llm = { provider: "fake", model: "fake-1", async chat() { return "{}"; } } as unknown as LlmClient;
+    const events = [];
+    for await (const event of runTailor({
+      store,
+      llm,
+      stream: async function* () {
+        yield "# 林同学\n## 项目经历\n### 校园活动 | 负责人 | 2025\n- 项目牵头协作：牵头 3 个部门协作，按期上线\n- 综合分从 5.8 提升到 6.4\n";
+      },
+      deadlineMs: 5000,
+    }, resume.id, ids.jobId)) events.push(event);
+    const last = events.at(-1) as { type: string; blocked?: Array<{ code: string }>; draft?: string };
+    expect(last.type).toBe("error");
+    expect(last.blocked?.map((issue) => issue.code).sort()).toEqual(["confirmed_dropped", "self_score_as_achievement"]);
+    expect(last.draft).toContain("综合分");
+    expect((await store.get("doc", resume.id))?.body).toBe(resume.body);
+  });
+
+  it("a 匹配度 line backed by a confirmed memory is the user's achievement, not a self-score", async () => {
+    const store = new SqliteCoreStore(":memory:");
+    stores.push(store);
+    const ids = await seedDogfood1109(store);
+    await saveRecord(store, { type: "memory", data: { kind: "project", title: "推荐匹配度优化", body: "推荐匹配度提升 12%" } }, at("09"));
+    const ledger = (await buildJobEvidenceLedger(store, ids.jobId))!;
+    const after = `${BEFORE}\n- 推荐匹配度优化：推荐匹配度提升 12%`;
+    const issues = await validateTailoredResume({ ledger, job: (await store.get("job", ids.jobId))!, before: BEFORE, after, memories: await store.all("memory") });
+    expect(issues.filter((issue) => issue.code === "self_score_as_achievement")).toEqual([]);
   });
 });

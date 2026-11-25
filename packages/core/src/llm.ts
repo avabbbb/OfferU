@@ -428,6 +428,8 @@ export interface LlmUsage {
   output_tokens: number;
   total_tokens: number;
   estimated: boolean;
+  /** Input tokens served from the provider's prompt cache, when it reports them. */
+  cached_input_tokens?: number;
 }
 
 export interface ParsedToolCall {
@@ -542,9 +544,12 @@ function estimatedUsage(text: string): LlmUsage {
 
 function usageOf(raw: Record<string, unknown> | undefined, text: string): LlmUsage {
   if (!raw || !Object.keys(raw).length) return estimatedUsage(text);
-  const input = Number(raw.prompt_tokens ?? raw.input_tokens ?? 0) || 0;
+  const anthropicCache = raw.prompt_tokens === undefined ? (Number(raw.cache_read_input_tokens ?? 0) || 0) + (Number(raw.cache_creation_input_tokens ?? 0) || 0) : 0;
+  const input = (Number(raw.prompt_tokens ?? raw.input_tokens ?? 0) || 0) + anthropicCache;
   const output = Number(raw.completion_tokens ?? raw.output_tokens ?? 0) || 0;
-  return { input_tokens: input, output_tokens: output, total_tokens: Number(raw.total_tokens ?? input + output) || input + output, estimated: false };
+  const details = raw.prompt_tokens_details as Record<string, unknown> | undefined;
+  const cached = Number(details?.cached_tokens ?? raw.cached_input_tokens ?? raw.cache_read_input_tokens ?? 0) || 0;
+  return { input_tokens: input, output_tokens: output, total_tokens: Number(raw.total_tokens ?? input + output) || input + output, estimated: false, ...(cached ? { cached_input_tokens: cached } : {}) };
 }
 
 type Slot = { id: string; name: string; arguments: string };
@@ -696,10 +701,15 @@ function anthropicBody(endpoint: LlmEndpoint, request: ChatRequest, stream: bool
     if (last && last.role === role) last.content.push(...blocks);
     else native.push({ role, content: blocks });
   }
+  // Prompt caching (Anthropic caches only up to marked blocks): one breakpoint after tools + system,
+  // one on the newest block so the next turn reads the whole history from cache. Below the model's
+  // minimum cacheable length the marks are ignored, not an error.
+  const lastBlocks = native[native.length - 1]?.content;
+  if (lastBlocks?.length) lastBlocks[lastBlocks.length - 1] = { ...lastBlocks[lastBlocks.length - 1], cache_control: { type: "ephemeral" } };
   const body: Record<string, unknown> = {
     model: request.model || endpoint.model,
     max_tokens: request.maxTokens || 8192,
-    system,
+    system: system ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] : system,
     messages: native,
   };
   if (request.temperature !== undefined) body.temperature = request.temperature;
@@ -821,7 +831,10 @@ function toolCallingMethods(endpoint: LlmEndpoint, fetchFn: FetchLike): Required
       }
     }
     if (usageRaw && format === "anthropic") {
-      usageRaw = { input_tokens: usageRaw.input_tokens, output_tokens: usageRaw.output_tokens };
+      // Anthropic's input_tokens excludes cached and newly cached tokens; count them in, and keep the hit count.
+      const read = Number(usageRaw.cache_read_input_tokens ?? 0) || 0;
+      const written = Number(usageRaw.cache_creation_input_tokens ?? 0) || 0;
+      usageRaw = { input_tokens: (Number(usageRaw.input_tokens ?? 0) || 0) + read + written, output_tokens: usageRaw.output_tokens, ...(read ? { cached_input_tokens: read } : {}) };
     }
     yield {
       type: "done",

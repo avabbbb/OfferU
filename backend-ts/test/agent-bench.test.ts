@@ -100,6 +100,9 @@ export function singleFollowUp(reply: string): boolean {
   return questions === 1 && !/第\s*\d+\s*题/u.test(reply) && !/框架|示范|STAR|参考回答/u.test(reply) && !/档案/u.test(reply);
 }
 
+/** What the model was told: the system prompt plus the per-run context carried on a user message. */
+const promptOf = (request: ChatRequest) => request.messages.filter((message) => message.role !== "assistant" && message.role !== "tool").map((message) => (typeof message.content === "string" ? message.content : JSON.stringify(message.content))).join("\n");
+
 type Funnel = { routing: boolean; call: boolean; output: boolean; reply: boolean };
 const results: Array<{ id: string; source: string } & Funnel> = [];
 function record(id: string, source: string, funnel: Funnel) {
@@ -159,7 +162,7 @@ describe("agent regression bench (DOGFOOD replays)", () => {
     const resumed = await second.startRun({ message: "", resumeRunId: runId });
     const system = String(seen2[0]?.messages[0].content ?? "");
     record("long-research-resume", "2026-11-06 evaluate 152s / long runs", {
-      routing: String(seen1[0].messages[0].content).includes("技能 role-research"),
+      routing: promptOf(seen1[0]).includes("技能 role-research"),
       call: okCalls(seen2.at(-1)),
       output: (await store.all("doc", jobId)).some((doc) => doc.kind === "research")
         && !JSON.stringify(seen2[0].messages).includes("岗位要求很长".repeat(100))
@@ -203,7 +206,7 @@ describe("agent regression bench (DOGFOOD replays)", () => {
     const result = await run;
     const sizes = seen.map((request) => JSON.stringify(request.messages).length);
     record("compaction-fact-reuse", "P2 上下文策略：压缩后事实走存储", {
-      routing: String(seen[0].messages[0].content).includes("技能 resume-tailoring"),
+      routing: promptOf(seen[0]).includes("技能 resume-tailoring"),
       call: okCalls(seen.at(-1)),
       output: drafts.some((draft) => draft.includes("雅思 7.5"))
         && Math.max(...sizes.slice(2)) < JSON.stringify("岗位职责很长".repeat(3000)).length * 2,
@@ -265,7 +268,7 @@ describe("agent regression bench (DOGFOOD replays)", () => {
     // negative control: the 11-07 failure (critique + framework + next question) must fail the check
     const failing = "回答有点笼统。可以用 STAR 框架：情境、任务、行动、结果。第 2 题：说说你的优势？";
     record("vague-answer-one-follow-up", "2026-11-07 s5-a3 C11b / full-a8", {
-      routing: String(seen[1].messages[0].content).includes("这条回复只用一个问题追问"),
+      routing: promptOf(seen[1]).includes("这条回复只用一个问题追问"),
       call: true,
       output: (await store.changes(10)).length === 0,
       reply: singleFollowUp(second.assistant_message) && !singleFollowUp(failing),

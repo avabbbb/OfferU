@@ -59,6 +59,11 @@ export type LoopEvent =
 export interface LoopOptions {
   client: LlmClient;
   systemPrompt: string;
+  /**
+   * Per-run context (memory, today's overview, loaded skills). Sent on the newest user message, after
+   * the history, so the system prompt and the history stay a cacheable prefix. Never saved to the session.
+   */
+  contextPrompt?: string;
   /** The session so far, ending with the new user message. */
   messages: ChatMessage[];
   tools: AgentTool[];
@@ -161,14 +166,45 @@ function toolMessage(callId: string, name: string, result: AgentToolResult): Cha
   return { role: "tool", tool_call_id: callId, name, content: text };
 }
 
+export const CONTEXT_OPEN = "【本轮上下文：系统提供，不是用户说的话】";
+export const CONTEXT_CLOSE = "【用户消息】";
+/** Where host.promptWithContext starts the current request after the earlier turns. */
+const REQUEST_MARKER = "\n\nCurrent user request:\n";
+
+/**
+ * Put the per-run context on the user message at `index` — the message that started this run, so the
+ * prefix stays put for every turn of the run and steering messages reach the model as written (a copy;
+ * the session is untouched). Without that message (compacted away), it goes back to the system prompt.
+ */
+export function withContext(messages: ChatMessage[], context: string | undefined, index: number): { messages: ChatMessage[]; leftover: string } {
+  if (!context) return { messages, leftover: "" };
+  if (index < 0 || messages[index]?.role !== "user") return { messages, leftover: context };
+  const block = `${CONTEXT_OPEN}\n${context.trim()}\n${CONTEXT_CLOSE}\n`;
+  const target = messages[index];
+  let content: ChatMessage["content"];
+  if (Array.isArray(target.content)) {
+    content = [{ type: "text", text: block }, ...target.content];
+  } else {
+    // host.promptWithContext folds earlier turns into this message ahead of the request; keep them in
+    // front so the conversation so far stays part of the cacheable prefix.
+    const text = target.content ?? "";
+    const at = text.lastIndexOf(REQUEST_MARKER);
+    content = at >= 0 ? `${text.slice(0, at)}\n\n${block}${text.slice(at + 2)}` : `${block}${text}`;
+  }
+  const copy = [...messages];
+  copy[index] = { ...target, content };
+  return { messages: copy, leftover: "" };
+}
+
 export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
   const emit = async (event: LoopEvent) => { await options.emit?.(event); };
   const session: ChatMessage[] = [...options.messages];
+  const runMessage = session.at(-1)?.role === "user" ? session.at(-1) : undefined;
   const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]));
   const specs: LlmToolSpec[] = options.tools.map(({ name, description, parameters }) => ({ name, description, parameters }));
   const mask = options.maskPii !== false;
   const compaction = options.compaction === false ? null : options.compaction ?? DEFAULT_COMPACTION;
-  const fixedTokens = estimateTokens(options.systemPrompt) + estimateTokens(JSON.stringify(specs));
+  const fixedTokens = estimateTokens(options.systemPrompt) + estimateTokens(options.contextPrompt ?? "") + estimateTokens(JSON.stringify(specs));
   let ledger = "";
   let turns = 0;
   let softInjected = false;
@@ -212,8 +248,10 @@ export async function runAgentLoop(options: LoopOptions): Promise<LoopResult> {
         }
       }
       const outgoing = mask ? maskMessages(session) : { messages: session, mapping: {} };
+      const placed = withContext(outgoing.messages, options.contextPrompt, runMessage ? session.indexOf(runMessage) : -1);
+      const system = [options.systemPrompt, placed.leftover, ledger].filter(Boolean).join("\n");
       const request = {
-        messages: [{ role: "system" as const, content: ledger ? `${options.systemPrompt}\n${ledger}` : options.systemPrompt }, ...outgoing.messages],
+        messages: [{ role: "system" as const, content: system }, ...placed.messages],
         tools: specs.length ? specs : undefined,
         model: options.model,
         reasoningEffort: options.reasoningEffort,

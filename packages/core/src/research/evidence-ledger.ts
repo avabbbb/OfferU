@@ -181,8 +181,8 @@ const SELF_SCORE = /(评估|匹配|综合|自评|模型|面试官)\s*(分|得分
 
 /**
  * Check a tailored resume (`after`) against the ledger built before tailoring
- * and the resume it replaced (`before`). Issues are advisory: the caller shows
- * them; nothing is blocked here.
+ * and the resume it replaced (`before`). Nothing is blocked here; runTailor refuses
+ * to save on BLOCKING_LEDGER_ISSUES and shows the rest.
  */
 export async function validateTailoredResume(input: {
   ledger: JobEvidenceLedger;
@@ -199,7 +199,9 @@ export async function validateTailoredResume(input: {
   const confirmed = evidence.filter(confirmedMemory);
   const beforeLines = new Set(resumeLines(input.before));
   for (const line of resumeLines(input.after)) {
-    if (SELF_SCORE.test(line)) {
+    // A line the user's own confirmed evidence backs (e.g. they really improved a recommender's 匹配度)
+    // is their achievement, not the model's score.
+    if (SELF_SCORE.test(line) && !claimEvidence(line, confirmed).length) {
       issues.push({ code: "self_score_as_achievement", detail: "评估分 / 匹配度是模型的产出，不是用户的成果，不要写进简历。", line });
       continue;
     }

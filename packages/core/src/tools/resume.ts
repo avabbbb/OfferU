@@ -39,6 +39,9 @@ export async function tailorResume(deps: ToolDeps, args: Args): Promise<Json> {
     signal: deps.signal,
     context: () => deps.ctx,
   }, doc.id, jobId, { reviewOnly: args.review_only === true })) {
+    if (event.type === "error" && event.blocked?.length) {
+      throw new CoreError(`${event.message.replace(/。草稿在 draft 里$/u, "")}。简历没动；按这些问题调整（保留已确认的经历、不写评估分）后再调一次 tailor_resume，或把问题告诉用户`, "invalid");
+    }
     if (event.type === "error" && event.conflict) throw new CoreError(`${event.message.split("；")[0]}；按最新内容再调一次 tailor_resume`, "conflict");
     if (event.type === "error") throw new CoreError(event.message, event.message.includes("正在改写") ? "conflict" : "invalid");
     if (event.type === "done") done = event;

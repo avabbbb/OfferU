@@ -36,6 +36,9 @@ export type TailorRound = {
   seconds: Record<string, number>; error?: string;
 };
 export type TailorChecks = { block: CheckLine[]; warn: CheckLine[]; unchecked: string; dropped: DroppedFacts[]; omitted: string[]; ledger?: LedgerIssue[] };
+/** Ledger issues that stop a tailored resume from being saved (the rest are shown, not enforced). */
+export const BLOCKING_LEDGER_ISSUES: ReadonlySet<LedgerIssue["code"]> = new Set(["confirmed_dropped", "self_score_as_achievement"]);
+
 export type TailorEvent =
   | { type: "start"; job: string }
   | { type: "delta"; text: string }
@@ -46,7 +49,7 @@ export type TailorEvent =
     timings: Record<string, number>; grounding: TailorEdit[];
   }
   /** `draft`: a finished body that was not saved (the inputs changed meanwhile), so the page can offer it. */
-  | { type: "error"; message: string; draft?: string; conflict?: boolean };
+  | { type: "error"; message: string; draft?: string; conflict?: boolean; blocked?: LedgerIssue[] };
 
 export type DraftStream = (messages: LlmMessage[], signal?: AbortSignal) => AsyncIterable<string>;
 
@@ -448,11 +451,19 @@ export async function* runTailor(deps: TailorDeps, docId: number, jobId?: number
     const memories = await store.all("memory");
     const checks: TailorChecks = { ...checkResumeFacts(body, sources), dropped: retainedFacts(body, memories), omitted: omittedMemories(body, memories) };
     // Evidence ledger (research/evidence-ledger.ts): new claims need confirmed evidence, confirmed facts stay,
-    // model scores are not achievements, the evaluation matches the current JD. Advisory, like the checks above.
+    // model scores are not achievements, the evaluation matches the current JD. unconfirmed_claim and
+    // jd_changed stay advisory, like the checks above; BLOCKING_LEDGER_ISSUES stop the save below.
     const ledger = await buildJobEvidenceLedger(store, job.id);
     if (ledger) checks.ledger = await validateTailoredResume({ ledger, job, before: str(doc.body), after: body, memories });
     timings.verify = since(mark);
     if (aborted()) return; // 客户端断开 = 取消，不写库
+    // Hard gate (DOGFOOD 2026-11-09): dropping what the user confirmed, or writing a model's own score
+    // as the user's achievement, is never saved. The draft comes back so it can be compared by hand.
+    const blocked = (checks.ledger ?? []).filter((issue) => BLOCKING_LEDGER_ISSUES.has(issue.code));
+    if (blocked.length) {
+      yield { type: "error", message: `改写结果没有保存：${blocked.map((issue) => issue.detail).join("；")}。草稿在 draft 里`, draft: body, blocked };
+      return;
+    }
     mark = Date.now();
     const ctx = deps.context ? deps.context() : defaultContext(actor);
     const saved = await store.transaction(async () => {

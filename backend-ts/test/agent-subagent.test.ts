@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { createAgentRuntime, delegateTool, type AgentTool, type ChatRequest, type LlmClient, type LlmStreamEvent, type ParsedToolCall } from "@offeru/core";
+import { createAgentRuntime, delegateTool, verifySource, childEvidence, type AgentTool, type ChatRequest, type LlmClient, type LlmStreamEvent, type ParsedToolCall } from "@offeru/core";
 
 import { SqliteAgentRunStore } from "../src/agent-store";
 import { SqliteCoreStore } from "../src/store";
@@ -84,5 +84,36 @@ describe("delegate_research", () => {
     controller.abort();
     const result = await pending;
     expect(JSON.parse(result.text)).toMatchObject({ ok: false, missing: ["a", "b"] });
+  });
+
+  it("a finding's source must appear in what the child's tools returned", async () => {
+    const pageTool: AgentTool = { name: "fetch_page", description: "", parameters: { type: "object", properties: {} }, async execute() { return { text: JSON.stringify({ url: "https://jobs.feishu.cn/123", text: "要 SQL" }), isError: false }; } };
+    let turn = 0;
+    const child: LlmClient = {
+      provider: "fake",
+      async chat() { return null; },
+      async *completeStream(): AsyncIterable<LlmStreamEvent> {
+        turn += 1;
+        if (turn === 1) { yield done("", [{ id: "f1", name: "fetch_page", arguments: "{\"url\":\"https://jobs.feishu.cn/123\"}", args: { url: "https://jobs.feishu.cn/123" } }]); return; }
+        yield done(JSON.stringify({ summary: "要 SQL", findings: [
+          { claim: "要 SQL", source: "https://jobs.feishu.cn/123" },
+          { claim: "要 Python", source: "https://jobs.feishu.cn/999" },
+          { claim: "团队 20 人", source: "官网" },
+        ], gaps: [] }));
+      },
+    };
+    const tool = delegateTool({ client: child, tools: [pageTool] });
+    const payload = JSON.parse((await tool.execute({ tasks: [{ title: "飞书", instructions: "查岗位" }] }, { callId: "c" })).text);
+    expect(payload.results[0].findings.map((item: { verified: boolean }) => item.verified)).toEqual([true, false, false]);
+    expect(payload.results[0].unverified).toBe(2);
+    expect(payload.note).toMatch(/verified=false/);
+  });
+
+  it("verifySource accepts record ids the child actually got back", () => {
+    const evidence = childEvidence([{ role: "tool", content: JSON.stringify({ id: 26, title: "数据分析" }) }], "岗位 #12 的 JD");
+    expect(verifySource("记录 #26", evidence)).toBe(true);
+    expect(verifySource("#12", evidence)).toBe(true);
+    expect(verifySource("#261", evidence)).toBe(false);
+    expect(verifySource("JD", evidence)).toBe(false);
   });
 });
