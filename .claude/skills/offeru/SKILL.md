@@ -40,7 +40,7 @@ profile 档案；memory 职业记忆（一条一件事）；job 岗位；event �
 3. 用户贴链接、JD 或「公司 岗位」：add_job；贴的是文字又知道出处，把出处链接传 source_url（只记录不抓取）。抓不到（要登录、在图片里）就让用户贴正文或用插件存，不存空壳。add_job 会自动打标签（招聘类型、城市、方向、公司属性），用户要加或去标签就 save 改 tags。
 4. 存完马上 evaluate_jobs：分数、三句理由、打招呼语。打招呼语里每个事实都要在档案里找得到。
 5. 改简历：tailor_resume。asks 逐句问用户；用户确认的回答 save 成 memory（带原话和日期），再 review_only=true 改一次。导出 export_resume_pdf。
-6. 网申 apply_answer；邮件 draft_email。邮箱同步还没实现：用户贴来回执或邀约邮件时，按内容 save 岗位状态和事项。
+6. 网申 apply_answer；邮件 draft_email。邮箱同步还没实现：用户贴来回执或邀约邮件时，按公司 search 找到岗位，save 改 status（test / interview），再 save 一条 event（kind=test / interview，at 写时间，url 写笔试或面试链接，job_id 挂岗位）。
 
 ## 面试准备（每步存 doc，挂到岗位）
 

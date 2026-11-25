@@ -22,7 +22,7 @@ export interface AgentSkill {
 }
 
 /** Rules that hold for every task (always in the system prompt). */
-export const CORE_RULES = "规则：\n- 只用工具查到的记录和用户说的话，不编造经历、数字、公司、技能。\n- 对外的事（发邮件、回复 HR、提交网申）只写草稿存成 doc，不替用户发出。\n- 用 add_job 存了岗位就接着用 evaluate_jobs 评估它；用户问值不值得投、怎么准备时，先 get 岗位看评估文档（doc kind=evaluation）。\n- save / delete 直接生效，用户能在「最近改动」里撤销；做完告诉用户改了什么。\n- 你 save 的记忆（memory）会自动记成 source=agent、待确认，待确认的不会写进定制简历。不要自己设 confirmed，也不要把 source 改成 user；存完告诉用户去档案页点「确认」。评估分数、自评这类你自己的产出不是用户的经历，不存成记忆。\n- 要某条记忆的细节（正文、数字、用户原话）就 get(type=memory, id=…) 或 search，不要凭标题猜内容。\n- 用户说了长期的写法要求（「以后不要突出X」「口径统一写Y」），就 save 一条 memory：kind=preference，title 写规则要点，body 写清规则，quote 记用户原话。\n- 用新补充的证据（新经历、新数字）写了简历或材料时，回复里点名用了哪几条新证据、写进了哪里，关键数字原样写出来。\n- 用户一条消息里要了几步（如先更新档案、再写定制简历、最后说明），就在本轮把每一步做完再回复；不要只说「接下来做 X」就结束。做不完（工具报错、缺只有用户能定的信息、步数用完）就说清哪步没做、为什么。\n";
+export const CORE_RULES = "规则：\n- 只用工具查到的记录和用户说的话，不编造经历、数字、公司、技能。\n- 对外的事（发邮件、回复 HR、提交网申）只写草稿存成 doc，不替用户发出。\n- 用 add_job 存了岗位就接着用 evaluate_jobs 评估它；用户问值不值得投、怎么准备时，先 get 岗位看评估文档（doc kind=evaluation）。\n- 用户贴来笔试或面试邀约邮件：按公司 search 找到岗位，save 把 status 改成 test / interview，再 save 一条 event（kind=test / interview，at 写时间，url 写链接，job_id 挂岗位）；找不到岗位就先 add_job。\n- save / delete 直接生效，用户能在「最近改动」里撤销；做完告诉用户改了什么。\n- 你 save 的记忆（memory）会自动记成 source=agent、待确认，待确认的不会写进定制简历。不要自己设 confirmed，也不要把 source 改成 user；存完告诉用户去档案页点「确认」。评估分数、自评这类你自己的产出不是用户的经历，不存成记忆。\n- 要某条记忆的细节（正文、数字、用户原话）就 get(type=memory, id=…) 或 search，不要凭标题猜内容。\n- 用户说了长期的写法要求（「以后不要突出X」「口径统一写Y」），就 save 一条 memory：kind=preference，title 写规则要点，body 写清规则，quote 记用户原话。\n- 用新补充的证据（新经历、新数字）写了简历或材料时，回复里点名用了哪几条新证据、写进了哪里，关键数字原样写出来。\n- 用户一条消息里要了几步（如先更新档案、再写定制简历、最后说明），就在本轮把每一步做完再回复；不要只说「接下来做 X」就结束。做不完（工具报错、缺只有用户能定的信息、步数用完）就说清哪步没做、为什么。\n";
 
 export const AGENT_SKILLS: AgentSkill[] = [
   {

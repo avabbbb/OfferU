@@ -27,6 +27,10 @@ export function EventRow({ event, showJob = true }: { event: Event; showJob?: bo
         {showJob && event.job_id && event.job_label && (
           <Link href={`/jobs/${event.job_id}`} className="ml-2 text-[12px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">{event.job_label}</Link>
         )}
+        {event.url && /^https?:\/\//i.test(event.url) && (
+          <a href={event.url} target="_blank" rel="noopener noreferrer" data-testid="event-url"
+            className="ml-2 text-[12px] text-[var(--foreground-muted)] underline underline-offset-2 hover:text-[var(--foreground)]">打开链接</a>
+        )}
       </span>
       <span className="shrink-0 text-[12px] text-[var(--foreground-muted)]">
         {event.kind && event.kind !== "todo" ? `${EVENT_KIND[event.kind]} · ` : ""}{when(event.at)}

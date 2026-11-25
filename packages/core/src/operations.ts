@@ -148,6 +148,10 @@ async function checkRecord(type: RecordType, data: Json, creating: boolean, stor
     if (data.done !== undefined && data.done !== null && typeof data.done !== "boolean") {
       throw new CoreError("event.done 只能是 true 或 false");
     }
+    if (data.url !== undefined && data.url !== null && data.url !== ""
+      && !(typeof data.url === "string" && /^https?:\/\/\S+$/i.test(data.url))) {
+      throw new CoreError("event.url 要是 http(s) 链接");
+    }
   } else if (type === "doc") {
     oneOf(data.kind, DOC_KIND, "doc.kind");
     oneOf(data.template, Object.fromEntries(Object.keys(LEGACY_TEMPLATE).map((key) => [key, key])), "doc.template");

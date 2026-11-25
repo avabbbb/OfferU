@@ -123,4 +123,16 @@ describe("CLI", () => {
     expect(JSON.parse(bad.out).error).toContain("至少 8 个字符");
     expect(unknown.code).toBe(2);
   }, 60_000);
+
+  it("a pasted invite email maps to job status + event with link through `offeru tool`", async () => {
+    const dir = dataDir();
+    const run = async (name: string, args: unknown) => JSON.parse((await cli(dir, ["tool", name, JSON.stringify(args)])).out);
+    await run("save", { type: "job", data: { company: "美团", title: "数据分析实习", status: "applied" } });
+    const hit = (await run("search", { query: "美团" })).items.find((item: { type: string }) => item.type === "job");
+    await run("save", { type: "job", id: hit.id, data: { status: "test" } });
+    await run("save", { type: "event", data: { title: "美团笔试", kind: "test", at: "2026-12-05T19:00", job_id: hit.id, url: "https://exam.example.com/mt" } });
+    const got = await run("get", { type: "job", id: hit.id });
+    expect(got.record.status).toBe("test");
+    expect(got.events).toEqual([expect.objectContaining({ kind: "test", at: "2026-12-05T19:00", url: "https://exam.example.com/mt" })]);
+  }, 60_000);
 });

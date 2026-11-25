@@ -24,7 +24,7 @@ export type Posting = {
   collaborators?: string[]; evidence?: Array<{ req: string; need: string }>;
 };
 export type Job = Base & { company?: string; title?: string; status: JobStatus; url?: string; city?: string; jd?: string; notes?: string; applied_at?: string; score?: number; reasons?: string[]; greeting?: string; posting?: Posting; tags?: string[]; auto_tags?: string[]; tags_muted?: string[] };
-export type Event = Base & { title: string; kind?: EventKind; at?: string; done?: boolean; notes?: string; job_label?: string };
+export type Event = Base & { title: string; kind?: EventKind; at?: string; done?: boolean; notes?: string; url?: string; job_label?: string };
 export type MemoryKind = "experience" | "project" | "education" | "skill" | "award" | "preference" | "note";
 export const MEMORY_KIND: Record<MemoryKind, string> = {
   education: "教育", experience: "实习 / 工作", project: "项目", award: "奖项", skill: "技能", preference: "偏好", note: "其他",

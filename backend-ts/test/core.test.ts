@@ -88,4 +88,18 @@ describe("Node SQLite core adapter", () => {
     await expect(tool("get", { type: "job", id: 99 })).rejects.toMatchObject({ code: "not_found" });
     await expect(tool("save", { type: "job", data: { status: "maybe" } })).rejects.toMatchObject({ code: "invalid" });
   });
+
+  it("event keeps an optional http(s) url for the test / interview link", async () => {
+    store = new SqliteCoreStore(":memory:");
+    const job = await tool("save", { type: "job", data: { company: "字节跳动", title: "产品实习", status: "applied" } });
+    await tool("save", { type: "job", id: job.record.id, data: { status: "interview" } }, "Agent");
+    const event = await tool("save", { type: "event", data: {
+      title: "字节一面", kind: "interview", at: "2026-12-02T15:00", job_id: job.record.id, url: "https://meeting.example.com/j/123",
+    } }, "Agent");
+    const got = await tool("get", { type: "job", id: job.record.id });
+    expect(got.record.status).toBe("interview");
+    expect(got.events[0]).toMatchObject({ id: event.record.id, kind: "interview", url: "https://meeting.example.com/j/123" });
+    await expect(tool("save", { type: "event", data: { title: "x", url: "javascript:alert(1)" } })).rejects.toMatchObject({ code: "invalid" });
+    await tool("save", { type: "event", id: event.record.id, data: { url: null } });
+  });
 });
