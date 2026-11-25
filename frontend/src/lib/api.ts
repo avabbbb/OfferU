@@ -81,7 +81,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     const detail = payload?.detail || payload?.message || payload?.error;
     const errorId = res.headers.get("X-OfferU-Error-Id") || payload?.error_id;
     const message = safeClientErrorMessage(detail, `API Error: ${res.status}`);
-    throw new Error(errorId ? `${message}（错误 ID: ${errorId}）` : message);
+    throw Object.assign(new Error(errorId ? `${message}（错误 ID: ${errorId}）` : message), { status: res.status, code: payload?.code as string | undefined });
   }
   const text = await res.text();
   return text ? JSON.parse(text) : ({} as T);

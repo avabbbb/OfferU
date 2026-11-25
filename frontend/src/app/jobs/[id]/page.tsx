@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { AddEvent, EventRow } from "@/components/core/EventList";
 import { type Doc, type Event, type Job, refreshAll, tool, useTool, write } from "@/lib/core";
+import { PageError, PageLoading } from "@/components/layout/PageState";
 import { evaluateJobs } from "@/lib/evaluate";
 import { ResearchCard } from "@/components/core/ResearchCard";
 
@@ -203,9 +204,13 @@ export default function JobDetailPage() {
   const id = Number(useParams().id);
   const router = useRouter();
   const [tailoring, setTailoring] = useState("");
-  const { data, error } = useTool<{ record: Job; events: Event[]; docs: Doc[] }>("get", { type: "job", id }, 5000);
-  if (error) return <p className="px-6 py-10 text-[13.5px] text-[var(--foreground-muted)]">这个岗位不存在了。<Link href="/jobs" className="underline">回到岗位</Link></p>;
-  if (!data) return null;
+  const { data, error, mutate } = useTool<{ record: Job; events: Event[]; docs: Doc[] }>("get", { type: "job", id }, 5000);
+  if (error && !data) {
+    const missing = (error as { status?: number; code?: string }).status === 404 || (error as { code?: string }).code === "not_found";
+    if (missing) return <p className="ou-page-reading px-6 py-10 text-[length:var(--ou-type-body)] text-[var(--ou-text-secondary)]">这个岗位不存在了。<Link href="/jobs" className="underline">回到岗位</Link></p>;
+    return <PageError title="岗位没能读出来" error={error} onRetry={() => void mutate()} />;
+  }
+  if (!data) return <PageLoading label="正在打开岗位…" rows={5} />;
   const job = data.record;
   return (
     <div className="mx-auto max-w-3xl space-y-8 px-6 py-10">

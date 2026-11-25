@@ -7,6 +7,7 @@ import { NaiwaThinking } from "@/components/brand/NaiwaThinking";
 
 import { HeroUIProvider } from "@heroui/react";
 import { SWRConfig } from "swr";
+import { MotionConfig } from "framer-motion";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SHOWCASE } from "@/lib/showcase";
@@ -228,7 +229,9 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  // reducedMotion="user": framer-motion's JS animations follow the OS "reduce motion" setting, like the CSS ones.
   return (
+    <MotionConfig reducedMotion="user">
     <SWRConfig
       value={{
         revalidateOnFocus: false,
@@ -243,5 +246,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
         </BackendReadyGate>
       </HeroUIProvider>
     </SWRConfig>
+    </MotionConfig>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { PageError, PageLoading } from "@/components/layout/PageState";
 import Link from "next/link";
 
 import { AddEvent, EventRow } from "@/components/core/EventList";
@@ -15,8 +16,9 @@ const BUCKETS = [["overdue", "逾期"], ["today", "今天"], ["week", "7 天内"
 /** 今天：一个下一步、要做的事、最近改动。Agent 的改动每 5 秒出现一次。
  *  布局：外层 wide 容器让看板吃满可用宽度；文字段落限制在阅读宽度（--ou-width-reading），长行不超过约 45 个汉字。 */
 export default function TodayPage() {
-  const { data } = useTool<Overview>("overview", {}, 5000);
-  if (!data) return null;
+  const { data, error, mutate } = useTool<Overview>("overview", {}, 5000);
+  if (error && !data) return <PageError title="今天的待办没能读出来" error={error} onRetry={() => void mutate()} />;
+  if (!data) return <PageLoading label="正在整理今天…" />;
   const empty = BUCKETS.every(([key]) => !data.todos[key].length);
   return (
     <div className="ou-page ou-page-wide space-y-10">

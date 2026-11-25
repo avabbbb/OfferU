@@ -27,5 +27,33 @@ module.exports = {
     },
   },
   darkMode: "class",
-  plugins: [heroui()],
+  // HeroUI primary = ink, never its default blue (#006FEE). Values mirror design-tokens.css:
+  // primary = --ou-action-primary (--ou-neutral-12 #231d19), hover-ish 600 = --ou-action-primary-hover
+  // (--ou-neutral-11 #69625d), focus = --ou-focus-ring (--ou-neutral-8 #c4bab4). design:audit does not scan
+  // this file (it is outside src/), so keep these in sync with the tokens by hand.
+  plugins: [
+    heroui({
+      themes: {
+        light: {
+          colors: {
+            primary: {
+              DEFAULT: "#231d19",
+              foreground: "#ffffff",
+              50: "#f6efeb",
+              100: "#f1e9e4",
+              200: "#e3dad5",
+              300: "#c4bab4",
+              400: "#928a85",
+              500: "#69625d",
+              600: "#231d19",
+              700: "#231d19",
+              800: "#1a1512",
+              900: "#120e0c",
+            },
+            focus: "#c4bab4",
+          },
+        },
+      },
+    }),
+  ],
 };

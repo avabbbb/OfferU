@@ -48,6 +48,8 @@ import {
   type PrivacyHygieneStatus,
 } from "@/lib/api";
 import { resolveApiBase } from "@/lib/apiBase";
+import { downloadUserDataExport } from "@/lib/dataExport";
+import { StoragePersistenceCard } from "@/components/settings/StoragePersistenceCard";
 import { LOCAL_WEB } from "@/lib/local/mode";
 import { useLlmTransportMode } from "@/lib/local/llmTransport";
 import { safeClientErrorMessage } from "@/lib/safe-error";
@@ -470,18 +472,7 @@ function LocalDataSafetyCard() {
     setExporting(true);
     setFeedback(null);
     try {
-      const payload = await dataSafetyApi.exportUserData();
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-      const url = window.URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      const stamp = new Date().toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
-      anchor.href = url;
-      anchor.download = `offeru-data-${stamp}.json`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.URL.revokeObjectURL(url);
-      const total = Object.values(payload.counts || {}).reduce((sum, count) => sum + Number(count || 0), 0);
+      const total = await downloadUserDataExport();
       setFeedback({ type: "success", message: `已导出 ${total} 条本地职业数据。` });
     } catch (cause) {
       setFeedback({ type: "error", message: safeClientErrorMessage(cause, "数据导出失败，请稍后重试") });
@@ -567,7 +558,7 @@ function LocalDataSafetyCard() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="bauhaus-label text-[var(--foreground-muted)]">本地数据安全</p>
-            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">备份、恢复与数据导出</h3>
+            <h3 className="mt-1 text-[length:var(--ou-type-section)] font-semibold text-[var(--ou-text-primary)]">备份、恢复与数据导出</h3>
             <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
               一致性备份包含 SQLite、上传文件和受管产物；恢复只会先暂存，下次启动前校验并替换。JSON 导出不包含 Provider 密钥、邮箱凭据或浏览器会话。
             </p>
@@ -586,7 +577,7 @@ function LocalDataSafetyCard() {
             <p className="bauhaus-label text-[var(--foreground-muted)]">可恢复备份</p>
             <p className="mt-2 text-3xl font-semibold">{status?.backup_count ?? "—"}</p>
           </div>
-          <div className={`bauhaus-panel-sm p-4 ${status?.pending_restore ? "bg-amber-50" : "bg-emerald-50"}`}>
+          <div className={`bauhaus-panel-sm p-4 ${status?.pending_restore ? "bg-[var(--ou-tone-yellow-bg)]" : "bg-[var(--ou-tone-green-bg)]"}`}>
             <p className="bauhaus-label text-[var(--foreground-muted)]">恢复状态</p>
             <p className="mt-2 flex items-center gap-2 text-sm font-semibold">
               {status?.pending_restore ? <RotateCcw size={16} /> : <ShieldCheck size={16} />}
@@ -596,7 +587,7 @@ function LocalDataSafetyCard() {
         </div>
 
         {status?.pending_restore && (
-          <div role="status" className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 border-amber-500 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950">
+          <div role="status" className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 bg-[var(--ou-tone-yellow-bg)] px-4 py-3 text-sm font-semibold text-[var(--ou-tone-yellow-text)]">
             <span>备份 {status.pending_restore.backup_id.slice(0, 8)}… 已暂存。关闭并重新打开 OfferU 后恢复。</span>
             <Button size="sm" variant="light" color="warning" isLoading={action === "cancel"} onPress={() => void cancelRestore()}>
               取消待恢复
@@ -605,7 +596,7 @@ function LocalDataSafetyCard() {
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]" onPress={() => void createBackup()} isDisabled={SHOWCASE} isLoading={action === "backup"} startContent={action !== "backup" ? <ShieldCheck size={15} /> : undefined}>
+          <Button color="primary" radius="full" onPress={() => void createBackup()} isDisabled={SHOWCASE} isLoading={action === "backup"} startContent={action !== "backup" ? <ShieldCheck size={15} /> : undefined}>
             创建一致性备份
           </Button>
           <Button variant="bordered" onPress={() => void checkIntegrity()} isLoading={action === "integrity"}>
@@ -617,12 +608,12 @@ function LocalDataSafetyCard() {
         </div>
         {SHOWCASE && <p className="text-xs font-semibold text-[var(--foreground-muted)]">Showcase 使用独立 IndexedDB；此处只提供 JSON 导出、完整性说明和 Demo 重置，不伪装成 SQLite 备份。</p>}
 
-        <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4" data-testid="demo-data-safety">
+        <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4" data-testid="demo-data-safety">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
-              <p className="bauhaus-label text-amber-800">Demo / Fixture 工作区</p>
-              <p className="mt-2 text-sm font-semibold text-amber-950">重置演示数据与删除真实数据是两件事</p>
-              <p className="mt-2 text-sm font-medium leading-relaxed text-amber-900">
+              <p className="bauhaus-label text-[var(--ou-tone-yellow-text)]">Demo / Fixture 工作区</p>
+              <p className="mt-2 text-sm font-semibold text-[var(--ou-tone-yellow-text)]">重置演示数据与删除真实数据是两件事</p>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--ou-tone-yellow-text)]">
                 {SHOWCASE
                   ? "当前为独立 Showcase IndexedDB。重置会清除这个虚构展示工作区，下一次读取会回到内置演示数据。"
                   : "本地模式只会清除 source=offeru-demo 且 batch_id=offeru-demo-v1 的明确合成数据；不会删除 Profile、真实岗位、真实简历、备份或连接信息。这里没有删除真实用户数据的入口。"}
@@ -663,7 +654,7 @@ function LocalDataSafetyCard() {
 
         {!SHOWCASE && privacyHygiene && (
           <div
-            className={`bauhaus-panel-sm p-4 ${legacyEmailBodyCount || syntheticEmailDataCount ? "border-amber-500 bg-amber-50" : "border-emerald-600 bg-emerald-50"}`}
+            className={`bauhaus-panel-sm p-4 ${legacyEmailBodyCount || syntheticEmailDataCount ? "bg-[var(--ou-tone-yellow-bg)]" : "bg-[var(--ou-tone-green-bg)]"}`}
             data-testid="privacy-hygiene"
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -713,7 +704,7 @@ function LocalDataSafetyCard() {
         )}
 
         {integrity && (
-          <div className={`bauhaus-panel-sm px-4 py-3 text-sm font-semibold ${integrity.status === "ok" ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-[var(--primary-red)] bg-red-50 text-red-800"}`}>
+          <div className={`bauhaus-panel-sm px-4 py-3 text-sm font-semibold ${integrity.status === "ok" ? "bg-[var(--ou-tone-green-bg)] text-[var(--ou-tone-green-text)]" : "bg-[var(--ou-tone-red-bg)] text-[var(--ou-tone-red-text)]"}`}>
             {integrity.status === "ok" ? "Integrity OK" : "Integrity Failed"} · schema {integrity.schema.schema_version} · 外键异常 {integrity.foreign_key_violations.length}
           </div>
         )}
@@ -744,8 +735,8 @@ function LocalDataSafetyCard() {
             role={feedback.type === "error" ? "alert" : "status"}
             className={`bauhaus-panel-sm px-4 py-3 text-sm font-semibold ${
               feedback.type === "error"
-                ? "border-[var(--primary-red)] bg-red-50 text-red-800"
-                : "border-emerald-600 bg-emerald-50 text-emerald-800"
+                ? "bg-[var(--ou-tone-red-bg)] text-[var(--ou-tone-red-text)]"
+                : "bg-[var(--ou-tone-green-bg)] text-[var(--ou-tone-green-text)]"
             }`}
           >
             {feedback.message}
@@ -758,7 +749,7 @@ function LocalDataSafetyCard() {
         <ModalContent className={bauhausModalContentClassName}>
           <ModalHeader className="px-6 py-5 text-xl font-semibold">确认恢复本地数据</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
-            <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
+            <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4 text-sm font-semibold leading-relaxed text-[var(--ou-tone-yellow-text)]">
               当前运行中的数据不会立刻改变。OfferU 会校验并暂存备份；下次启动前先创建恢复前备份，再替换 SQLite 与受管资产。恢复失败会自动回滚并停止启动。
             </div>
             <p className="text-sm font-bold">备份：{selectedBackup?.backup_id}</p>
@@ -777,7 +768,7 @@ function LocalDataSafetyCard() {
         <ModalContent className={bauhausModalContentClassName}>
           <ModalHeader className="px-6 py-5 text-xl font-semibold">确认重置 Demo 工作区</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
-            <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
+            <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4 text-sm font-semibold leading-relaxed text-[var(--ou-tone-yellow-text)]">
               只处理明确标记的合成数据。不会调用真实岗位删除接口，也不会删除你的 Profile、真实岗位、简历、备份或连接凭据。展示模式只清除独立的 Showcase IndexedDB。
             </div>
             <Input label="输入“重置 Demo”以继续" value={demoConfirmationText} onValueChange={setDemoConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
@@ -798,7 +789,7 @@ function LocalDataSafetyCard() {
         <ModalContent className={bauhausModalContentClassName}>
           <ModalHeader className="px-6 py-5 text-xl font-semibold">确认清理历史邮件正文</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
-            <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
+            <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4 text-sm font-semibold leading-relaxed text-[var(--ou-tone-yellow-text)]">
               这会清空已完成结构化解析的旧面试通知正文，但保留通知时间、岗位关联和结构化状态。正文不会进入备份恢复，也不能在清理后恢复。OfferU 不会展示待清理正文内容。
             </div>
             <p className="text-sm font-bold">待处理：{legacyEmailBodyCount} 条记录 · {legacyEmailBodyCharacters} 个字符</p>
@@ -817,7 +808,7 @@ function LocalDataSafetyCard() {
         <ModalContent className={bauhausModalContentClassName}>
           <ModalHeader className="px-6 py-5 text-xl font-semibold">确认清理合成邮箱测试数据</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
-            <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
+            <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4 text-sm font-semibold leading-relaxed text-[var(--ou-tone-yellow-text)]">
               只会处理 OfferU 保留的合成邮箱测试账号、同步运行、信号、候选和本机凭据引用。若它们已经关联正式时间线，系统会拒绝清理；真实邮箱、岗位和投递状态不会被处理。
             </div>
             <p className="text-sm font-bold">待处理：{syntheticEmailDataCount} 条合成邮箱测试数据</p>
@@ -1386,6 +1377,7 @@ export default function SettingsPage() {
       </SettingsDialog>
 
       <SettingsDialog isOpen={openSection === "data"} onClose={closeSection} title="数据">
+        {(LOCAL_WEB || SHOWCASE) && <StoragePersistenceCard />}
         <SyncSettingsPanel />
         <LocalDataSafetyCard />
         <details className="ou-sheet p-4">

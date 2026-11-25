@@ -20,6 +20,7 @@ import { type Doc, type Job, type Memory, type Profile, tool, useTool, write } f
 import { resumeFromProfile } from "@/lib/resumeDraft";
 import { emptyResume, locatePath, normalizeResume, type Resume } from "@/lib/resumeModel";
 import { resumeToText } from "@/lib/resumeText";
+import { PageError, PageLoading } from "@/components/layout/PageState";
 import { type FitOutcome, fitOnePage, resolveStyle, type ResumeStyle } from "@/lib/resumeStyle";
 import "@/styles/resume-editor.css";
 
@@ -199,10 +200,11 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
 export default function ResumePage() {
   const params = useParams();
   const router = useRouter();
-  const { data } = useTool<{ items: Doc[] }>("list", { type: "doc", kind: "resume", full: true, limit: 200 }, 5000);
+  const { data, error, mutate } = useTool<{ items: Doc[] }>("list", { type: "doc", kind: "resume", full: true, limit: 200 }, 5000);
   const { data: jobData } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 });
   const { data: profileData } = useTool<{ record: Profile | null }>("get", { type: "profile" });
-  if (!data) return null;
+  if (error && !data) return <PageError title="简历没能读出来" error={error} onRetry={() => void mutate()} />;
+  if (!data) return <PageLoading label="正在打开简历…" rows={6} />;
   const docs = [...data.items].sort((a, b) => Number(Boolean(a.job_id)) - Number(Boolean(b.job_id)) || a.id - b.id);
   const jobs = jobData?.items ?? [];
   const current = docs.find((d) => d.id === Number(params.id)) ?? docs[0];

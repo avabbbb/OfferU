@@ -847,3 +847,101 @@ button.ou-tag:hover { background: var(--ou-bg-selected); color: var(--ou-text-pr
 @keyframes ou-zoom-in { from { opacity: 0; transform: scale(0.96) translateY(-0.5rem); } to { opacity: 1; transform: none; } }
 .ou-scrim { animation: ou-fade-in var(--ou-motion-base) var(--ou-ease-standard) both; }
 .ou-dialog { animation: ou-zoom-in var(--ou-motion-slow) var(--ou-ease-spring) both; }
+
+/* ── 状态岛（ref Inspora · Brett "dynamic release island"）──
+   一颗墨色小胶囊，就地变宽说明正在做什么：busy 时底部一道进度扫光，done 换成绿点 + 对勾，error 换红点。
+   用在保存 / 导出 / 恢复这类「点了要等一下」的操作旁边，代替整行 toast。 */
+.ou-island {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 2rem;
+  align-items: center;
+  gap: var(--ou-space-2);
+  overflow: hidden;
+  position: relative;
+  padding: 0 var(--ou-space-3);
+  border-radius: var(--ou-radius-pill);
+  background: var(--ou-action-primary);
+  color: var(--ou-on-action-primary);
+  font-size: var(--ou-type-sm);
+  font-weight: 500;
+  box-shadow: var(--ou-elev-2);
+  animation: ou-island-in var(--ou-motion-slow) var(--ou-ease-spring-soft) both;
+}
+.ou-island-dot { width: var(--ou-tag-dot); height: var(--ou-tag-dot); flex: none; border-radius: var(--ou-radius-pill); background: var(--ou-neutral-9); }
+.ou-island[data-state="done"] .ou-island-dot { background: var(--ou-tone-green-dot); }
+.ou-island[data-state="error"] .ou-island-dot { background: var(--ou-tone-red-dot); }
+.ou-island[data-state="busy"] .ou-island-dot { animation: ou-island-pulse 1.2s var(--ou-ease-standard) infinite; }
+.ou-island[data-state="busy"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 0.125rem;
+  background: linear-gradient(90deg, transparent, var(--ou-tone-green-dot), transparent);
+  animation: ou-island-sweep 1.4s var(--ou-ease-standard) infinite;
+}
+.ou-island .ou-check-draw { color: var(--ou-tone-green-dot); }
+@keyframes ou-island-in { from { opacity: 0; transform: scale(0.86); max-width: 2rem; } to { opacity: 1; transform: none; max-width: 40rem; } }
+@keyframes ou-island-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+@keyframes ou-island-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* ── 分段选择（Bleep 的白胶囊选中态）：磨砂轨道里排一组选项，选中的是一颗浮起的白胶囊。
+   代替「每个选项一个 1px 边框盒子」。 */
+.ou-segmented { display: flex; gap: 0.125rem; padding: 0.1875rem; border-radius: var(--ou-radius-control); background: var(--ou-bg-control); }
+.ou-segmented > button {
+  flex: 1;
+  min-height: 2rem;
+  padding: var(--ou-space-1) var(--ou-space-3);
+  border-radius: calc(var(--ou-radius-control) - 0.1875rem);
+  color: var(--ou-text-secondary);
+  font-size: var(--ou-type-sm);
+  font-weight: 500;
+  text-align: center;
+  transition: background-color var(--ou-motion-base) var(--ou-ease-glide), box-shadow var(--ou-motion-base) var(--ou-ease-glide), color var(--ou-motion-fast) var(--ou-ease-standard), transform var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-segmented > button:hover { color: var(--ou-text-primary); background: var(--ou-capsule-hover); }
+.ou-segmented > button[aria-pressed="true"] { background: var(--ou-capsule-bg); color: var(--ou-text-primary); box-shadow: var(--ou-capsule-shadow); }
+.ou-segmented > button:active { transform: scale(0.97); }
+.ou-segmented > button:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+/* 卡片式选项（标题 + 说明）：同一块轨道，两列排。 */
+.ou-segmented-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.1875rem; padding: 0.1875rem; border-radius: var(--ou-radius-card); background: var(--ou-bg-control); }
+.ou-segmented-cards > button {
+  padding: var(--ou-space-3);
+  border-radius: calc(var(--ou-radius-card) - 0.1875rem);
+  text-align: left;
+  transition: background-color var(--ou-motion-base) var(--ou-ease-glide), box-shadow var(--ou-motion-base) var(--ou-ease-glide), transform var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-segmented-cards > button:hover { background: var(--ou-capsule-hover); }
+.ou-segmented-cards > button[aria-pressed="true"] { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+.ou-segmented-cards > button:active { transform: scale(0.98); }
+.ou-segmented-cards > button:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+
+/* ── 分段进度（ref Inspora · shawn "tests visualised" / Brett 的 4 段进度条）：每题一段，完成的墨色，当前段呼吸。 */
+.ou-steps { display: flex; gap: 0.1875rem; }
+.ou-steps > i { flex: 1; height: 0.375rem; border-radius: var(--ou-radius-pill); background: var(--ou-bg-selected); transition: background-color var(--ou-motion-slow) var(--ou-ease-glide); }
+.ou-steps > i[data-state="done"] { background: var(--ou-action-primary); }
+.ou-steps > i[data-state="current"] { background: var(--ou-neutral-9); animation: ou-island-pulse 1.6s var(--ou-ease-standard) infinite; }
+
+/* ── 浮起的玻璃卡（ref Inspora · Kyle Thacker "soft glass workspace picker"）：错误恢复、启动、加载。 */
+.ou-glass-card {
+  border-radius: var(--ou-radius-panel);
+  background: var(--ou-glass-menu);
+  box-shadow: var(--ou-elev-menu), var(--ou-glass-highlight);
+  backdrop-filter: blur(var(--ou-glass-blur-heavy)) saturate(var(--ou-glass-saturate));
+  -webkit-backdrop-filter: blur(var(--ou-glass-blur-heavy)) saturate(var(--ou-glass-saturate));
+  animation: ou-zoom-in var(--ou-motion-slow) var(--ou-ease-spring) both;
+}
+.ou-wash { background: var(--ou-bg-wash); }
+/* 内容加载中的骨架行：一道很淡的扫光。 */
+.ou-skeleton { border-radius: var(--ou-radius-1); background: linear-gradient(90deg, var(--ou-bg-control) 0%, var(--ou-bg-selected) 50%, var(--ou-bg-control) 100%); background-size: 200% 100%; animation: ou-skeleton var(--ou-motion-shimmer) var(--ou-ease-standard) infinite; }
+@keyframes ou-skeleton { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ou-island, .ou-glass-card { animation: none; }
+  .ou-island[data-state="busy"] .ou-island-dot, .ou-steps > i[data-state="current"], .ou-skeleton { animation: none; }
+  .ou-island[data-state="busy"]::after { animation: none; transform: none; opacity: 0.6; }
+  .ou-segmented > button, .ou-segmented-cards > button, .ou-steps > i { transition: none; }
+}
+/* 轨道里浮起的一块白胶囊卡（分段选择选中态的静态版）。 */
+.ou-capsule-card { background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+@media (max-width: 30rem) { .ou-segmented-cards { grid-template-columns: minmax(0, 1fr); } }

@@ -24,6 +24,7 @@ import { staticSchoolLogos } from "@offeru/core";
 import { BrowserDemoStore } from "@/lib/demo/store";
 
 import { IndexedDbAgentRunStore } from "./agentRuns";
+import { requestPersistentStorage } from "./persist";
 import { indexedDbConfigStore, indexedDbConsentStore } from "./config";
 import { indexedDbBackupFiles, indexedDbFileStore } from "./files";
 import { getExtensionLlmTransport, getExtensionPromptStore } from "./llmTransport";
@@ -111,6 +112,8 @@ export function createLocalBackend(
   const logoBase = new URL("school-logos/", globalThis.location?.href ?? "http://localhost/").toString();
   const store = new BrowserDemoStore(() => ({ version: 1, nextRecordId: 1, nextChangeId: 1, records: [], changes: [] }), "offeru-local");
   const ready = store.ready().then(() => undefined);
+  // All user data lives in this IndexedDB: ask the browser not to evict it (Settings → 数据 shows the answer).
+  void requestPersistentStorage();
   const deps: AppDeps = {
     store,
     runtime: "browser",

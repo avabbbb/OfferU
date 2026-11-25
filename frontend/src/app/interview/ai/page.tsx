@@ -31,6 +31,7 @@ import {
   type InterviewFocusPlan,
 } from "@/lib/hooks";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
+import { Pill, SegmentedProgress } from "@/components/ui";
 import { dataModeLabel } from "@/lib/api";
 import { listReviews } from "@/lib/interviewReviews";
 import { safeClientErrorMessage } from "@/lib/safe-error";
@@ -177,7 +178,6 @@ export default function AIInterviewPage() {
   }, [reviewId, reviewPicks, weakPicks, weakTopic]);
 
   const currentQuestion = session?.questions[currentQuestionIndex];
-  const progress = session ? ((currentQuestionIndex + (report ? 1 : 0)) / session.questions.length) * 100 : 0;
   const selectedType = TYPE_OPTIONS.find((option) => option.value === interviewType);
 
   const reset = () => {
@@ -314,7 +314,7 @@ export default function AIInterviewPage() {
           <div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--foreground-muted)]">
               <Chip size="sm" variant="flat" className="bg-[var(--status-sage)] font-semibold text-[var(--primary-green)]">进行中</Chip>
-              {roleIntelligenceRoute && <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-blue-50 font-semibold text-[var(--primary-blue)]">INTERVIEWER MODE · 专项训练</Chip>}
+              {roleIntelligenceRoute && <Pill tone="gray">面试官模式 · 专项训练</Pill>}
               <span>{session.target_company || "通用场景"}</span>
               <span>·</span>
               <span>{session.target_position}</span>
@@ -326,7 +326,7 @@ export default function AIInterviewPage() {
               <span>第 {currentQuestionIndex + 1} / {session.questions.length} 题</span>
               <button onClick={reset} className="flex items-center gap-1 transition hover:text-[var(--foreground)]"><RotateCcw size={12} /> 退出本场</button>
             </div>
-            <Progress aria-label="面试进度" value={progress} size="sm" classNames={{ indicator: "bg-[var(--foreground)]", track: "bg-[var(--surface-hover)]" }} />
+            <SegmentedProgress label="面试进度" total={session.questions.length} done={currentQuestionIndex + (report ? 1 : 0)} />
           </div>
         </header>
 
@@ -437,9 +437,9 @@ export default function AIInterviewPage() {
 
           <div className="mt-6">
             <p className="text-xs font-semibold text-[var(--foreground-soft)]">面试类型</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div className="ou-segmented-cards mt-2" role="group" aria-label="面试类型">
               {TYPE_OPTIONS.map((option) => (
-                <button key={option.value} onClick={() => setInterviewType(option.value)} className={`rounded-xl border p-3 text-left transition ${interviewType === option.value ? "border-[var(--foreground)] bg-[var(--ou-bg-control)]" : "border-[var(--ou-line-control)] bg-[var(--ou-bg-surface-solid)] hover:bg-[var(--ou-bg-control)]"}`}>
+                <button key={option.value} type="button" aria-pressed={interviewType === option.value} onClick={() => setInterviewType(option.value)}>
                   <p className="text-sm font-semibold">{option.label}</p><p className="mt-1 text-xs text-[var(--foreground-muted)]">{option.detail}</p>
                 </button>
               ))}
@@ -449,17 +449,17 @@ export default function AIInterviewPage() {
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <div>
               <p className="text-xs font-semibold text-[var(--foreground-soft)]">难度</p>
-              <div className="mt-2 flex gap-2">
+              <div className="ou-segmented mt-2" role="group" aria-label="难度">
                 {DIFFICULTY_OPTIONS.map((option) => (
-                  <button key={option.value} onClick={() => setDifficulty(option.value)} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${difficulty === option.value ? "border-[var(--foreground)] bg-[var(--foreground)] text-white" : "border-[var(--ou-line-control)] bg-[var(--ou-bg-surface-solid)] text-[var(--foreground-soft)]"}`}>{option.label}</button>
+                  <button key={option.value} type="button" aria-pressed={difficulty === option.value} onClick={() => setDifficulty(option.value)}>{option.label}</button>
                 ))}
               </div>
             </div>
             {!fixedQuestions.length && <div>
               <p className="text-xs font-semibold text-[var(--foreground-soft)]">题目数量</p>
-              <div className="mt-2 flex gap-2">
+              <div className="ou-segmented mt-2" role="group" aria-label="题目数量">
                 {[3, 5, 8].filter((count) => !roleIntelligenceRoute || count >= 5).map((count) => (
-                  <button key={count} onClick={() => setQuestionCount(count)} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${questionCount === count ? "border-[var(--foreground)] bg-[var(--foreground)] text-white" : "border-[var(--ou-line-control)] bg-[var(--ou-bg-surface-solid)] text-[var(--foreground-soft)]"}`}>{count} 题</button>
+                  <button key={count} type="button" aria-pressed={questionCount === count} onClick={() => setQuestionCount(count)}>{count} 题</button>
                 ))}
               </div>
             </div>}
@@ -516,16 +516,16 @@ export default function AIInterviewPage() {
 
 function FocusPlanPreview({ plan }: { plan: InterviewFocusPlan }) {
   return (
-    <div className="mt-5 border border-[var(--primary-blue)] bg-blue-50 p-4" data-testid="interview-focus-plan">
+    <div className="mt-5 rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-4" data-testid="interview-focus-plan">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-semibold text-[var(--primary-blue)]">Deterministic Focus Plan</p>
-        <span className="text-[11px] font-semibold text-[var(--foreground-muted)]">{dataModeLabel(plan.source.data_mode)} · {plan.source.valid_sample_count} 个 comparator</span>
+        <p className="text-[length:var(--ou-type-sm)] font-semibold text-[var(--ou-text-primary)]">专项训练重点</p>
+        <span className="text-[length:var(--ou-type-xs)] text-[var(--ou-text-tertiary)]">{dataModeLabel(plan.source.data_mode)} · {plan.source.valid_sample_count} 个 comparator</span>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {plan.focuses.map((focus) => (
-          <div key={focus.capability} className="rounded-lg border border-[var(--ou-tone-blue-border)] bg-[var(--ou-bg-surface-solid)] px-3 py-2">
+          <div key={focus.capability} className="rounded-[var(--ou-radius-1)] ou-capsule-card px-3 py-2">
             <div className="flex items-center justify-between gap-2"><span className="text-sm font-semibold text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--primary-red)]">{focus.priority_percent}%</span></div>
-            <p className="mt-1 text-[11px] font-medium text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 证据强度 {focus.evidence_strength} · 缺口 {focus.evidence_gap}</p>
+            <p className="mt-1 text-[length:var(--ou-type-xs)] text-[var(--ou-text-tertiary)]">岗位特殊度 {focus.role_distinctiveness} · 证据强度 {focus.evidence_strength} · 缺口 {focus.evidence_gap}</p>
           </div>
         ))}
       </div>
@@ -536,13 +536,13 @@ function FocusPlanPreview({ plan }: { plan: InterviewFocusPlan }) {
 
 function InterviewerStatus({ notice }: { notice: string }) {
   return (
-    <aside className="flex min-h-72 flex-col justify-between rounded-2xl border border-[var(--primary-blue)] bg-blue-50 p-6" data-testid="interviewer-mode-status">
+    <aside className="ou-sheet flex min-h-72 flex-col justify-between p-6" data-testid="interviewer-mode-status">
       <div>
-        <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-[var(--ou-bg-surface-solid)] font-semibold text-[var(--primary-blue)]">INTERVIEWER MODE</Chip>
+        <Pill tone="gray">面试官模式</Pill>
         <h3 className="mt-4 text-lg font-semibold tracking-[-0.03em] text-[var(--foreground)]">只继续追问</h3>
         <p className="mt-3 text-sm leading-6 text-[var(--foreground-soft)]">本场不会即时夸奖、给答案或提前评分。模糊、缺事实/机制/指标的回答会触发下一条追问；与 Career Evidence 的表述差异会被中性澄清。</p>
       </div>
-      <p className="mt-6 border-t border-blue-200 pt-4 text-xs font-semibold leading-5 text-[var(--primary-blue)]">{notice || "回答已记录。继续作答。"}</p>
+      <p className="mt-6 flex items-start gap-2 rounded-[var(--ou-radius-1)] bg-[var(--ou-bg-control)] px-3 py-2 text-[length:var(--ou-type-sm)] leading-5 text-[var(--ou-text-secondary)]" role="status"><CheckCircle2 size={14} className="mt-0.5 shrink-0 text-[var(--ou-tone-green-dot)]" aria-hidden="true" />{notice || "回答已记录。继续作答。"}</p>
     </aside>
   );
 }
@@ -550,7 +550,7 @@ function InterviewerStatus({ notice }: { notice: string }) {
 function EvaluationPanel({ evaluation }: { evaluation: AIInterviewEvaluation | null }) {
   if (!evaluation) {
     return (
-      <aside className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--ou-line-control)] bg-[var(--ou-bg-control)] p-6 text-center">
+      <aside className="flex min-h-72 flex-col items-center justify-center rounded-[var(--ou-radius-panel)] bg-[var(--ou-glass-subtle)] p-6 text-center">
         <MessageSquareText size={26} className="text-[var(--foreground-muted)]" />
         <p className="mt-3 text-sm font-semibold">上一题反馈会出现在这里</p>
         <p className="mt-1 text-xs leading-relaxed text-[var(--foreground-muted)]">先完成回答，AI 会按固定版本评分规则引用你的回答原文，再由后端确定性聚合内容分。</p>
@@ -610,10 +610,10 @@ function InterviewReport({ report, session, behaviorSummary, onRestart }: { repo
 
 function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewReport["role_intelligence_debrief"]> }) {
   return (
-    <section className="rounded-2xl border-2 border-[var(--primary-blue)] bg-blue-50 p-6" data-testid="role-interview-debrief">
+    <section className="ou-sheet p-6" data-testid="role-interview-debrief">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-[var(--ou-bg-surface-solid)] font-semibold text-[var(--primary-blue)]">COACH MODE · DEBRIEF</Chip>
+          <Pill tone="gray">教练复盘</Pill>
           <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">为什么问这些题</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--foreground-soft)]">以下复盘把实际回答与岗位 Delta、Career Evidence Gap 放在一起；它是本场学习观察，不会自动改写正式 Profile。</p>
         </div>
@@ -621,17 +621,17 @@ function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewRep
       </div>
       <div className="mt-5 space-y-3">
         {debrief.focuses.map((focus) => (
-          <details key={focus.capability} className="rounded-xl border border-[var(--ou-tone-blue-border)] bg-[var(--ou-bg-surface-solid)]">
+          <details key={focus.capability} className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)]">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4">
               <span className="flex items-center gap-3"><span className="text-sm font-semibold text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 档案证据覆盖缺口 {focus.evidence_gap}</span></span>
               <span className="text-xs font-semibold text-[var(--primary-red)]">训练权重 {focus.priority_percent}%</span>
             </summary>
-            <div className="border-t border-blue-100 px-4 pb-4 pt-3">
+            <div className="mx-2 mb-2 rounded-[var(--ou-radius-1)] ou-capsule-card px-4 pb-4 pt-3">
               <p className="text-xs leading-5 text-[var(--foreground-soft)]">{focus.why_this_focus}</p>
               <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-[var(--foreground-muted)]"><span>市场频率 {Math.round(focus.market_frequency * 100)}%</span><span>表现 {focus.performance.average_content_score ?? "—"}</span><span>{focus.performance.status === "supported" ? "当前回答有可用证据" : "需要更多事实/机制"}</span></div>
               {focus.responses.map((response) => (
-                <div key={`${focus.capability}-${response.question_index}`} className="mt-3 border-l-2 border-[var(--primary-blue)] pl-3">
-                  <p className="text-[11px] font-semibold text-[var(--primary-blue)]">第 {response.question_index + 1} 题 · {QUESTION_MODE_LABEL[response.mode] || response.mode}</p>
+                <div key={`${focus.capability}-${response.question_index}`} className="mt-3 rounded-[var(--ou-radius-1)] bg-[var(--ou-bg-control)] px-3 py-2">
+                  <p className="text-[length:var(--ou-type-xs)] font-semibold text-[var(--ou-text-secondary)]">第 {response.question_index + 1} 题 · {QUESTION_MODE_LABEL[response.mode] || response.mode}</p>
                   <p className="mt-1 text-xs font-semibold text-[var(--foreground)]">{response.question}</p>
                   <p className="mt-2 text-xs leading-5 text-[var(--foreground-soft)]">评价引用（实际回答）：“{response.transcript_excerpt || response.answer_excerpt}”</p>
                   {response.answer_evidence.length > 0 && <p className="mt-1 text-[11px] text-[var(--foreground-muted)]">回答中的可核对证据：{response.answer_evidence.join("；")}</p>}
@@ -640,12 +640,12 @@ function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewRep
               ))}
               {focus.observed_answer_gaps.length > 0 && <p className="mt-3 text-xs font-semibold leading-5 text-[var(--primary-red)]">回答缺口：{focus.observed_answer_gaps.join("；")}</p>}
               {focus.candidate_evidence_not_utilized.length > 0 && <p className="mt-2 text-xs font-semibold leading-5 text-[var(--foreground-muted)]">已有 Evidence 尚未在回答中被有效利用：{focus.candidate_evidence_not_utilized.map((item) => item.title || item.profile_section_id).join("、")}</p>}
-              <p className="mt-3 border-t border-blue-100 pt-3 text-xs font-semibold text-[var(--primary-blue)]">下一轮：{focus.next_practice}</p>
+              <p className="mt-3 text-[length:var(--ou-type-xs)] font-semibold text-[var(--ou-text-primary)]">下一轮：{focus.next_practice}</p>
             </div>
           </details>
         ))}
       </div>
-      <p className="mt-4 border-t border-blue-200 pt-4 text-[11px] leading-5 text-[var(--foreground-muted)]">{debrief.boundary}</p>
+      <p className="mt-4 text-[length:var(--ou-type-xs)] leading-5 text-[var(--ou-text-tertiary)]">{debrief.boundary}</p>
     </section>
   );
 }

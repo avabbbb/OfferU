@@ -14,3 +14,4 @@ export { Pill, toneOf, TONES, type Tone } from "./Pill";
 export { ContextUsageRing } from "./agent/ContextUsageRing";
 export { LabelPicker, Tag, BrailleLoader, type LabelOption, type LabelCreateState } from "./LabelPicker";
 export { ListboxPopover, type ListboxOption } from "./ListboxPopover";
+export { StatusIsland, SegmentedProgress, type IslandState } from "./StatusIsland";

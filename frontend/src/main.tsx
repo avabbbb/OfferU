@@ -6,6 +6,10 @@ import "@/app/globals.css";
 import { Providers } from "@/app/providers";
 import { WorkbenchShell } from "@/components/workbench/WorkbenchShell";
 import { OfferURoutes } from "@/vite/OfferURoutes";
+import { AppErrorBoundary } from "@/components/layout/AppErrorBoundary";
+import { installStaleChunkReload } from "@/lib/chunkReload";
+
+installStaleChunkReload();
 
 const PairPage = lazy(() => import("@/vite/PairPage"));
 
@@ -22,6 +26,7 @@ document.body.className =
   "offeru-viewport-min-height overflow-hidden text-[var(--foreground)] antialiased";
 
 createRoot(root).render(
+  <AppErrorBoundary>
   <HashRouter>
     <Routes>
       <Route path="/pair/:code" element={<Suspense fallback={null}><PairPage /></Suspense>} />
@@ -33,5 +38,6 @@ createRoot(root).render(
         </Providers>
       } />
     </Routes>
-  </HashRouter>,
+  </HashRouter>
+  </AppErrorBoundary>,
 );

@@ -1,5 +1,8 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+
+import { AppErrorBoundary } from "@/components/layout/AppErrorBoundary";
+import { PageLoading } from "@/components/layout/PageState";
 
 const TodayPage = lazy(() => import("@/app/page"));
 const JobsPage = lazy(() => import("@/app/jobs/page"));
@@ -13,15 +16,13 @@ const PoseInterviewPage = lazy(() => import("@/app/interview/pose/page"));
 const SettingsPage = lazy(() => import("@/app/settings/page"));
 
 function RouteFallback() {
-  return (
-    <div className="grid min-h-[45vh] place-items-center">
-      <p className="text-sm font-semibold text-[var(--foreground-muted)]">正在打开工作区…</p>
-    </div>
-  );
+  return <PageLoading label="正在打开工作区…" />;
 }
 
 export function OfferURoutes() {
+  const { pathname } = useLocation();
   return (
+    <AppErrorBoundary scope="route" resetKey={pathname}>
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/" element={<TodayPage />} />
@@ -45,5 +46,6 @@ export function OfferURoutes() {
         <Route path="*" element={<Navigate replace to="/" />} />
       </Routes>
     </Suspense>
+    </AppErrorBoundary>
   );
 }
