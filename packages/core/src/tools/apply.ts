@@ -195,7 +195,7 @@ export async function splitResume(deps: ToolDeps, rawText?: string | null, path?
     source = (await deps.readFile(path)).text;
   }
   if (!source.trim()) throw new CoreError("要给简历原文 text 或文件 path");
-  if (!deps.llm) throw new CoreError("没配模型，也没开「没配模型时交给本机 Agent」，没法自动拆", "unsupported");
+  if (!deps.llm) throw new CoreError("没配模型，没法自动拆。你自己拆就用 save 把每段经历存成一条 memory", "unsupported");
   const llm = deps.llm;
   const items = await extractResumeItems(llm, source, deps.signal);
   if (!items.length) throw new CoreError("没从原文里拆出经历，档案没动");

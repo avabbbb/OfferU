@@ -73,6 +73,26 @@ describe("CLI", () => {
     expect(JSON.parse(result.out)).toMatchObject({ count: 1 });
   }, 60_000);
 
+  it("no model configured: model calls are handed to the calling Agent and its answers finish the tool", async () => {
+    const dir = dataDir();
+    const args = ["tool", "split_resume", JSON.stringify({ text: "技能：SQL" })];
+    const first = await cli(dir, args);
+    expect(first.code).toBe(0);
+    const { handoff } = JSON.parse(first.out) as { handoff: { how: string; pending: Array<{ id: string; json: boolean; messages: Array<{ role: string; content: string }> }> } };
+    expect(handoff.how).toContain("--answers");
+    expect(handoff.pending).toHaveLength(1);
+    expect(handoff.pending[0].json).toBe(true);
+    // The calling Agent sees the user's real text (no desensitizing placeholders).
+    expect(handoff.pending[0].messages.at(-1)?.content).toContain("技能：SQL");
+    // Nothing written while the answer is pending.
+    expect(JSON.parse((await cli(dir, ["tool", "list", "{\"type\":\"memory\"}"])).out).items).toEqual([]);
+    const answers = join(dir, "answers.json");
+    writeFileSync(answers, JSON.stringify({ [handoff.pending[0].id]: JSON.stringify({ items: [{ kind: "skill", title: "SQL", description: "会写 SQL" }] }) }));
+    const second = await cli(dir, [...args, "--answers", `@${answers}`]);
+    expect(second.code).toBe(0);
+    expect(JSON.parse(second.out)).toMatchObject({ count: 1 });
+  }, 60_000);
+
   it("`offeru sync` reports status and fails with {error, code} before it is set up", async () => {
     const dir = dataDir();
     const [status, now, bad, unknown] = await Promise.all([

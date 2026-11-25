@@ -11,6 +11,7 @@ import { AGENT_TOOL_SPECS, ALL_TOOL_SPECS, CAPABILITIES, TOOL_GROUPS, TOOL_INSTR
 
 import { nodeConfigRuntime, nodeToolRuntime } from "./node-runtime";
 import { CompanionSync } from "./sync";
+import { HANDOFF_HOW, HandoffLlm } from "./handoff";
 import { callTool, TOOL_NAMES } from "./tools";
 import { openStore } from "./store";
 import { APP_VERSION } from "./runtime-identity";
@@ -22,6 +23,8 @@ usage:
   offeru-ts tool --json                  the same list as JSON
   offeru-ts tool <name> [<name>…] --help full description and input schema
   offeru-ts tool <name> [json|@file|-]   run a tool; prints JSON, {"error"} + exit 1 on failure
+      [--answers @answers.json]          no model configured: model calls come back as {"handoff"} for the calling
+                                         Agent to answer; rerun with its answers until the tool finishes
   offeru-ts recipe [<id>]                common flows (which tools, in what order, rules)
   offeru-ts sync [status]                end-to-end encrypted S3 / R2 sync: settings, pending changes, last result
   offeru-ts sync now                     pull + push now (same engine and bucket as the workbench, web version included)
@@ -134,6 +137,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  const answersArg = takeFlag(args, "--answers");
   const asJson = takeSwitch(args, "--json");
   const wantsHelp = takeSwitch(args, "--help") || takeSwitch(args, "-h");
   const print = (value: unknown) => process.stdout.write(JSON.stringify(value, null, pretty || wantsHelp ? 2 : 0) + "\n");
@@ -194,7 +198,17 @@ async function main(): Promise<number> {
       try {
         // Agent board bookkeeping: --actor is the calling Agent; never fails the call.
         await new NodeAgentBoard({ dataDir: dirname(dbPath()) }).recordClientCall(actor).catch(() => "");
-        const result = await callTool(name, payloadOf(args[0]), runtime, actor);
+        // No model configured: the calling Agent is the model (see handoff.ts).
+        const handoff = runtime.llm() ? null : new HandoffLlm(answersArg ? payloadOf(answersArg) as Record<string, string> : {});
+        if (handoff) runtime.llm = () => handoff;
+        let result: unknown;
+        try {
+          result = await callTool(name, payloadOf(args[0]), runtime, actor);
+        } catch (cause) {
+          if (!handoff?.pending.length) throw cause;
+        }
+        // A tool may catch a model failure and go on (evaluate marks the job failed); pending prompts still win.
+        if (handoff?.pending.length) result = { handoff: { how: HANDOFF_HOW, pending: handoff.pending } };
         process.stdout.write(JSON.stringify(result, null, pretty ? 2 : 0) + "\n");
         return 0;
       } catch (cause) {

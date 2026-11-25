@@ -17,7 +17,7 @@ version: 2026-11-24
 - `<offeru> recipe <id>`：常用流程（调研、证据对照、改简历、面试准备）该按什么顺序调哪些工具。
 - `<offeru> tool overview`、`<offeru> tool get '{"type":"job","id":3}'`：调用。参数含中文或在 PowerShell 里，先写成 UTF-8 的 JSON 文件，再 `<offeru> tool save @args.json`（或 `-` 走标准输入）。
 - 输出是 JSON，可以接 `jq` 或写文件；失败时打印 `{"error": …}` 并以 1 退出，按提示改参数。命令不通看文末。
-- 会调模型的工具（evaluate_jobs、tailor_resume、split_resume 等）用工作台「设置 → 模型」里存的模型，和工作台同一个；报「没配模型」就请用户去设置里填，不要自己找 key。
+- 会调模型的工具（evaluate_jobs、tailor_resume、split_resume、apply_answer 等）用工作台「设置 → 模型」里存的模型。没配模型时不报错，而是返回 `{"handoff": {how, pending}}`：你就是模型。按每条 pending 的 messages 自己作答（json=true 只回严格 JSON），把 `{"<id>": "<回答>"}` 累积进 answers.json，同样的命令加 `--answers @answers.json` 再跑，直到返回正常结果（可能要两三轮）。不要自己找 key。
 
 ## 数据在网页版时：同步
 
