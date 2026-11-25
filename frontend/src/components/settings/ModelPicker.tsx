@@ -47,16 +47,16 @@ export function ModelPicker({ baseUrl, apiKey, apiFormat, configId, value, onCha
     ...(value && !models.some((model) => model.id === value) ? [{ value, label: `${value}（当前配置）` }] : []),
     ...models.map((model) => ({ value: model.id, label: model.name === model.id ? model.id : `${model.name} · ${model.id}` })),
   ];
-  return <div className="space-y-2">
-    <label className="block text-sm font-medium" htmlFor="embedded-model">选择模型</label>
+  return <div className="ou-field">
+    <label className="ou-field-label" htmlFor="embedded-model">选择模型</label>
     {!manual ? <Select id="embedded-model" value={value || undefined} onValueChange={onChange} options={options}
       placeholder={loading ? "正在获取模型…" : "选择一个可用模型"} />
       : <Input id="embedded-model" name="model" autoComplete="off" spellCheck={false} value={value} onChange={(event) => onChange(event.target.value)} placeholder="输入服务支持的模型 ID…" aria-invalid={!!error} aria-describedby="model-status" />}
-    <p id="model-status" role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">{status}</p>
-    {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
-    <div className="flex gap-4 text-xs">
-      <button type="button" disabled={loading || !baseUrl.trim() || !(apiKey.trim() || configId)} onClick={() => setRevision((current) => current + 1)} className="underline underline-offset-4 disabled:opacity-40 focus-visible:ring-2">重新获取</button>
-      <button type="button" onClick={() => setManual((current) => !current)} className="text-[var(--foreground-muted)] underline underline-offset-4 focus-visible:ring-2">{manual ? "从列表选择" : "手动填写模型 ID"}</button>
+    <p id="model-status" role="status" className="ou-field-hint">{status}</p>
+    {error && <p role="alert" className="ou-field-error">{error}</p>}
+    <div className="-ml-2 flex flex-wrap gap-1">
+      <button type="button" disabled={loading || !baseUrl.trim() || !(apiKey.trim() || configId)} onClick={() => setRevision((current) => current + 1)} className="ou-text-button">重新获取</button>
+      <button type="button" onClick={() => setManual((current) => !current)} className="ou-text-button">{manual ? "从列表选择" : "手动填写模型 ID"}</button>
     </div>
   </div>;
 }

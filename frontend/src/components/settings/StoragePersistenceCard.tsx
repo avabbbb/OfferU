@@ -7,6 +7,7 @@ import { Button, Pill, StatusIsland, type IslandState } from "@/components/ui";
 import { downloadUserDataExport } from "@/lib/dataExport";
 import { readPersistence, requestPersistentStorage, type PersistenceState } from "@/lib/local/persist";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { SettingsGroup } from "./SettingsLayout";
 
 const LABEL: Record<PersistenceState, { tone: "green" | "orange" | "gray"; text: string; detail: string }> = {
   persisted: {
@@ -59,31 +60,31 @@ export function StoragePersistenceCard() {
 
   const label = info ? LABEL[info.state] : null;
   return (
-    <section className="ou-sheet p-5" data-testid="storage-persistence" data-state={info?.state ?? "loading"}>
-      <div className="flex items-start gap-3">
-        <span className="ou-tile" aria-hidden="true"><HardDrive size={17} /></span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[length:var(--ou-type-section)] font-semibold text-[var(--ou-text-primary)]">浏览器存储</h3>
+    <SettingsGroup label="本机数据" testId="storage-persistence">
+      <div className="ou-settings-item" data-state={info?.state ?? "loading"}>
+        <span className="ou-tile" aria-hidden="true"><HardDrive size={16} /></span>
+        <div className="ou-settings-item-text">
+          <span className="ou-settings-item-label flex flex-wrap items-center gap-2">
+            浏览器存储
             {label ? <Pill tone={label.tone}>{label.text}</Pill> : <span className="ou-skeleton inline-block h-5 w-16" />}
-            {info?.usage !== undefined && <span className="text-[length:var(--ou-type-xs)] text-[var(--ou-text-tertiary)]">已用 {formatBytes(info.usage)}</span>}
-          </div>
-          <p className="mt-1.5 text-[length:var(--ou-type-sm)] leading-relaxed text-[var(--ou-text-secondary)]">
+          </span>
+          <span className="ou-settings-item-desc">
             {label?.detail ?? "正在读取浏览器存储状态…"}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button variant={info?.state === "persisted" ? "secondary" : "primary"} onClick={() => void exportNow()} disabled={island?.state === "busy"}>
-              <Download size={14} aria-hidden="true" /> 导出 JSON
-            </Button>
-            {info?.state === "best-effort" && (
-              <Button variant="ghost" onClick={() => void askAgain()} disabled={island?.state === "busy"}>
-                <RefreshCw size={14} aria-hidden="true" /> 再次申请保留
-              </Button>
-            )}
-            {island && <StatusIsland key={island.text} state={island.state}>{island.text}</StatusIsland>}
-          </div>
+            {info?.usage !== undefined && ` 已用 ${formatBytes(info.usage)}。`}
+          </span>
         </div>
       </div>
-    </section>
+      <div className="ou-settings-actions px-4 pb-3">
+        <Button variant="secondary" onClick={() => void exportNow()} disabled={island?.state === "busy"}>
+          <Download size={14} aria-hidden="true" /> 导出 JSON
+        </Button>
+        {info?.state === "best-effort" && (
+          <button type="button" className="ou-text-button" onClick={() => void askAgain()} disabled={island?.state === "busy"}>
+            <RefreshCw size={14} aria-hidden="true" /> 再次申请保留
+          </button>
+        )}
+        {island && <StatusIsland key={island.text} state={island.state}>{island.text}</StatusIsland>}
+      </div>
+    </SettingsGroup>
   );
 }

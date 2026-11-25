@@ -1,0 +1,251 @@
+/* 设置（v3 Glass · Apple System Settings 式）：分组插页列表 + 宽屏双栏 / 窄屏推入详情。
+ * 只用 --ou-* Token；不写 1px 描边，分组靠白纸面和留白。动效由 framer-motion 驱动，
+ * 这里只放 CSS 过渡（箭头旋转、按下缩放），减少动态效果时随 --ou-motion-* 归零。 */
+
+.ou-settings { container: settings / inline-size; min-width: 0; }
+
+/* ── 宽屏：左列表 + 右详情 ── */
+.ou-settings-split {
+  display: grid;
+  grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr);
+  gap: clamp(var(--ou-space-4), 2.5cqi, var(--ou-space-8));
+  align-items: start;
+}
+.ou-settings-nav { position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--ou-space-4); min-width: 0; }
+.ou-settings-detail { position: relative; min-width: 0; }
+
+/* ── 分组 ── */
+.ou-settings-group { scroll-margin-top: 3.5rem; display: flex; flex-direction: column; gap: var(--ou-space-2); min-width: 0; }
+.ou-settings-group-label {
+  padding: 0 var(--ou-space-4);
+  font-size: var(--ou-type-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ou-text-tertiary);
+}
+.ou-settings-group-note { padding: 0 var(--ou-space-4); font-size: var(--ou-type-xs); line-height: var(--ou-line-body); color: var(--ou-text-tertiary); }
+.ou-settings-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--ou-space-1);
+  border-radius: var(--ou-radius-panel);
+  background: var(--ou-bg-surface);
+  box-shadow: var(--ou-elev-1);
+}
+.ou-settings-nav .ou-settings-card { padding: 0; background: transparent; box-shadow: none; }
+
+/* ── 列表行（目录）：图标方块 · 标题 · 右侧状态值 · 箭头；≥ 44px ── */
+.ou-settings-row {
+  position: relative;
+  display: flex;
+  min-height: 3.25rem;
+  width: 100%;
+  align-items: center;
+  gap: var(--ou-space-3);
+  padding: var(--ou-space-2) var(--ou-space-3);
+  border-radius: var(--ou-radius-card);
+  color: var(--ou-text-primary);
+  text-align: left;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), transform var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-settings-row:hover { background: var(--ou-bg-hover); }
+.ou-settings-row:active { transform: scale(0.985); }
+.ou-settings-row:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.ou-settings-row > * { position: relative; }
+.ou-settings-row-text { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 0.125rem; }
+.ou-settings-row-title { font-size: var(--ou-type-body); font-weight: 550; }
+.ou-settings-row-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-settings-row-value {
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ou-type-sm);
+  color: var(--ou-text-tertiary);
+}
+.ou-settings-row-chevron { flex: none; color: var(--ou-text-placeholder); }
+.ou-settings-row .ou-tile { width: 2rem; height: 2rem; color: var(--ou-text-primary); }
+
+/* 侧栏模式：在渐变底上，悬停 = 半透明白，选中 = 共享布局的白胶囊（.ou-settings-row-pill 由 framer 滑动）。 */
+.ou-settings-nav .ou-settings-row { min-height: 2.75rem; border-radius: var(--ou-radius-control); color: var(--ou-text-secondary); }
+.ou-settings-nav .ou-settings-row:hover { background: var(--ou-capsule-hover); color: var(--ou-text-primary); }
+.ou-settings-nav .ou-settings-row[aria-current="true"] { color: var(--ou-text-primary); }
+.ou-settings-nav .ou-settings-row[aria-current="true"]:hover { background: transparent; }
+.ou-settings-row-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ou-capsule-bg);
+  box-shadow: var(--ou-capsule-shadow);
+}
+.ou-settings-nav .ou-settings-row .ou-tile { width: 1.75rem; height: 1.75rem; }
+
+/* ── 详情：页头（宽屏）/ 推入后的顶栏（窄屏） ── */
+.ou-settings-detail-head { display: flex; flex-direction: column; gap: var(--ou-space-1); padding: var(--ou-space-2) var(--ou-space-4) var(--ou-space-4); }
+.ou-settings-detail-title { font-size: var(--ou-type-doc-heading); font-weight: 650; line-height: 1.3; color: var(--ou-text-primary); }
+.ou-settings-detail-desc { max-width: var(--ou-width-reading); font-size: var(--ou-type-sm); line-height: var(--ou-line-body); color: var(--ou-text-secondary); }
+.ou-settings-detail-body { display: flex; max-width: var(--ou-width-reading); flex-direction: column; gap: var(--ou-space-6); }
+
+.ou-settings-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--ou-layer-sticky);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 2.75rem;
+  margin: 0 calc(-1 * var(--ou-space-2)) var(--ou-space-2);
+  padding: 0 var(--ou-space-2);
+  border-radius: var(--ou-radius-pill);
+  background: var(--ou-glass-strong);
+  -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur));
+  box-shadow: var(--ou-glass-highlight);
+}
+.ou-settings-back {
+  display: inline-flex;
+  min-height: 2.75rem;
+  justify-self: start;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0 var(--ou-space-3) 0 var(--ou-space-1);
+  border-radius: var(--ou-radius-pill);
+  font-size: var(--ou-type-body);
+  font-weight: 500;
+  color: var(--ou-text-primary);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), transform var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-settings-back:hover { background: var(--ou-capsule-hover); }
+.ou-settings-back:active { transform: scale(0.97); }
+.ou-settings-back:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.ou-settings-topbar-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ou-type-section); font-weight: 600; color: var(--ou-text-primary); }
+
+/* 推入 / 换页动画的舞台：退场的那一页叠在上面，不撑高度。 */
+.ou-settings-stage { position: relative; min-width: 0; }
+
+/* 推入详情里顶栏是 sticky 玻璃条：分组被滚到顶（锚点 / scrollIntoView）时要停在顶栏下方，
+ * 不能让分组标题钻到玻璃条底下。偏移 = 滚动容器上内边距 + 顶栏高 + 一点留白。 */
+.ou-settings-topbar ~ .ou-settings-detail-body .ou-settings-group {
+  scroll-margin-top: calc(var(--ou-space-6) + 2.75rem + var(--ou-space-4));
+}
+
+/* ── 详情里的项：标签 + 说明在左，控件在右；窄了就换行 ── */
+.ou-settings-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ou-space-2) var(--ou-space-3);
+  min-height: 3.25rem;
+  padding: var(--ou-space-3) var(--ou-space-4);
+  border-radius: var(--ou-radius-card);
+}
+.ou-settings-item:not(:has(> .ou-tile)) { grid-template-columns: minmax(0, 1fr) auto; }
+.ou-settings-item-text { display: flex; min-width: 0; flex-direction: column; gap: 0.125rem; }
+.ou-settings-item-label { font-size: var(--ou-type-body); font-weight: 550; color: var(--ou-text-primary); }
+.ou-settings-item-desc { font-size: var(--ou-type-sm); line-height: var(--ou-line-body); color: var(--ou-text-tertiary); }
+.ou-settings-item-control { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ou-space-2); }
+.ou-settings-item-value { font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
+.ou-settings-item .ou-tile { width: 2rem; height: 2rem; color: var(--ou-text-primary); }
+.ou-settings-item--stack { align-items: flex-start; }
+.ou-settings-item-body { display: flex; width: 100%; flex-direction: column; gap: var(--ou-space-3); }
+.ou-settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); }
+.ou-settings-actions--end { justify-content: flex-end; }
+.ou-settings-hint { font-size: var(--ou-type-xs); line-height: var(--ou-line-body); color: var(--ou-text-tertiary); }
+.ou-settings-error { font-size: var(--ou-type-sm); color: var(--ou-tone-red-text); }
+.ou-settings-status { font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
+.ou-settings-mono { font-family: var(--ou-font-mono); font-size: var(--ou-type-xs); word-break: break-all; }
+
+/* 44px 触控目标：设置里的按钮统一放大到 2.75rem（窄屏），桌面 2.25rem。 */
+.ou-settings .ou-button { min-height: 2.25rem; }
+.ou-settings .ou-input { min-height: 2.5rem; }
+@container settings (max-width: 40rem) {
+  .ou-settings .ou-button { min-height: 2.75rem; }
+  .ou-settings .ou-input { min-height: 2.75rem; }
+}
+
+/* 文字按钮：次要操作，不占底色。 */
+.ou-text-button {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: var(--ou-space-1);
+  padding: 0 var(--ou-space-2);
+  border-radius: var(--ou-radius-pill);
+  font-size: var(--ou-type-sm);
+  font-weight: 550;
+  color: var(--ou-text-secondary);
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.ou-text-button:hover:not(:disabled) { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.ou-text-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.ou-text-button:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.ou-text-button[data-tone="danger"] { color: var(--ou-tone-red-text); }
+@container settings (max-width: 40rem) { .ou-text-button { min-height: 2.75rem; } }
+
+/* ── 渐进式披露：按钮 + 旋转的箭头；内容高度由 framer 动画 ── */
+.ou-disclosure-trigger[aria-expanded] .ou-disclosure-chevron { transition: transform var(--ou-motion-base) var(--ou-ease-spring); }
+.ou-disclosure-trigger[aria-expanded="true"] .ou-disclosure-chevron { transform: rotate(90deg); }
+.ou-disclosure-panel { overflow: hidden; }
+
+/* ── 云同步表单：分步 ── */
+.ou-sync-form { display: flex; flex-direction: column; gap: var(--ou-space-4); padding: var(--ou-space-1) var(--ou-space-4) var(--ou-space-4); }
+.ou-sync-step { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: var(--ou-space-2) var(--ou-space-3); }
+.ou-sync-step-num {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ou-radius-pill);
+  background: var(--ou-bg-control);
+  font-size: var(--ou-type-xs);
+  font-weight: 650;
+  color: var(--ou-text-secondary);
+  transition: background-color var(--ou-motion-base) var(--ou-ease-standard), color var(--ou-motion-base) var(--ou-ease-standard);
+}
+.ou-sync-step[data-done] .ou-sync-step-num { background: var(--ou-action-primary); color: var(--ou-on-action-primary); }
+.ou-sync-step-title { align-self: center; font-size: var(--ou-type-sm); font-weight: 600; color: var(--ou-text-primary); }
+.ou-sync-step-fields { grid-column: 2; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: var(--ou-space-3); }
+.ou-sync-advanced { grid-column: 2; display: flex; flex-direction: column; gap: var(--ou-space-3); padding: var(--ou-space-3); border-radius: var(--ou-radius-card); background: var(--ou-bg-control); }
+.ou-sync-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ou-space-2) var(--ou-space-3); }
+.ou-sync-footer .ou-settings-hint { margin-right: auto; }
+.ou-sync-pathstyle { display: flex; align-items: center; justify-content: space-between; gap: var(--ou-space-3); min-height: 2.75rem; font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
+
+/* 浅底状态块（警告 / 成功），给数据安全区用。 */
+.ou-settings-callout { padding: var(--ou-space-3) var(--ou-space-4); border-radius: var(--ou-radius-card); font-size: var(--ou-type-sm); line-height: var(--ou-line-body); }
+.ou-settings-callout[data-tone="yellow"] { background: var(--ou-tone-yellow-bg); color: var(--ou-tone-yellow-text); }
+.ou-settings-callout[data-tone="green"] { background: var(--ou-tone-green-bg); color: var(--ou-tone-green-text); }
+.ou-settings-callout[data-tone="red"] { background: var(--ou-tone-red-bg); color: var(--ou-tone-red-text); }
+.ou-settings-callout[data-tone="gray"] { background: var(--ou-bg-control); color: var(--ou-text-secondary); }
+
+.ou-settings-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--ou-space-3) var(--ou-space-6); padding: var(--ou-space-3) var(--ou-space-4); }
+.ou-settings-kv dt { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.ou-settings-kv dd { margin-top: 0.125rem; font-size: var(--ou-type-sm); color: var(--ou-text-primary); word-break: break-all; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ou-settings-row, .ou-settings-back, .ou-text-button, .ou-sync-step-num, .ou-disclosure-trigger .ou-disclosure-chevron { transition: none; }
+  .ou-settings-row:active, .ou-settings-back:active { transform: none; }
+}
+.ou-settings-group-head { display: flex; min-height: 1.75rem; align-items: flex-end; justify-content: space-between; gap: var(--ou-space-2); padding-right: var(--ou-space-2); }
+.ou-settings-group-head .ou-text-button { min-height: 1.75rem; font-size: var(--ou-type-xs); }
+.ou-settings-list { display: flex; flex-direction: column; gap: var(--ou-space-2); margin: 0; padding: var(--ou-space-3) var(--ou-space-4) var(--ou-space-3) var(--ou-space-8); list-style: disc; font-size: var(--ou-type-sm); line-height: var(--ou-line-body); color: var(--ou-text-secondary); }
+.ou-settings-list li::marker { color: var(--ou-text-placeholder); }
+.ou-settings-consent { display: flex; min-width: min(100%, 14rem); flex: 1; align-items: flex-start; gap: var(--ou-space-3); font-size: var(--ou-type-sm); line-height: var(--ou-line-body); color: var(--ou-text-primary); cursor: pointer; }
+.ou-settings-consent .ou-switch { margin-top: 0.125rem; }
+.ou-settings-item-label.ou-settings-error { color: var(--ou-tone-red-text); }
+/* 不可撤销的操作：浅红底 + 红字（不是第二颗墨黑主按钮）。 */
+.ou-button.ou-settings-danger { background: var(--ou-tone-red-bg); color: var(--ou-tone-red-text); box-shadow: none; }
+.ou-button.ou-settings-danger:hover:not(:disabled) { background: var(--ou-tone-red-border); }
+.ou-settings-kv--flush { padding: 0; }
+.ou-settings-sublabel { font-size: var(--ou-type-xs); font-weight: 600; color: var(--ou-text-tertiary); }
+.ou-settings-number { width: 4.5rem; text-align: center; }
+.ou-input.ou-settings-textarea { display: block; min-height: 6rem; padding: var(--ou-space-2) var(--ou-space-3); line-height: var(--ou-line-body); resize: vertical; }
+.ou-dialog.ou-settings-editor { width: min(36rem, calc(100vw - 2 * var(--ou-gutter))); }
+
+/* 窄容器：带按钮的控件区换到文字下面（和文字左对齐）；胶囊、开关这类短控件仍在右侧。 */
+@container settings (max-width: 34rem) {
+  .ou-settings-item-control:has(.ou-text-button, .ou-button, .ou-input) { grid-column: 2 / -1; justify-content: flex-start; }
+  .ou-settings-item:not(:has(> .ou-tile)) > .ou-settings-item-control:has(.ou-text-button, .ou-button, .ou-input) { grid-column: 1 / -1; }
+  .ou-settings-topbar { margin-right: 3rem; }
+}

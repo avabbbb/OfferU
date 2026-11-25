@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Info } from "lucide-react";
 import { getRuntimeIdentity, type RuntimeIdentity } from "@/lib/runtimeIdentityApi";
+import { SettingsGroup } from "./SettingsLayout";
 
 function shown(value: string | null): string {
   return value && value.trim() && value !== "unknown" ? value : "未知";
@@ -55,70 +57,46 @@ export default function BuildIdentityPanel() {
       ? "本地源码运行时（local）"
       : "未知";
 
-  return (
-    <section className="ou-sheet p-5" data-testid="build-identity-panel">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">应用版本与运行身份</h2>
-          <p className="mt-1 text-sm text-[var(--foreground-muted)]">
-            用于确认当前窗口连接的是哪一份 OfferU Runtime。
-          </p>
-        </div>
-        <button
-          type="button"
-          className="bauhaus-button !px-3 !py-2 !text-xs"
-          onClick={() => setRequestId((value) => value + 1)}
-        >
-          重新读取
-        </button>
-      </div>
+  const rows: Array<[string, string, boolean?]> = identity ? [
+    ["应用版本", shown(identity.version)],
+    ["运行类型", runtimeType],
+    ["源码提交", shown(identity.commit), true],
+    ["构建时间（UTC）", shown(identity.build_timestamp)],
+    ["源码状态", dirtyLabel(identity.dirty)],
+    ["数据位置", shown(identity.data_root), true],
+    ["源码指纹", shown(identity.source_fingerprint), true],
+  ] : [];
 
+  return (
+    <SettingsGroup
+      label="应用版本与运行身份"
+      testId="build-identity-panel"
+      note="用于确认当前窗口连接的是哪一份 OfferU Runtime。"
+      action={<button type="button" className="ou-text-button" onClick={() => setRequestId((value) => value + 1)}>重新读取</button>}
+    >
       {error ? (
-        <p className="mt-4 text-sm text-[var(--primary-red)]" role="status">
-          无法读取本机诊断信息，请稍后重新读取。
-        </p>
+        <p className="ou-settings-item ou-settings-error" role="status">无法读取本机诊断信息，请稍后重新读取。</p>
       ) : !identity ? (
-        <p className="mt-4 text-sm text-[var(--foreground-muted)]" role="status">
-          正在读取应用运行身份…
-        </p>
+        <p className="ou-settings-item ou-settings-status" role="status">正在读取应用运行身份…</p>
       ) : (
         <>
-          <p className={`mt-4 text-sm font-semibold ${identity.build_source === "unknown" ? "text-[var(--primary-red)]" : ""}`}>
-            {source?.title}
-          </p>
-          <p className="mt-1 text-sm text-[var(--foreground-muted)]">{source?.detail}</p>
-          <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-xs font-semibold text-[var(--foreground-muted)]">应用版本</dt>
-              <dd className="mt-1 break-all">{shown(identity.version)}</dd>
+          <div className="ou-settings-item">
+            <span className="ou-tile" aria-hidden="true"><Info size={16} /></span>
+            <div className="ou-settings-item-text">
+              <span className={identity.build_source === "unknown" ? "ou-settings-item-label ou-settings-error" : "ou-settings-item-label"}>{source?.title}</span>
+              <span className="ou-settings-item-desc">{source?.detail}</span>
             </div>
-            <div>
-              <dt className="text-xs font-semibold text-[var(--foreground-muted)]">源码提交</dt>
-              <dd className="mt-1 break-all font-mono text-xs">{shown(identity.commit)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold text-[var(--foreground-muted)]">构建时间（UTC）</dt>
-              <dd className="mt-1 break-all">{shown(identity.build_timestamp)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold text-[var(--foreground-muted)]">运行类型</dt>
-              <dd className="mt-1">{runtimeType}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold text-[var(--foreground-muted)]">数据位置</dt>
-              <dd className="mt-1 break-all font-mono text-xs">{shown(identity.data_root)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold text-[var(--foreground-muted)]">源码状态</dt>
-              <dd className="mt-1">{dirtyLabel(identity.dirty)}</dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-semibold text-[var(--foreground-muted)]">源码指纹</dt>
-              <dd className="mt-1 break-all font-mono text-xs">{shown(identity.source_fingerprint)}</dd>
-            </div>
+          </div>
+          <dl className="ou-settings-kv">
+            {rows.map(([label, value, mono]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd className={mono ? "ou-settings-mono" : undefined}>{value}</dd>
+              </div>
+            ))}
           </dl>
         </>
       )}
-    </section>
+    </SettingsGroup>
   );
 }

@@ -1,43 +1,35 @@
 "use client";
 
+import "@/styles/settings.css";
+
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Field, Select as UiSelect } from "@/components/ui";
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Button, Dialog, Field, Input, Pill, Select as UiSelect, Switch } from "@/components/ui";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ModelPicker } from "@/components/settings/ModelPicker";
 import { FreshResetPanel } from "@/components/settings/FreshResetPanel";
 import { SyncSettingsPanel } from "@/components/settings/SyncSettingsPanel";
 import BuildIdentityPanel from "@/components/settings/BuildIdentityPanel";
-import { motion } from "framer-motion";
+import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import {
-  Button,
-  Card,
-  CardBody,
-  Checkbox,
-  Chip,
-  Divider,
-  Input,
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  Textarea,
-  useDisclosure,
-} from "@heroui/react";
-import {
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  Cpu,
   Database,
   Download,
   Eye,
   EyeOff,
-  Key,
+  FlaskConical,
+  Info,
+  LifeBuoy,
   MessageSquare,
   Plus,
-  RefreshCw,
   RotateCcw,
+  ShieldAlert,
   ShieldCheck,
-  SquarePen,
-  Trash2,
+  TriangleAlert,
+  UserRound,
 } from "lucide-react";
 import {
   dataSafetyApi,
@@ -55,16 +47,57 @@ import { useLlmTransportMode } from "@/lib/local/llmTransport";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
 import { useConfig, updateConfig } from "@/lib/hooks";
+import { syncApi } from "@/lib/syncClient";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 import { DemoBridgeDialog } from "@/components/workbench/DemoBridgeDialog";
 import { DemoDataDialog } from "@/components/workbench/DemoDataDialog";
 import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";
 import { PlatformConsentCard } from "@/components/settings/PlatformConsentCard";
 import { BossLoginCard } from "@/components/boss-login";
-import { HintsToggle } from "@/components/hints";
+import { useHintsEnabled } from "@/components/hints";
 import { SettingsRow } from "@/components/settings/SettingsRow";
-import { SettingsDialog } from "@/components/settings/SettingsDialog";
+import { DisclosurePanel, SettingsGroup, SettingsItem, useContainerWide } from "@/components/settings/SettingsLayout";
 import { useAgentConnection } from "@/lib/agentConnection";
+
+// 设置（参考 Apple System Settings / iOS 设置）：分组目录 → 详情。
+// 容器够宽（≥ 45rem）时左列表、右详情；窄时目录和详情是两屏，详情从右推入、带返回。
+// 选中的分类写进 ?section=，前进后退、外部深链（?section=models）都能直接打开。
+
+type SectionKey = "agent" | "models" | "accounts" | "collect" | "data" | "about" | "feedback";
+
+const SECTIONS: Array<{ key: SectionKey; title: string; group: string; icon: ReactNode; description: string }> = [
+  { key: "agent", title: "我的 Agent", group: "连接", icon: <Bot size={16} />, description: "连接你已有的 Agent，让它读写 OfferU 的岗位、简历和待办。" },
+  { key: "models", title: "模型服务", group: "连接", icon: <Cpu size={16} />, description: "内置 Agent 使用的模型服务、并发上限和兜底方式。" },
+  { key: "accounts", title: "账号与来源", group: "连接", icon: <UserRound size={16} />, description: "求职平台登录，以及 OfferU 读取岗位的数据来源。" },
+  { key: "collect", title: "登录态采集", group: "连接", icon: <ShieldAlert size={16} />, description: "BOSS / 小红书等登录态采集的风险说明与同意。" },
+  { key: "data", title: "数据", group: "数据与隐私", icon: <Database size={16} />, description: "本机存储、云同步、备份恢复与导出。" },
+  { key: "about", title: "关于", group: "支持", icon: <Info size={16} />, description: "版本、运行身份与界面提示。" },
+  { key: "feedback", title: "报告问题", group: "支持", icon: <LifeBuoy size={16} />, description: "生成一份本地诊断包，发给我们排查。" },
+];
+
+/** 宽于这个值（容器宽，约 720px）就用双栏。 */
+const SPLIT_MIN_WIDTH = 720;
+
+const pushVariants = {
+  enter: (direction: number) => ({ x: direction > 0 ? "18%" : "-10%", opacity: 0 }),
+  center: { x: 0, opacity: 1 },
+  exit: (direction: number) => ({ x: direction > 0 ? "-10%" : "18%", opacity: 0 }),
+};
+const pushTransition = { x: { type: "spring", stiffness: 380, damping: 38, mass: 0.9 }, opacity: { duration: 0.2 } } as const;
+
+/** 目录里「数据」那一行的状态值：云同步连没连上。 */
+function useSyncSummary() {
+  const [summary, setSummary] = useState("备份、同步与导出");
+  useEffect(() => {
+    let cancelled = false;
+    syncApi().status().then((status) => {
+      if (cancelled) return;
+      setSummary(status.last_error ? "云同步出错" : status.configured ? "云同步已连接" : "未开启云同步");
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+  return summary;
+}
 
 interface ProviderPreset {
   id: string;
@@ -125,20 +158,6 @@ interface SettingsConfigPayload {
   };
 }
 
-const bauhausFieldClassNames = {
-  inputWrapper:
-    "rounded-[var(--ou-radius-control)] border-0 bg-[var(--ou-bg-surface-solid)]",
-  input: "font-medium text-[var(--foreground)] placeholder:text-[var(--foreground-muted)]",
-  label: "font-semibold tracking-[0.06em] text-[11px] text-[var(--foreground-muted)]",
-  description: "text-[var(--foreground-muted)]",
-  errorMessage: "font-medium text-[#D02020]",
-};
-
-const modelFieldClassNames = {
-  inputWrapper: "rounded-[var(--ou-radius-control)] border-0 bg-[var(--ou-bg-surface-solid)] shadow-none",
-  input: "text-[var(--foreground)]", label: "text-sm text-[var(--foreground-muted)]",
-};
-
 function AgentConcurrencySetting({ value, onSave }: { value: number; onSave: (next: number) => Promise<void> }) {
   const [draft, setDraft] = useState(String(value));
   const [saving, setSaving] = useState(false);
@@ -159,32 +178,29 @@ function AgentConcurrencySetting({ value, onSave }: { value: number; onSave: (ne
     }
   };
   return (
-    <section data-testid="agent-concurrency-setting" className="flex flex-wrap items-center gap-3 ou-sheet p-5 text-[length:var(--ou-type-sm)]">
-      <div className="min-w-0 flex-1">
-        <label htmlFor="agent-max-concurrency" className="font-medium text-[var(--foreground)]">Agent 最大并发数</label>
-        <p className="mt-1 text-[var(--foreground-muted)]">同时运行的助手任务上限，过高可能触发模型限流</p>
-      </div>
-      <input
-        id="agent-max-concurrency"
-        type="number"
-        min={1}
-        max={10}
-        step={1}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        className="w-16 ou-input ou-input-sm text-[length:var(--ou-type-sm)] text-[var(--ou-text-primary)]"
-      />
-      <button
-        type="button"
-        disabled={!valid || parsed === value || saving}
-        onClick={() => void save()}
-        className="ou-button ou-button-secondary ou-button-sm"
-      >
-        保存
-      </button>
-      {!valid && <p role="alert" className="w-full text-[var(--foreground-muted)]">请输入 1 到 10 的整数</p>}
-      {status && <p role="status" className="w-full text-[var(--foreground-muted)]">{status}</p>}
-    </section>
+    <div data-testid="agent-concurrency-setting">
+      <SettingsItem label="Agent 最大并发数" htmlFor="agent-max-concurrency" description="同时运行的助手任务上限，过高可能触发模型限流">
+        <Input
+          id="agent-max-concurrency"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={10}
+          step={1}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          aria-invalid={!valid}
+          className="ou-settings-number"
+        />
+        {valid && parsed !== value && (
+          <button type="button" disabled={saving} onClick={() => void save()} className="ou-text-button">
+            {saving ? "保存中…" : "保存"}
+          </button>
+        )}
+      </SettingsItem>
+      {!valid && <p role="alert" className="ou-settings-error px-4 pb-3">请输入 1 到 10 的整数</p>}
+      {status && <p role="status" className="ou-settings-status px-4 pb-3">{status}</p>}
+    </div>
   );
 }
 
@@ -204,27 +220,14 @@ function AgentFallbackSetting({ enabled, onSave }: { enabled: boolean; onSave: (
     }
   };
   return (
-    <section data-testid="agent-fallback-setting" className="flex flex-wrap items-center gap-3 ou-sheet p-5 text-[length:var(--ou-type-sm)]">
-      <div className="min-w-0 flex-1">
-        <label htmlFor="agent-fallback-toggle" className="font-medium text-[var(--foreground)]">没配模型时交给本机 Agent</label>
-        <p className="mt-1 text-[var(--foreground-muted)]">简历、邮件等内容会经本机 Agent 的 CLI 发到它自己的云端。配了内置模型时不生效。</p>
-      </div>
-      <input
-        id="agent-fallback-toggle"
-        type="checkbox"
-        role="switch"
-        checked={enabled}
-        disabled={saving}
-        onChange={() => void toggle()}
-        className="h-4 w-4 accent-[var(--foreground)]"
-      />
-      {status && <p role="status" className="w-full text-[var(--foreground-muted)]">{status}</p>}
-    </section>
+    <div data-testid="agent-fallback-setting">
+      <SettingsItem label="没配模型时交给本机 Agent" htmlFor="agent-fallback-toggle" description="简历、邮件等内容会经本机 Agent 的 CLI 发到它自己的云端；配了内置模型时不生效">
+        <Switch id="agent-fallback-toggle" checked={enabled} disabled={saving} onCheckedChange={() => void toggle()} aria-label="没配模型时交给本机 Agent" />
+      </SettingsItem>
+      {status && <p role="status" className="ou-settings-status px-4 pb-3">{status}</p>}
+    </div>
   );
 }
-
-const bauhausModalContentClassName =
-  "max-h-[88vh] ou-sheet bg-[var(--ou-bg-surface-solid)] text-[var(--ou-text-primary)]";
 
 function normalizeProviderId(value: string): string {
   const normalized = value
@@ -333,19 +336,14 @@ function TestLlmButton() {
 
   return (
     <>
-      <Button
-        size="sm"
-        className="ou-button ou-button-secondary ou-button-sm"
-        onPress={testConnection}
-        isLoading={testing}
-      >
-        测试连接
-      </Button>
       {result && (
-        <span className={`text-xs ${result.success ? "text-green-700" : "text-red-600"}`}>
+        <span role="status" className={result.success ? "ou-settings-status" : "ou-settings-error"}>
           {result.message}
         </span>
       )}
+      <button type="button" className="ou-text-button" onClick={() => void testConnection()} disabled={testing}>
+        {testing ? "测试中…" : "测试连接"}
+      </button>
     </>
   );
 }
@@ -370,7 +368,9 @@ function LocalDataSafetyCard() {
   const [syntheticPurgeOpen, setSyntheticPurgeOpen] = useState(false);
   const [syntheticConfirmationText, setSyntheticConfirmationText] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [isOpen, setRestoreOpen] = useState(false);
+  const onOpen = () => setRestoreOpen(true);
+  const onClose = () => setRestoreOpen(false);
 
   const load = async () => {
     setLoading(true);
@@ -551,278 +551,271 @@ function LocalDataSafetyCard() {
     ? Object.values(privacyHygiene.synthetic_email_test_data).reduce((sum, count) => sum + Number(count || 0), 0)
     : 0;
 
+  const backupReason = (reason: string) =>
+    reason === "pre_restore" ? "恢复前自动备份" : reason === "pre_migration" ? "迁移前自动备份" : reason === "pre_reset" ? "全清前自动备份" : "手动备份";
+
   return (
     <>
-      <Card className="bauhaus-panel overflow-hidden" data-testid="local-data-safety">
-        <CardBody className="space-y-5 p-5 md:p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">本地数据安全</p>
-            <h3 className="mt-1 text-[length:var(--ou-type-section)] font-semibold text-[var(--ou-text-primary)]">备份、恢复与数据导出</h3>
-            <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-              一致性备份包含 SQLite、上传文件和受管产物；恢复只会先暂存，下次启动前校验并替换。JSON 导出不包含 Provider 密钥、邮箱凭据或浏览器会话。
-            </p>
-          </div>
-          <Button size="sm" variant="light" onPress={() => void load()} isLoading={loading} startContent={!loading ? <RefreshCw size={14} /> : undefined}>
-            刷新
-          </Button>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="bauhaus-panel-sm bg-[var(--ou-bg-control)] p-4">
-            <p className="bauhaus-label text-[var(--foreground-muted)]">数据库</p>
-            <p className="mt-2 flex items-center gap-2 text-sm font-semibold"><Database size={16} />{status?.database.filename || "读取中"}</p>
-          </div>
-          <div className="bauhaus-panel-sm bg-[var(--ou-bg-control)] p-4">
-            <p className="bauhaus-label text-[var(--foreground-muted)]">可恢复备份</p>
-            <p className="mt-2 text-3xl font-semibold">{status?.backup_count ?? "—"}</p>
-          </div>
-          <div className={`bauhaus-panel-sm p-4 ${status?.pending_restore ? "bg-[var(--ou-tone-yellow-bg)]" : "bg-[var(--ou-tone-green-bg)]"}`}>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">恢复状态</p>
-            <p className="mt-2 flex items-center gap-2 text-sm font-semibold">
-              {status?.pending_restore ? <RotateCcw size={16} /> : <ShieldCheck size={16} />}
-              {status?.pending_restore ? "等待重启" : "无待恢复任务"}
-            </p>
-          </div>
-        </div>
+      <SettingsGroup
+        label="备份与恢复"
+        testId="local-data-safety"
+        note="一致性备份包含 SQLite、上传文件和受管产物；恢复只会先暂存，下次启动前校验并替换。导出的 JSON 不含 Provider 密钥、邮箱凭据或浏览器会话。"
+        action={
+          <button type="button" className="ou-text-button" onClick={() => void load()} disabled={loading}>
+            {loading ? "读取中…" : "刷新"}
+          </button>
+        }
+      >
+        <SettingsItem icon={<Database size={16} />} label="数据库" description={status?.database.filename || "读取中…"}>
+          <span className="ou-settings-item-value">{status ? `${status.backup_count} 份备份` : "—"}</span>
+          <Pill tone={status?.pending_restore ? "yellow" : "green"}>{status?.pending_restore ? "等待重启恢复" : "无待恢复任务"}</Pill>
+        </SettingsItem>
 
         {status?.pending_restore && (
-          <div role="status" className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 bg-[var(--ou-tone-yellow-bg)] px-4 py-3 text-sm font-semibold text-[var(--ou-tone-yellow-text)]">
-            <span>备份 {status.pending_restore.backup_id.slice(0, 8)}… 已暂存。关闭并重新打开 OfferU 后恢复。</span>
-            <Button size="sm" variant="light" color="warning" isLoading={action === "cancel"} onPress={() => void cancelRestore()}>
+          <div role="status" className="ou-settings-callout mx-4 mb-3 flex flex-wrap items-center justify-between gap-2" data-tone="yellow">
+            <span>备份 {status.pending_restore.backup_id.slice(0, 8)}… 已暂存，关闭并重新打开 OfferU 后恢复。</span>
+            <button type="button" className="ou-text-button" disabled={action === "cancel"} onClick={() => void cancelRestore()}>
               取消待恢复
-            </Button>
+            </button>
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          <Button color="primary" radius="full" onPress={() => void createBackup()} isDisabled={SHOWCASE} isLoading={action === "backup"} startContent={action !== "backup" ? <ShieldCheck size={15} /> : undefined}>
-            创建一致性备份
+        <div className="ou-settings-actions px-4 pb-3">
+          <Button onClick={() => void createBackup()} disabled={SHOWCASE || action === "backup"}>
+            <ShieldCheck size={14} aria-hidden="true" /> {action === "backup" ? "备份中…" : "创建一致性备份"}
           </Button>
-          <Button variant="bordered" onPress={() => void checkIntegrity()} isLoading={action === "integrity"}>
-            检查数据库完整性
-          </Button>
-          <Button variant="bordered" onPress={() => void handleExport()} isLoading={exporting} startContent={!exporting ? <Download size={15} /> : undefined}>
-            导出 JSON
-          </Button>
+          <button type="button" className="ou-text-button" onClick={() => void checkIntegrity()} disabled={action === "integrity"}>
+            {action === "integrity" ? "检查中…" : "检查完整性"}
+          </button>
+          <button type="button" className="ou-text-button" onClick={() => void handleExport()} disabled={exporting}>
+            <Download size={14} aria-hidden="true" /> {exporting ? "导出中…" : "导出 JSON"}
+          </button>
         </div>
-        {SHOWCASE && <p className="text-xs font-semibold text-[var(--foreground-muted)]">Showcase 使用独立 IndexedDB；此处只提供 JSON 导出、完整性说明和 Demo 重置，不伪装成 SQLite 备份。</p>}
-
-        <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4" data-testid="demo-data-safety">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-3xl">
-              <p className="bauhaus-label text-[var(--ou-tone-yellow-text)]">Demo / Fixture 工作区</p>
-              <p className="mt-2 text-sm font-semibold text-[var(--ou-tone-yellow-text)]">重置演示数据与删除真实数据是两件事</p>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--ou-tone-yellow-text)]">
-                {SHOWCASE
-                  ? "当前为独立 Showcase IndexedDB。重置会清除这个虚构展示工作区，下一次读取会回到内置演示数据。"
-                  : "本地模式只会清除 source=offeru-demo 且 batch_id=offeru-demo-v1 的明确合成数据；不会删除 Profile、真实岗位、真实简历、备份或连接信息。这里没有删除真实用户数据的入口。"}
-              </p>
-            </div>
-            <Button
-              color="warning"
-              variant="flat"
-              data-testid="reset-demo"
-              onPress={() => {
-                setDemoConfirmationText("");
-                setDemoResetOpen(true);
-              }}
-              isLoading={action === "reset_demo"}
-            >
-              重置 Demo 数据
-            </Button>
-          </div>
-        </div>
-
-        {SHOWCASE && (
-          <div className="bauhaus-panel-sm border-[var(--border)] bg-[var(--surface-muted)] p-4" data-testid="demo-data-sync">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-3xl">
-                <p className="bauhaus-label text-[var(--foreground-muted)]">示例数据</p>
-                <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">数据包、备份与多设备同步</p>
-                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-                  导出 JSON 数据包，或通过 WebDAV 上传/下载整包快照。示例数据只在这个浏览器；导入、下载和同步都会整包覆盖，不做自动合并。连接本机 OfferU 后改读写本机数据库。
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="bordered" onPress={() => setDemoDataOpen(true)}>数据包 / 同步</Button>
-                <Button size="sm" variant="bordered" onPress={() => setDemoBridgeOpen(true)}>连接本机 OfferU</Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {!SHOWCASE && privacyHygiene && (
-          <div
-            className={`bauhaus-panel-sm p-4 ${legacyEmailBodyCount || syntheticEmailDataCount ? "bg-[var(--ou-tone-yellow-bg)]" : "bg-[var(--ou-tone-green-bg)]"}`}
-            data-testid="privacy-hygiene"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-3xl">
-                <p className="bauhaus-label text-[var(--foreground-muted)]">隐私卫生</p>
-                <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
-                  {legacyEmailBodyCount ? `有 ${legacyEmailBodyCount} 条历史邮件正文待处理` : "没有待清理的历史邮件正文"}
-                </p>
-                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-                  OfferU 这里只显示计数，不会在 Settings 读取或展示邮件正文。清理只会移除已经完成结构化解析的冗余正文，保留面试通知的结构化字段；该操作不可恢复，需要你明确确认。
-                  {legacyEmailBodyCount ? `当前共 ${legacyEmailBodyCharacters} 个字符。` : ""}
-                  {syntheticEmailDataCount ? `另有 ${syntheticEmailDataCount} 条严格命名空间的合成邮箱测试数据，可单独清理；它不属于岗位 Demo Reset。` : ""}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {legacyEmailBodyCount > 0 && (
-                  <Button
-                    color="warning"
-                    variant="flat"
-                    data-testid="scrub-legacy-email-bodies"
-                    isLoading={action === "privacy_scrub"}
-                    onPress={() => {
-                      setPrivacyConfirmationText("");
-                      setPrivacyScrubOpen(true);
-                    }}
-                  >
-                    清理旧邮件正文
-                  </Button>
-                )}
-                {syntheticEmailDataCount > 0 && (
-                  <Button
-                    color="warning"
-                    variant="bordered"
-                    data-testid="purge-synthetic-email-data"
-                    isLoading={action === "privacy_purge_synthetic"}
-                    onPress={() => {
-                      setSyntheticConfirmationText("");
-                      setSyntheticPurgeOpen(true);
-                    }}
-                  >
-                    清理合成邮箱数据
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {SHOWCASE && <p className="ou-settings-hint px-4 pb-3">Showcase 使用独立 IndexedDB；这里只提供 JSON 导出、完整性说明和 Demo 重置，不伪装成 SQLite 备份。</p>}
 
         {integrity && (
-          <div className={`bauhaus-panel-sm px-4 py-3 text-sm font-semibold ${integrity.status === "ok" ? "bg-[var(--ou-tone-green-bg)] text-[var(--ou-tone-green-text)]" : "bg-[var(--ou-tone-red-bg)] text-[var(--ou-tone-red-text)]"}`}>
+          <p className="ou-settings-callout mx-4 mb-3" data-tone={integrity.status === "ok" ? "green" : "red"}>
             {integrity.status === "ok" ? "Integrity OK" : "Integrity Failed"} · schema {integrity.schema.schema_version} · 外键异常 {integrity.foreign_key_violations.length}
-          </div>
+          </p>
         )}
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-[var(--foreground)]">最近备份</p>
-            {invalidBackups > 0 && <Chip color="danger" size="sm">{invalidBackups} 个无效归档</Chip>}
-          </div>
-          {!loading && backups.length === 0 && <p className="text-sm font-medium text-[var(--foreground-muted)]">还没有备份。创建第一份一致性备份后，可以从这里选择恢复。</p>}
-          {backups.slice(0, 5).map((backup) => (
-            <div key={backup.backup_id} className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 bg-[var(--ou-bg-control)] p-3" data-testid={`data-backup-${backup.backup_id}`}>
-              <div>
-                <p className="text-sm font-semibold">
-                  {backup.reason === "pre_restore" ? "恢复前自动备份" : backup.reason === "pre_migration" ? "迁移前自动备份" : backup.reason === "pre_reset" ? "全清前自动备份" : "手动备份"} · {backup.backup_id.slice(0, 8)}
-                </p>
-                <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">{new Date(backup.created_at).toLocaleString()} · {formatBytes(backup.size_bytes)} · v{backup.version}</p>
-              </div>
-              <Button size="sm" variant="bordered" isDisabled={Boolean(status?.pending_restore)} onPress={() => openRestore(backup)}>
-                恢复此备份
-              </Button>
+        {(backups.length > 0 || invalidBackups > 0 || !loading) && (
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between gap-2 px-4 pt-1">
+              <span className="ou-settings-sublabel">最近备份</span>
+              {invalidBackups > 0 && <Pill tone="red">{invalidBackups} 个无效归档</Pill>}
             </div>
-          ))}
-        </div>
+            {!loading && backups.length === 0 && <p className="ou-settings-hint px-4 py-3">还没有备份。创建第一份一致性备份后，可以从这里选择恢复。</p>}
+            {backups.slice(0, 5).map((backup) => (
+              <div key={backup.backup_id} data-testid={`data-backup-${backup.backup_id}`}>
+                <SettingsItem
+                  label={`${backupReason(backup.reason)} · ${backup.backup_id.slice(0, 8)}`}
+                  description={`${new Date(backup.created_at).toLocaleString()} · ${formatBytes(backup.size_bytes)} · v${backup.version}`}
+                >
+                  <button type="button" className="ou-text-button" disabled={Boolean(status?.pending_restore)} onClick={() => openRestore(backup)}>
+                    <RotateCcw size={14} aria-hidden="true" /> 恢复
+                  </button>
+                </SettingsItem>
+              </div>
+            ))}
+          </div>
+        )}
 
         {feedback && (
-          <div
-            role={feedback.type === "error" ? "alert" : "status"}
-            className={`bauhaus-panel-sm px-4 py-3 text-sm font-semibold ${
-              feedback.type === "error"
-                ? "bg-[var(--ou-tone-red-bg)] text-[var(--ou-tone-red-text)]"
-                : "bg-[var(--ou-tone-green-bg)] text-[var(--ou-tone-green-text)]"
-            }`}
-          >
+          <p role={feedback.type === "error" ? "alert" : "status"} className="ou-settings-callout mx-4 mb-3" data-tone={feedback.type === "error" ? "red" : "green"}>
             {feedback.message}
+          </p>
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup label="演示数据" testId="demo-data-safety"
+        note={SHOWCASE
+          ? "当前为独立 Showcase IndexedDB。重置会清除这个虚构展示工作区，下一次读取会回到内置演示数据。"
+          : "只清除 source=offeru-demo 且 batch_id=offeru-demo-v1 的明确合成数据；不会删除 Profile、真实岗位、简历、备份或连接信息。"}
+      >
+        <SettingsItem icon={<FlaskConical size={16} />} label="重置 Demo 数据" description="重置演示数据与删除真实数据是两件事">
+          <button
+            type="button"
+            className="ou-text-button"
+            data-testid="reset-demo"
+            disabled={action === "reset_demo"}
+            onClick={() => {
+              setDemoConfirmationText("");
+              setDemoResetOpen(true);
+            }}
+          >
+            重置…
+          </button>
+        </SettingsItem>
+        {SHOWCASE && (
+          <div data-testid="demo-data-sync">
+            <SettingsItem label="数据包、备份与多设备同步" description="导出 JSON 数据包，或通过 WebDAV 整包上传 / 下载；导入和同步都会整包覆盖，不自动合并。">
+              <button type="button" className="ou-text-button" onClick={() => setDemoDataOpen(true)}>数据包 / 同步</button>
+              <button type="button" className="ou-text-button" onClick={() => setDemoBridgeOpen(true)}>连接本机 OfferU</button>
+            </SettingsItem>
           </div>
         )}
-        </CardBody>
-      </Card>
+      </SettingsGroup>
 
-      <Modal isOpen={isOpen} onClose={onClose} size="lg" placement="center">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="px-6 py-5 text-xl font-semibold">确认恢复本地数据</ModalHeader>
-          <ModalBody className="space-y-4 px-6 py-6">
-            <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4 text-sm font-semibold leading-relaxed text-[var(--ou-tone-yellow-text)]">
-              当前运行中的数据不会立刻改变。OfferU 会校验并暂存备份；下次启动前先创建恢复前备份，再替换 SQLite 与受管资产。恢复失败会自动回滚并停止启动。
-            </div>
-            <p className="text-sm font-bold">备份：{selectedBackup?.backup_id}</p>
-            <Input label="输入“恢复”以继续" value={confirmationText} onValueChange={setConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
-          </ModalBody>
-          <ModalFooter className="px-6 py-5">
-            <Button variant="light" onPress={onClose}>取消</Button>
-            <Button color="danger" isDisabled={confirmationText !== "恢复"} isLoading={action === "restore"} onPress={() => void stageRestore()} startContent={action !== "restore" ? <RotateCcw size={15} /> : undefined}>
-              暂存并在重启时恢复
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      {!SHOWCASE && privacyHygiene && (
+        <SettingsGroup label="隐私卫生" testId="privacy-hygiene"
+          note="这里只显示计数，不会读取或展示邮件正文。清理只移除已完成结构化解析的冗余正文，保留面试通知的结构化字段；不可恢复。"
+        >
+          <SettingsItem
+            icon={<ShieldCheck size={16} />}
+            label={legacyEmailBodyCount ? `有 ${legacyEmailBodyCount} 条历史邮件正文待处理` : "没有待清理的历史邮件正文"}
+            description={[
+              legacyEmailBodyCount ? `共 ${legacyEmailBodyCharacters} 个字符` : "",
+              syntheticEmailDataCount ? `另有 ${syntheticEmailDataCount} 条合成邮箱测试数据可单独清理` : "",
+            ].filter(Boolean).join("；") || undefined}
+          >
+            {!legacyEmailBodyCount && !syntheticEmailDataCount && <Pill tone="green">干净</Pill>}
+            {legacyEmailBodyCount > 0 && (
+              <button
+                type="button"
+                className="ou-text-button"
+                data-tone="danger"
+                data-testid="scrub-legacy-email-bodies"
+                disabled={action === "privacy_scrub"}
+                onClick={() => {
+                  setPrivacyConfirmationText("");
+                  setPrivacyScrubOpen(true);
+                }}
+              >
+                清理旧邮件正文
+              </button>
+            )}
+            {syntheticEmailDataCount > 0 && (
+              <button
+                type="button"
+                className="ou-text-button"
+                data-tone="danger"
+                data-testid="purge-synthetic-email-data"
+                disabled={action === "privacy_purge_synthetic"}
+                onClick={() => {
+                  setSyntheticConfirmationText("");
+                  setSyntheticPurgeOpen(true);
+                }}
+              >
+                清理合成邮箱数据
+              </button>
+            )}
+          </SettingsItem>
+        </SettingsGroup>
+      )}
 
-      <Modal isOpen={demoResetOpen} onClose={() => setDemoResetOpen(false)} size="lg" placement="center">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="px-6 py-5 text-xl font-semibold">确认重置 Demo 工作区</ModalHeader>
-          <ModalBody className="space-y-4 px-6 py-6">
-            <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4 text-sm font-semibold leading-relaxed text-[var(--ou-tone-yellow-text)]">
-              只处理明确标记的合成数据。不会调用真实岗位删除接口，也不会删除你的 Profile、真实岗位、简历、备份或连接凭据。展示模式只清除独立的 Showcase IndexedDB。
-            </div>
-            <Input label="输入“重置 Demo”以继续" value={demoConfirmationText} onValueChange={setDemoConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
-          </ModalBody>
-          <ModalFooter className="px-6 py-5">
-            <Button variant="light" onPress={() => setDemoResetOpen(false)}>取消</Button>
-            <Button color="warning" data-testid="confirm-reset-demo" isDisabled={demoConfirmationText !== "重置 Demo"} isLoading={action === "reset_demo"} onPress={() => void resetDemo()}>
-              确认重置 Demo
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <ConfirmDialog
+        open={isOpen}
+        onClose={onClose}
+        title="确认恢复本地数据"
+        warning="当前运行中的数据不会立刻改变。OfferU 会校验并暂存备份；下次启动前先创建恢复前备份，再替换 SQLite 与受管资产。恢复失败会自动回滚并停止启动。"
+        detail={`备份：${selectedBackup?.backup_id ?? ""}`}
+        phrase="恢复"
+        value={confirmationText}
+        onValueChange={setConfirmationText}
+        busy={action === "restore"}
+        confirmLabel="暂存并在重启时恢复"
+        onConfirm={() => void stageRestore()}
+      />
+
+      <ConfirmDialog
+        open={demoResetOpen}
+        onClose={() => setDemoResetOpen(false)}
+        title="确认重置 Demo 工作区"
+        warning="只处理明确标记的合成数据。不会调用真实岗位删除接口，也不会删除你的 Profile、真实岗位、简历、备份或连接凭据。展示模式只清除独立的 Showcase IndexedDB。"
+        phrase="重置 Demo"
+        value={demoConfirmationText}
+        onValueChange={setDemoConfirmationText}
+        busy={action === "reset_demo"}
+        confirmLabel="确认重置 Demo"
+        confirmTestId="confirm-reset-demo"
+        onConfirm={() => void resetDemo()}
+      />
 
       <DemoDataDialog open={demoDataOpen} onClose={() => setDemoDataOpen(false)} />
       <DemoBridgeDialog open={demoBridgeOpen} onClose={() => setDemoBridgeOpen(false)} />
 
-      <Modal isOpen={privacyScrubOpen} onClose={() => setPrivacyScrubOpen(false)} size="lg" placement="center">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="px-6 py-5 text-xl font-semibold">确认清理历史邮件正文</ModalHeader>
-          <ModalBody className="space-y-4 px-6 py-6">
-            <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4 text-sm font-semibold leading-relaxed text-[var(--ou-tone-yellow-text)]">
-              这会清空已完成结构化解析的旧面试通知正文，但保留通知时间、岗位关联和结构化状态。正文不会进入备份恢复，也不能在清理后恢复。OfferU 不会展示待清理正文内容。
-            </div>
-            <p className="text-sm font-bold">待处理：{legacyEmailBodyCount} 条记录 · {legacyEmailBodyCharacters} 个字符</p>
-            <Input label="输入“清理旧正文”以继续" value={privacyConfirmationText} onValueChange={setPrivacyConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
-          </ModalBody>
-          <ModalFooter className="px-6 py-5">
-            <Button variant="light" onPress={() => setPrivacyScrubOpen(false)}>取消</Button>
-            <Button color="danger" isDisabled={privacyConfirmationText !== "清理旧正文"} isLoading={action === "privacy_scrub"} onPress={() => void scrubLegacyEmailBodies()}>
-              确认清理
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <ConfirmDialog
+        open={privacyScrubOpen}
+        onClose={() => setPrivacyScrubOpen(false)}
+        title="确认清理历史邮件正文"
+        warning="这会清空已完成结构化解析的旧面试通知正文，但保留通知时间、岗位关联和结构化状态。正文不会进入备份恢复，也不能在清理后恢复。OfferU 不会展示待清理正文内容。"
+        detail={`待处理：${legacyEmailBodyCount} 条记录 · ${legacyEmailBodyCharacters} 个字符`}
+        phrase="清理旧正文"
+        value={privacyConfirmationText}
+        onValueChange={setPrivacyConfirmationText}
+        busy={action === "privacy_scrub"}
+        confirmLabel="确认清理"
+        onConfirm={() => void scrubLegacyEmailBodies()}
+      />
 
-      <Modal isOpen={syntheticPurgeOpen} onClose={() => setSyntheticPurgeOpen(false)} size="lg" placement="center">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="px-6 py-5 text-xl font-semibold">确认清理合成邮箱测试数据</ModalHeader>
-          <ModalBody className="space-y-4 px-6 py-6">
-            <div className="bauhaus-panel-sm bg-[var(--ou-tone-yellow-bg)] p-4 text-sm font-semibold leading-relaxed text-[var(--ou-tone-yellow-text)]">
-              只会处理 OfferU 保留的合成邮箱测试账号、同步运行、信号、候选和本机凭据引用。若它们已经关联正式时间线，系统会拒绝清理；真实邮箱、岗位和投递状态不会被处理。
-            </div>
-            <p className="text-sm font-bold">待处理：{syntheticEmailDataCount} 条合成邮箱测试数据</p>
-            <Input label="输入“清理合成邮箱”以继续" value={syntheticConfirmationText} onValueChange={setSyntheticConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
-          </ModalBody>
-          <ModalFooter className="px-6 py-5">
-            <Button variant="light" onPress={() => setSyntheticPurgeOpen(false)}>取消</Button>
-            <Button color="danger" isDisabled={syntheticConfirmationText !== "清理合成邮箱"} isLoading={action === "privacy_purge_synthetic"} onPress={() => void purgeSyntheticEmailTestData()}>
-              确认清理
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <ConfirmDialog
+        open={syntheticPurgeOpen}
+        onClose={() => setSyntheticPurgeOpen(false)}
+        title="确认清理合成邮箱测试数据"
+        warning="只会处理 OfferU 保留的合成邮箱测试账号、同步运行、信号、候选和本机凭据引用。若它们已经关联正式时间线，系统会拒绝清理；真实邮箱、岗位和投递状态不会被处理。"
+        detail={`待处理：${syntheticEmailDataCount} 条合成邮箱测试数据`}
+        phrase="清理合成邮箱"
+        value={syntheticConfirmationText}
+        onValueChange={setSyntheticConfirmationText}
+        busy={action === "privacy_purge_synthetic"}
+        confirmLabel="确认清理"
+        onConfirm={() => void purgeSyntheticEmailTestData()}
+      />
     </>
+  );
+}
+
+/** 不可撤销操作的确认：一段说明 + 输入确认词，确认按钮是浅红底，不是墨黑主按钮。 */
+function ConfirmDialog({
+  open,
+  onClose,
+  title,
+  warning,
+  detail,
+  phrase,
+  value,
+  onValueChange,
+  busy,
+  confirmLabel,
+  confirmTestId,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  warning: string;
+  detail?: string;
+  phrase: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  busy: boolean;
+  confirmLabel: string;
+  confirmTestId?: string;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => { if (!next) onClose(); }}
+      title={title}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button className="ou-settings-danger" data-testid={confirmTestId} disabled={value !== phrase || busy} onClick={onConfirm}>
+            {busy ? "处理中…" : confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <div className="mt-4 flex flex-col gap-4">
+        <p className="ou-settings-callout" data-tone="yellow">{warning}</p>
+        {detail && <p className="ou-settings-status">{detail}</p>}
+        <Field label={`输入“${phrase}”以继续`}>
+          {(id) => <Input id={id} value={value} onChange={(event) => onValueChange(event.target.value)} autoFocus autoComplete="off" />}
+        </Field>
+      </div>
+    </Dialog>
   );
 }
 
@@ -888,48 +881,36 @@ function LocalFeedbackCard() {
   };
 
   return (
-    <Card className="bauhaus-panel overflow-hidden" data-testid="local-feedback">
-      <CardBody className="space-y-4 p-5 md:p-6">
-        <div className="flex items-start gap-3">
-          <div className="bauhaus-panel-sm flex h-11 w-11 shrink-0 items-center justify-center bg-[var(--ou-bg-control)] text-[var(--ou-text-primary)]">
-            <MessageSquare size={18} />
-          </div>
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">内测反馈</p>
-            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">报告一个问题</h3>
-            <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-              只生成本地诊断包，包含当前页面、版本、构建模式、你的描述和最近的脱敏错误关联信息；不会自动上传，也不会附带 Profile、岗位正文或 Provider 密钥。
-            </p>
-          </div>
-        </div>
-        <Textarea
-          label="问题描述"
-          placeholder="例如：保存岗位后，Today 没有出现岗位情报。"
-          value={note}
-          onValueChange={setNote}
-          minRows={3}
-          data-testid="feedback-note"
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-            onPress={() => void handleExport()}
-            isLoading={exporting}
-            startContent={<MessageSquare size={15} />}
-          >
-            下载问题诊断包
-          </Button>
-          {feedback && (
-            <span
-              role={feedback.type === "error" ? "alert" : "status"}
-              className={`text-sm font-semibold ${feedback.type === "error" ? "text-red-700" : "text-emerald-700"}`}
-            >
-              {feedback.message}
-            </span>
+    <SettingsGroup
+      testId="local-feedback"
+      note="只生成本地诊断包：当前页面、版本、构建模式、你的描述和最近的脱敏错误关联信息。不会自动上传，也不附带 Profile、岗位正文或 Provider 密钥。"
+    >
+      <div className="ou-settings-item-body p-4">
+        <Field label="问题描述">
+          {(id) => (
+            <textarea
+              id={id}
+              className="ou-input ou-settings-textarea"
+              placeholder="例如：保存岗位后，Today 没有出现岗位情报。"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              rows={4}
+              data-testid="feedback-note"
+            />
           )}
+        </Field>
+        <div className="ou-sync-footer">
+          {feedback && (
+            <p role={feedback.type === "error" ? "alert" : "status"} className={feedback.type === "error" ? "ou-settings-error mr-auto" : "ou-settings-status mr-auto"}>
+              {feedback.message}
+            </p>
+          )}
+          <Button variant="primary" onClick={() => void handleExport()} disabled={exporting}>
+            <MessageSquare size={14} aria-hidden="true" /> {exporting ? "生成中…" : "下载问题诊断包"}
+          </Button>
         </div>
-      </CardBody>
-    </Card>
+      </div>
+    </SettingsGroup>
   );
 }
 
@@ -945,21 +926,42 @@ export default function SettingsPage() {
   const { data, mutate } = useConfig();
   const config = data as SettingsConfigPayload | undefined;
   const searchParams = useSearchParams();
-  type SettingsSectionKey = "agent" | "models" | "accounts" | "collect" | "data" | "about" | "feedback";
-  const modelSectionRequested = searchParams.get("section") === "models";
-  const [openSection, setOpenSection] = useState<SettingsSectionKey | null>(null);
+  const router = useRouter();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const wide = useContainerWide(rootRef, SPLIT_MIN_WIDTH);
+  const sections = SECTIONS.filter((item) => !(SHOWCASE && item.key === "collect"));
+  const requested = sections.find((item) => item.key === searchParams.get("section"))?.key ?? null;
+  // 宽屏总有一项在右侧打开（默认第一项）；窄屏没有选中就是目录。
+  const active: SectionKey | null = requested ?? (wide ? sections[0].key : null);
+  const pushed = useRef(false);
+  const openSection = (key: SectionKey) => {
+    if (wide) {
+      router.replace("/settings?section=" + key);
+    } else {
+      pushed.current = true;
+      router.push("/settings?section=" + key);
+    }
+  };
+  const closeSection = () => {
+    if (pushed.current) {
+      pushed.current = false;
+      router.back();
+    } else {
+      router.replace("/settings");
+    }
+  };
   useEffect(() => {
-    if (modelSectionRequested) setOpenSection("models");
-  }, [modelSectionRequested]);
-  const closeSection = () => setOpenSection(null);
+    if (!wide) rootRef.current?.closest("main")?.scrollTo({ top: 0 });
+  }, [active, wide]);
+  const syncSummary = useSyncSummary();
   const agentState = useAgentConnection();
   const agentStatus = agentState.connection?.connection_verified && agentState.connection.status === "ready"
     ? agentState.connection.name + " · 已验证"
     : "未连接";
   const llmTransport = useLlmTransportMode(LOCAL_WEB);
-  const modelStatus = config?.active_llm_summary
-    ? config.active_llm_summary.service_name + " · " + config.active_llm_summary.model
-    : "未连接";
+  const modelStatus = config?.active_llm_summary?.model
+    ? [config.active_llm_summary.service_name, config.active_llm_summary.model].filter(Boolean).join(" · ")
+    : "未配置";
 
   const [apiSaving, setApiSaving] = useState(false);
   const [apiSaved, setApiSaved] = useState(false);
@@ -974,16 +976,12 @@ export default function SettingsPage() {
   const [selectedConfigId, setSelectedConfigId] = useState("");
   const [listFeedback, setListFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const {
-    isOpen: isEditorOpen,
-    onOpen: onEditorOpen,
-    onClose: onEditorClose,
-  } = useDisclosure();
-  const {
-    isOpen: isDeleteOpen,
-    onOpen: onDeleteOpen,
-    onClose: onDeleteClose,
-  } = useDisclosure();
+  const [isEditorOpen, setEditorOpen] = useState(false);
+  const onEditorOpen = () => setEditorOpen(true);
+  const onEditorClose = () => setEditorOpen(false);
+  const [isDeleteOpen, setDeleteOpen] = useState(false);
+  const onDeleteOpen = () => setDeleteOpen(true);
+  const onDeleteClose = () => setDeleteOpen(false);
 
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
   const [formProviderChoice, setFormProviderChoice] = useState<string>("");
@@ -993,6 +991,7 @@ export default function SettingsPage() {
   const [formApiKey, setFormApiKey] = useState("");
   const [formIsActive, setFormIsActive] = useState<boolean>(false);
   const [showFormApiKey, setShowFormApiKey] = useState(false);
+  const [editorAdvanced, setEditorAdvanced] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const selectedConfig = useMemo(
@@ -1160,15 +1159,6 @@ export default function SettingsPage() {
     setListFeedback({ type: "success", message: "已切换激活配置，请点击“保存模型配置”提交" });
   };
 
-  const handleRowClick = (targetId: string) => {
-    if (selectedConfigId === targetId) {
-      const target = apiConfigs.find((item) => item.id === targetId);
-      if (target) openEditEditor(target);
-      return;
-    }
-    setSelectedConfigId(targetId);
-  };
-
   const handleSubmitEditor = async () => {
     const errors = validateEditorForm();
     setFormErrors(errors);
@@ -1286,219 +1276,349 @@ export default function SettingsPage() {
     }
   };
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", damping: 15 }}
-      className="space-y-6"
-    >
-      <PageHeader title="设置" description={SHOWCASE ? "展示版默认用示例数据；在「数据」里导出、同步或连接本机 OfferU。" : "Agent 连接、模型服务和数据安全。"} />
+  const statusOf: Record<SectionKey, string | undefined> = {
+    agent: agentStatus,
+    models: modelStatus,
+    accounts: SHOWCASE ? "求职来源" : "BOSS 与求职来源",
+    collect: "风险说明与同意",
+    data: syncSummary,
+    about: `v${import.meta.env.VITE_APP_VERSION || "—"}`,
+    feedback: undefined,
+  };
+  const groups = sections.reduce<Array<{ name: string; items: typeof sections }>>((all, item) => {
+    const last = all[all.length - 1];
+    if (last && last.name === item.group) last.items.push(item);
+    else all.push({ name: item.group, items: [item] });
+    return all;
+  }, []);
 
-      <div className="divide-y divide-[var(--ou-line-separator)] overflow-hidden ou-sheet">
-        <SettingsRow rowKey="agent" title="我的 Agent" status={agentStatus} onOpen={() => setOpenSection("agent")} />
-        <SettingsRow rowKey="models" title="模型服务" status={modelStatus} onOpen={() => setOpenSection("models")} />
-        <SettingsRow rowKey="accounts" title="账号与来源" status="登录与求职来源" onOpen={() => setOpenSection("accounts")} />
-        {!SHOWCASE && <SettingsRow rowKey="collect" title="登录态采集" status="BOSS / 小红书 · 风险说明与同意" onOpen={() => setOpenSection("collect")} />}
-        <SettingsRow rowKey="data" title="数据" status="云同步、备份、恢复与导出" onOpen={() => setOpenSection("data")} />
-        <SettingsRow rowKey="about" title="关于" status="版本与运行信息" onOpen={() => setOpenSection("about")} />
-        <SettingsRow rowKey="feedback" title="报告问题" onOpen={() => setOpenSection("feedback")} />
-      </div>
-
-      <SettingsDialog isOpen={openSection === "agent"} onClose={closeSection} title="我的 Agent">
-        <AgentConnectionPanel embedded />
-      </SettingsDialog>
-
-      <SettingsDialog isOpen={openSection === "models"} onClose={closeSection} title="模型服务">
-      <section className="ou-sheet" data-testid="embedded-model-settings">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--ou-line-separator)] p-5">
-          <div>
-            <p className="text-xs font-medium text-[var(--foreground-muted)]">内置 Agent</p>
-            <h2 className="mt-1 text-xl font-semibold">模型连接</h2>
-            <p className="mt-2 text-sm text-[var(--foreground-muted)]">连接模型服务，获取可用模型。右侧内置 Agent 使用当前激活的配置。</p>
+  const modelSection = (
+    <>
+      <SettingsGroup
+        label="模型连接"
+        testId="embedded-model-settings"
+        note={
+          <>
+            {apiDirty ? "配置有未保存的修改。" : "密钥只保存在系统钥匙串。"}
             {LOCAL_WEB && (
-              <p className="mt-1 text-xs text-[var(--foreground-muted)]" data-testid="llm-transport-mode" title={llmTransport === "extension" ? "不支持跨域的模型服务由 OfferU 浏览器扩展直接请求" : "不支持跨域的模型服务经 OfferU 服务器转发（不保存内容）；安装 OfferU 浏览器扩展可直连"}>
-                跨域通道：{llmTransport === "extension" ? "直连（扩展）" : "代理"}
-              </p>
+              <span data-testid="llm-transport-mode" title={llmTransport === "extension" ? "不支持跨域的模型服务由 OfferU 浏览器扩展直接请求" : "不支持跨域的模型服务经 OfferU 服务器转发（不保存内容）；安装 OfferU 浏览器扩展可直连"}>
+                {" "}跨域通道：{llmTransport === "extension" ? "直连（扩展）" : "代理"}
+              </span>
             )}
-          </div>
-          <Button onPress={openCreateEditor} startContent={<Plus size={16} />} className="rounded-lg bg-[var(--foreground)] text-[var(--surface)]">添加模型服务</Button>
+          </>
+        }
+      >
+        {providerPresetError && <p role="alert" className="ou-settings-callout mx-4 my-3" data-tone="red">{providerPresetError}</p>}
+        {config?.vault_status && !config.vault_status.available && <p role="alert" className="ou-settings-callout mx-4 my-3" data-tone="red">系统钥匙串不可用，密钥无法保存：{config.vault_status.error}</p>}
+        {apiConfigs.length === 0 ? (
+          <SettingsItem icon={<Cpu size={16} />} label="还没有连接模型服务" description="添加接口地址和密钥后，会自动获取模型列表。" />
+        ) : apiConfigs.map((item) => (
+          <SettingsItem
+            key={item.id}
+            icon={<Cpu size={16} />}
+            label={
+              <span className="flex flex-wrap items-center gap-2">
+                {item.service_name}
+                {item.is_active && <Pill tone="green">当前使用</Pill>}
+                {disabledProviders.includes(item.provider_id) && <Pill tone="red">已禁用</Pill>}
+              </span>
+            }
+            description={<span className="break-all">{item.model} · {item.base_url}</span>}
+          >
+            {!item.is_active && <button type="button" className="ou-text-button" onClick={() => handleActivateConfig(item.id)}>使用</button>}
+            <button type="button" className="ou-text-button" onClick={() => openEditEditor(item)}>编辑</button>
+            <button type="button" className="ou-text-button" data-tone="danger" onClick={() => { setSelectedConfigId(item.id); onDeleteOpen(); }}>删除</button>
+          </SettingsItem>
+        ))}
+        {config?.active_llm_summary?.model && (
+          <SettingsItem label="已保存" description={`${config.active_llm_summary.service_name} · ${config.active_llm_summary.model}`}>
+            <TestLlmButton />
+          </SettingsItem>
+        )}
+        <div className="ou-settings-actions ou-settings-actions--end px-4 pb-3 pt-1">
+          {listFeedback && <p role="status" className={`mr-auto ${listFeedback.type === "error" ? "ou-settings-error" : "ou-settings-status"}`}>{listFeedback.message}</p>}
+          {apiDirty ? (
+            <>
+              <button type="button" className="ou-text-button" onClick={openCreateEditor} disabled={!providerPresets.length}>
+                <Plus size={14} aria-hidden="true" /> 添加
+              </button>
+              <Button variant="primary" disabled={apiSaving} onClick={() => void handleSaveApiSettings()}>
+                {apiSaving ? "保存中…" : "保存模型配置"}
+              </Button>
+            </>
+          ) : (
+            <Button variant="primary" onClick={openCreateEditor} disabled={!providerPresets.length}>
+              <Plus size={14} aria-hidden="true" /> 添加模型服务
+            </Button>
+          )}
         </div>
-        <div className="space-y-4 p-5">
-          {providerPresetError && <p role="alert" className="text-sm text-red-600">{providerPresetError}</p>}
-          {config?.vault_status && !config.vault_status.available && <p role="alert" className="text-sm text-red-600">系统钥匙串不可用，密钥无法保存：{config.vault_status.error}</p>}
-          {apiConfigs.length === 0 ? <div className="rounded-lg bg-[var(--ou-bg-control)] p-6">
-            <p className="font-medium">还没有连接模型服务</p>
-            <p className="mt-2 text-sm text-[var(--foreground-muted)]">添加接口地址和密钥后，会自动获取模型列表。密钥只保存到系统钥匙串。</p>
-          </div> : apiConfigs.map((item) => <div key={item.id} className={`flex flex-wrap items-center gap-4 rounded-[var(--ou-radius-card)] p-4 ${item.is_active ? "bg-[var(--ou-bg-selected)]" : "bg-[var(--ou-bg-control)]"}`}>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{item.service_name}</h3>{item.is_active && <span className="rounded bg-[var(--ou-bg-surface)] px-2 py-1 text-xs text-[var(--primary-blue)]">当前使用</span>}{disabledProviders.includes(item.provider_id) && <span className="text-xs text-[var(--ou-tone-red-text)]">已禁用</span>}</div>
-              <p className="mt-1 break-all text-sm">{item.model}</p>
-              <p className="mt-1 break-all text-xs text-[var(--foreground-muted)]">{item.base_url}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {!item.is_active && <Button size="sm" variant="flat" onPress={() => handleActivateConfig(item.id)}>使用此配置</Button>}
-              <Button size="sm" variant="light" onPress={() => openEditEditor(item)}>编辑</Button>
-              <Button size="sm" variant="light" onPress={() => { setSelectedConfigId(item.id); onDeleteOpen(); }}>删除</Button>
-            </div>
-          </div>)}
-          {config?.active_llm_summary && <div className="flex flex-wrap items-center gap-3 border-t border-[var(--ou-line-separator)] pt-4"><span className="text-sm text-[var(--ou-text-secondary)]">已保存：{config.active_llm_summary.service_name} · {config.active_llm_summary.model}</span><TestLlmButton /></div>}
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-[var(--foreground-muted)]">{apiDirty ? "配置有未保存的修改" : "密钥保存在系统钥匙串"}</p>
-            {apiDirty && <Button isLoading={apiSaving} onPress={() => void handleSaveApiSettings()} className="rounded-lg bg-[var(--foreground)] text-white">保存模型配置</Button>}
+        {apiSaveError && !isEditorOpen && <p role="alert" className="ou-settings-error px-4 pb-3">{apiSaveError}</p>}
+      </SettingsGroup>
+
+      <SettingsGroup label="运行">
+        <AgentConcurrencySetting
+          value={config?.max_concurrent_agent_runs ?? 3}
+          onSave={async (next) => {
+            await updateConfig({ max_concurrent_agent_runs: next });
+            await mutate();
+          }}
+        />
+        <AgentFallbackSetting
+          enabled={config?.llm_fallback_to_agent ?? false}
+          onSave={async (next) => {
+            await updateConfig({ llm_fallback_to_agent: next });
+            await mutate();
+          }}
+        />
+      </SettingsGroup>
+    </>
+  );
+
+  const renderDetail = (key: SectionKey): ReactNode => {
+    switch (key) {
+      case "agent":
+        return <AgentConnectionPanel embedded />;
+      case "models":
+        return modelSection;
+      case "accounts":
+        return (
+          <>
+            {!SHOWCASE && <BossLoginCard />}
+            <JobSourceConnectionsCard />
+          </>
+        );
+      case "collect":
+        return <PlatformConsentCard />;
+      case "data":
+        return (
+          <>
+            {(LOCAL_WEB || SHOWCASE) && <StoragePersistenceCard />}
+            <SyncSettingsPanel />
+            <LocalDataSafetyCard />
+            {!SHOWCASE && <DangerZone />}
+          </>
+        );
+      case "about":
+        return (
+          <>
+            <BuildIdentityPanel />
+            <HintsSetting />
+          </>
+        );
+      case "feedback":
+        return <LocalFeedbackCard />;
+    }
+  };
+
+  const meta = active ? sections.find((item) => item.key === active) : undefined;
+
+  const detail = meta && (
+    <>
+      {wide ? (
+        <header className="ou-settings-detail-head">
+          <h2 className="ou-settings-detail-title">{meta.title}</h2>
+          <p className="ou-settings-detail-desc">{meta.description}</p>
+        </header>
+      ) : (
+        <>
+          <div className="ou-settings-topbar">
+            <button type="button" className="ou-settings-back" onClick={closeSection} data-testid="settings-back">
+              <ChevronLeft size={20} aria-hidden="true" /> 设置
+            </button>
+            <h2 className="ou-settings-topbar-title">{meta.title}</h2>
+            <span aria-hidden="true" />
           </div>
-          {listFeedback && <p role="status" className={`text-sm ${listFeedback.type === "error" ? "text-red-600" : "text-[var(--foreground-muted)]"}`}>{listFeedback.message}</p>}
-          {apiSaveError && <p role="alert" className="text-sm text-red-600">{apiSaveError}</p>}
+          <p className="ou-settings-detail-desc px-4 pb-4">{meta.description}</p>
+        </>
+      )}
+      <div className="ou-settings-detail-body" data-testid={`settings-detail-${meta.key}`}>{renderDetail(meta.key)}</div>
+    </>
+  );
+
+  const description = SHOWCASE ? "展示版默认用示例数据；在「数据」里导出、同步或连接本机 OfferU。" : "Agent 连接、模型服务和数据安全。";
+
+  return (
+    <div ref={rootRef} className="ou-settings">
+      {wide ? (
+        <>
+          <PageHeader title="设置" description={description} />
+          <div className="ou-settings-split mt-6">
+            <nav className="ou-settings-nav" aria-label="设置分类">
+              <LayoutGroup id="settings-nav">
+                {groups.map((group) => (
+                  <SettingsGroup key={group.name} label={group.name}>
+                    {group.items.map((item) => (
+                      <SettingsRow key={item.key} rowKey={item.key} variant="nav" title={item.title} status={statusOf[item.key]} icon={item.icon} selected={item.key === active} onOpen={() => openSection(item.key)} />
+                    ))}
+                  </SettingsGroup>
+                ))}
+              </LayoutGroup>
+            </nav>
+            <div className="ou-settings-detail ou-settings-stage">
+              <AnimatePresence mode="popLayout" initial={false}>
+                <motion.div
+                  key={active}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ y: { type: "spring", stiffness: 420, damping: 40 }, opacity: { duration: 0.18 } }}
+                >
+                  {detail}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="ou-settings-stage">
+          <AnimatePresence mode="popLayout" initial={false} custom={active ? 1 : -1}>
+            {active ? (
+              <motion.div key={`detail-${active}`} custom={1} variants={pushVariants} initial="enter" animate="center" exit="exit" transition={pushTransition}>
+                {detail}
+              </motion.div>
+            ) : (
+              <motion.div key="index" custom={-1} variants={pushVariants} initial="enter" animate="center" exit="exit" transition={pushTransition} className="flex flex-col gap-6">
+                <PageHeader title="设置" description={description} />
+                {groups.map((group) => (
+                  <SettingsGroup key={group.name} label={group.name}>
+                    {group.items.map((item) => (
+                      <SettingsRow key={item.key} rowKey={item.key} title={item.title} status={statusOf[item.key]} icon={item.icon} onOpen={() => openSection(item.key)} />
+                    ))}
+                  </SettingsGroup>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      </section>
-      <AgentConcurrencySetting
-        value={config?.max_concurrent_agent_runs ?? 3}
-        onSave={async (next) => {
-          await updateConfig({ max_concurrent_agent_runs: next });
-          await mutate();
-        }}
-      />
-      <AgentFallbackSetting
-        enabled={config?.llm_fallback_to_agent ?? false}
-        onSave={async (next) => {
-          await updateConfig({ llm_fallback_to_agent: next });
-          await mutate();
-        }}
-      />
-      </SettingsDialog>
+      )}
 
-      <SettingsDialog isOpen={openSection === "accounts"} onClose={closeSection} title="账号与来源">
-        {!SHOWCASE && <BossLoginCard />}
-        <JobSourceConnectionsCard />
-      </SettingsDialog>
-
-      <SettingsDialog isOpen={openSection === "collect"} onClose={closeSection} title="登录态采集">
-        <PlatformConsentCard />
-      </SettingsDialog>
-
-      <SettingsDialog isOpen={openSection === "data"} onClose={closeSection} title="数据">
-        {(LOCAL_WEB || SHOWCASE) && <StoragePersistenceCard />}
-        <SyncSettingsPanel />
-        <LocalDataSafetyCard />
-        <details className="ou-sheet p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground-muted)]">危险操作</summary>
-          <div className="mt-4">
-            <FreshResetPanel />
-          </div>
-        </details>
-      </SettingsDialog>
-
-      <SettingsDialog isOpen={openSection === "about"} onClose={closeSection} title="关于">
-        <BuildIdentityPanel />
-        <HintsToggle />
-      </SettingsDialog>
-
-      <SettingsDialog isOpen={openSection === "feedback"} onClose={closeSection} title="报告问题">
-        <LocalFeedbackCard />
-      </SettingsDialog>
-
-      <Modal isOpen={isEditorOpen} onClose={onEditorClose} size="xl" placement="center" scrollBehavior="inside">
-        <ModalContent className="max-h-[88vh] ou-sheet bg-[var(--ou-bg-surface-solid)] text-[var(--ou-text-primary)]">
-          <ModalHeader className="px-6 py-4 text-lg font-semibold">
-            {editingConfigId ? "编辑模型配置" : "新增模型配置"}
-          </ModalHeader>
-          <ModalBody className="space-y-5 overflow-y-auto px-6 py-5">
-            <Input label="接口地址" variant="bordered" value={formBaseUrl} onValueChange={setFormBaseUrl} placeholder="https://你的服务地址/v1" type="url" autoComplete="off" spellCheck="false" isInvalid={Boolean(formErrors.base_url)} errorMessage={formErrors.base_url} classNames={modelFieldClassNames} />
-            <Input
-              label="API 密钥"
-              autoComplete="off"
-              spellCheck="false"
-              variant="bordered"
-              value={formApiKey}
-              onValueChange={setFormApiKey}
-              placeholder={isLocalEndpoint(formBaseUrl) ? "本地端点可留空" : "API key 或 env:VAR_NAME"}
-              type={showFormApiKey ? "text" : "password"}
-              isDisabled={false}
-              isInvalid={Boolean(formErrors.api_key)}
-              errorMessage={formErrors.api_key}
-              classNames={modelFieldClassNames}
-              endContent={
+      <Dialog
+        open={isEditorOpen}
+        onOpenChange={(next) => { if (!next) onEditorClose(); }}
+        title={editingConfigId ? "编辑模型配置" : "新增模型配置"}
+        description="填写接口地址和密钥后，选择自动获取的模型；服务不提供列表时，可手动填写模型 ID。"
+        className="ou-settings-editor"
+        footer={
+          <>
+            <Button variant="ghost" onClick={onEditorClose}>取消</Button>
+            <Button variant="primary" disabled={apiSaving} onClick={() => void handleSubmitEditor()}>
+              {apiSaving ? "连接中…" : "保存并连接"}
+            </Button>
+          </>
+        }
+      >
+        <div className="mt-5 flex flex-col gap-4">
+          <Field label="接口地址" error={formErrors.base_url}>
+            {(id) => <Input id={id} value={formBaseUrl} onChange={(event) => setFormBaseUrl(event.target.value)} placeholder="https://你的服务地址/v1" type="url" autoComplete="off" spellCheck={false} aria-invalid={Boolean(formErrors.base_url)} />}
+          </Field>
+          <Field label="API 密钥" error={formErrors.api_key}>
+            {(id) => (
+              <div className="flex items-center gap-2">
+                <Input
+                  id={id}
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={formApiKey}
+                  onChange={(event) => setFormApiKey(event.target.value)}
+                  placeholder={isLocalEndpoint(formBaseUrl) ? "本地端点可留空" : "API key 或 env:VAR_NAME"}
+                  type={showFormApiKey ? "text" : "password"}
+                  aria-invalid={Boolean(formErrors.api_key)}
+                />
                 <button
                   type="button"
                   onClick={() => setShowFormApiKey((prev) => !prev)}
-                  className="text-[var(--foreground-muted)] hover:text-[var(--foreground-muted)]"
+                  className="ou-icon-button"
                   aria-label={showFormApiKey ? "隐藏访问密钥" : "显示访问密钥"}
                   aria-pressed={showFormApiKey}
                 >
                   {showFormApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
-              }
-            />
-
-            {apiSaveError && <p role="alert" className="text-sm text-red-600">{apiSaveError}</p>}
-            <ModelPicker key={editingConfigId || "new"} baseUrl={formBaseUrl} apiKey={formApiKey} apiFormat={currentFormPreset?.api_format || ""} configId={editingConfigId || ""} value={formCustomModel} onChange={setFormCustomModel} error={formErrors.model} />
-
-            <details className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-3">
-              <summary className="cursor-pointer text-sm text-[var(--foreground-muted)]">接口协议与显示名称</summary>
-              <div className="mt-4 space-y-4">
-            <Field label="接口协议" error={formErrors.api_format}>
-              {(id) => <UiSelect id={id} value={formProviderChoice} onValueChange={setFormProviderChoice}
-                options={providerPresets.map((preset) => ({ value: preset.id, label: preset.name }))} />}
-            </Field>
-            <Input label="显示名称（可选）" variant="bordered" value={formCustomServiceName} onValueChange={setFormCustomServiceName} placeholder="默认使用接口的域名" isInvalid={Boolean(formErrors.service_name)} errorMessage={formErrors.service_name} classNames={modelFieldClassNames} />
               </div>
-            </details>
+            )}
+          </Field>
 
-            <Checkbox isSelected={formIsActive} onValueChange={setFormIsActive} className="md:col-span-2">
-              设为当前激活配置
-            </Checkbox>
+          <ModelPicker key={editingConfigId || "new"} baseUrl={formBaseUrl} apiKey={formApiKey} apiFormat={currentFormPreset?.api_format || ""} configId={editingConfigId || ""} value={formCustomModel} onChange={setFormCustomModel} error={formErrors.model} />
 
-            <Divider className="my-1 border-[var(--ou-line-control)]/10 md:col-span-2" />
-            <p className="text-xs font-medium text-[var(--foreground-muted)] md:col-span-2">
-              填写接口地址和密钥后，选择自动获取的模型。服务不提供列表时，可手动填写模型 ID。
-            </p>
-          </ModalBody>
-          <ModalFooter className="px-6 py-4">
-            <Button
-              variant="light"
-              className="ou-button ou-button-secondary"
-              onPress={onEditorClose}
+          <div>
+            <button
+              type="button"
+              className="ou-text-button ou-disclosure-trigger -ml-2"
+              aria-expanded={editorAdvanced || Boolean(formErrors.api_format || formErrors.service_name)}
+              onClick={() => setEditorAdvanced((value) => !value)}
             >
-              取消
-            </Button>
-            <Button
-              className="rounded-lg bg-[var(--foreground)] px-4 text-[var(--surface)]"
-              isLoading={apiSaving}
-              onPress={() => void handleSubmitEditor()}
-            >
-              保存并连接
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+              接口协议与显示名称
+              <ChevronRight size={14} aria-hidden="true" className="ou-disclosure-chevron" />
+            </button>
+            <DisclosurePanel open={editorAdvanced || Boolean(formErrors.api_format || formErrors.service_name)}>
+              <div className="ou-sync-advanced mt-2">
+                <Field label="接口协议" error={formErrors.api_format}>
+                  {(id) => <UiSelect id={id} value={formProviderChoice} onValueChange={setFormProviderChoice}
+                    options={providerPresets.map((preset) => ({ value: preset.id, label: preset.name }))} />}
+                </Field>
+                <Field label="显示名称（可选）" hint="默认使用接口的域名" error={formErrors.service_name}>
+                  {(id) => <Input id={id} value={formCustomServiceName} onChange={(event) => setFormCustomServiceName(event.target.value)} />}
+                </Field>
+              </div>
+            </DisclosurePanel>
+          </div>
 
-      <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} size="sm" placement="center">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="bg-[var(--ou-tone-yellow-bg)] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">
-            确认删除
-          </ModalHeader>
-          <ModalBody className="px-6 py-6">
-            <p className="text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-              确定删除当前配置“{selectedConfig?.service_name || "未命名配置"}”吗？此操作不可撤销。
-            </p>
-          </ModalBody>
-          <ModalFooter className="px-6 py-5">
-            <Button
-              variant="light"
-              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-              onPress={onDeleteClose}
-            >
-              取消
-            </Button>
-            <Button
-              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
-              onPress={handleDeleteConfig}
-            >
-              删除
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-    </motion.div>
+          <label className="ou-sync-pathstyle">
+            <span className="text-[var(--ou-text-primary)]">设为当前激活配置</span>
+            <Switch checked={formIsActive} onCheckedChange={setFormIsActive} aria-label="设为当前激活配置" />
+          </label>
+          {apiSaveError && <p role="alert" className="ou-settings-error">{apiSaveError}</p>}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={isDeleteOpen}
+        onOpenChange={(next) => { if (!next) onDeleteClose(); }}
+        title="删除模型配置"
+        description={`确定删除“${selectedConfig?.service_name || "未命名配置"}”吗？删除后需要点「保存模型配置」才会生效。`}
+        footer={
+          <>
+            <Button variant="ghost" onClick={onDeleteClose}>取消</Button>
+            <Button className="ou-settings-danger" onClick={handleDeleteConfig}>删除</Button>
+          </>
+        }
+      />
+    </div>
+  );
+}
+
+/** 关于 › 界面提示：标题旁的「?」显示与否。 */
+function HintsSetting() {
+  const [enabled, setEnabled] = useHintsEnabled();
+  return (
+    <SettingsGroup label="界面" testId="hints-toggle">
+      <SettingsItem icon={<Info size={16} />} label="显示界面提示" htmlFor="settings-hints" description="标题旁的小「?」只在你需要时展开，熟悉之后可以全部隐藏。">
+        <Switch id="settings-hints" checked={enabled} onCheckedChange={setEnabled} aria-label="显示界面提示" />
+      </SettingsItem>
+    </SettingsGroup>
+  );
+}
+
+/** 数据 › 危险操作：默认收起，展开后才是全清面板。 */
+function DangerZone() {
+  const [open, setOpen] = useState(false);
+  return (
+    <SettingsGroup label="危险操作">
+      <div className="ou-settings-item">
+        <span className="ou-tile" aria-hidden="true"><TriangleAlert size={16} /></span>
+        <div className="ou-settings-item-text">
+          <span className="ou-settings-item-label">全清并重新开始</span>
+          <span className="ou-settings-item-desc">先自动备份，再清空职业工作区，回到空白首次建档。</span>
+        </div>
+        <div className="ou-settings-item-control">
+          <button type="button" className="ou-text-button ou-disclosure-trigger" data-tone="danger" aria-expanded={open} aria-controls="fresh-reset" onClick={() => setOpen((value) => !value)}>
+            {open ? "收起" : "展开"}
+            <ChevronRight size={14} aria-hidden="true" className="ou-disclosure-chevron" />
+          </button>
+        </div>
+      </div>
+      <DisclosurePanel open={open} id="fresh-reset">
+        <FreshResetPanel />
+      </DisclosurePanel>
+    </SettingsGroup>
   );
 }
