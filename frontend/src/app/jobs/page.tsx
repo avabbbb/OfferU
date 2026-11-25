@@ -1,26 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import "@/styles/jobs.css";
 
 import { JobsCalendar } from "@/components/jobs/JobsCalendar";
 import { JobsGallery } from "@/components/jobs/JobsGallery";
 import { JobsGantt } from "@/components/jobs/JobsGantt";
 import { JobsTable } from "@/components/jobs/JobsTable";
 import { RecordDrawer } from "@/components/jobs/RecordDrawer";
+import { JobsList, ModeTrack } from "@/components/jobs/JobsList";
 import { ViewBar } from "@/components/jobs/ViewBar";
+import { DisclosurePanel } from "@/components/settings/SettingsLayout";
 import { JobBoard, createJob } from "@/components/today/JobBoard";
-import { type Event, JOB_STATUS, type Job, refreshAll, useTool, write } from "@/lib/core";
+import { Plus } from "lucide-react";
+import { type Event, type Job, refreshAll, useTool, write } from "@/lib/core";
 import { evaluateJobs } from "@/lib/evaluate";
 import { boardColumns, boardGroupField, groupPatch, hiddenCardFields } from "@/lib/jobBoard";
-import { VIEW_KINDS, applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
+import { VIEW_KINDS, VIEW_NAME, applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
 
-const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
-
-// 添加岗位：贴链接或 JD 让后端抓正文、拆字段（抓不到就报错，不存空壳）；也能手动填。
+// 添加岗位：贴链接或 JD 让后端抓正文、拆字段（抓不到就报错，不存空壳）；也能手动填（折叠在「手动填」里）。
+// 打开时它的「添加」是这一屏唯一的墨黑按钮，页头的按钮退成文字「收起」。
 function AddJob() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [manual, setManual] = useState(false);
   const [company, setCompany] = useState("");
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
@@ -46,30 +50,35 @@ function AddJob() {
   };
 
   return (
-    <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
-      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void paste(); }}>
+    <div className="jb-add" data-testid="jobs-add">
+      <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); void paste(); }}>
         <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={3} aria-label="岗位链接或 JD"
-          placeholder="贴岗位链接、整段 JD，或只写「公司 岗位」（会去官网找）" style={{ fontSize: 13 }} className={field + " block w-full resize-y"}
+          placeholder="贴岗位链接、整段 JD，或只写「公司 岗位」（会去官网找）" className="jb-textarea"
           onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim() && !busy) { e.preventDefault(); void paste(); } }} />
-        <div className="flex items-center gap-3">
-          <button type="submit" style={{ fontSize: 13 }} disabled={!text.trim() || busy} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">{busy ? "正在读…" : "添加"}</button>
-          {error && <span role="alert" className="text-[12.5px] text-[var(--foreground)]">{error}</span>}
+        <div className="jb-add-row">
+          <button type="submit" disabled={!text.trim() || busy} className="jb-primary">{busy ? "正在读…" : "添加"}</button>
+          <button type="button" className="jb-text" aria-expanded={manual} onClick={() => setManual((v) => !v)}>手动填</button>
+          {error && <span role="alert" className="jb-alert">{error}</span>}
         </div>
       </form>
-      <details className="text-[13px] text-[var(--foreground-muted)]">
-        <summary className="cursor-pointer select-none">手动填</summary>
-        <form className="mt-2 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="公司" aria-label="公司" style={{ fontSize: 13 }} className={field + " w-36"} />
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="岗位" aria-label="岗位" style={{ fontSize: 13 }} className={field + " w-48"} />
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="链接（可选）" aria-label="链接" style={{ fontSize: 13 }} className={field + " min-w-[180px] flex-1"} />
-          <button type="submit" style={{ fontSize: 13 }} disabled={!company.trim() || !title.trim()} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">添加</button>
+      <DisclosurePanel open={manual}>
+        <form className="jb-add-manual" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="公司" aria-label="公司" className="jb-field" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="岗位" aria-label="岗位" className="jb-field" />
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="链接（可选）" aria-label="链接" className="jb-field" />
+          <button type="submit" disabled={!company.trim() || !title.trim()} className="jb-text">添加</button>
         </form>
-      </details>
+      </DisclosurePanel>
     </div>
   );
 }
 
-// 岗位多维表：表格 / 看板 / 甘特 / 日历 / 画廊几个视图，各自记住筛选、分组、排序、字段（存在本机浏览器）。
+type Mode = "list" | ViewKind;
+const MODE_KEY = "offeru.jobs.mode.v1";
+const MODES: Array<{ value: Mode; label: string }> = [{ value: "list", label: "列表" }, ...VIEW_KINDS.map((k) => ({ value: k as Mode, label: VIEW_NAME[k] }))];
+
+// 岗位：默认是「列表」（搜索 + 阶段 chip + 排序，宽屏列表 + 详情双栏，窄屏推入详情）；
+// 表格 / 看板 / 甘特 / 日历 / 画廊是多维表视图，各自记住筛选、分组、排序、字段（存在本机浏览器），收在同一条视图分段里。
 export default function JobsPage() {
   const { data } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 }, 5000);
   const jobs = useMemo(() => data?.items ?? [], [data]);
@@ -77,6 +86,7 @@ export default function JobsPage() {
   const { data: eventData } = useTool<{ items: Event[] }>("list", { type: "event", limit: 500 }, 5000);
   const events = useMemo(() => eventData?.items ?? [], [eventData]);
   const [state, setState] = useState<ViewState>(defaultState);
+  const [mode, setMode] = useState<Mode>("list");
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
@@ -89,16 +99,32 @@ export default function JobsPage() {
     const saved = loadViews();
     // #/jobs?view=calendar（以及旧的 #/calendar）直接打开对应视图。
     const want = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("view");
-    setState(VIEW_KINDS.includes(want as ViewKind) ? { ...saved, active: want as ViewKind } : saved);
+    let savedMode: string | null = null;
+    try { savedMode = localStorage.getItem(MODE_KEY); } catch { /* 忽略 */ }
+    if (VIEW_KINDS.includes(want as ViewKind)) {
+      setState({ ...saved, active: want as ViewKind });
+      setMode(want as ViewKind);
+    } else {
+      // 上次停在哪个视图就回到哪个；没记过（或记的是列表）就是列表。
+      const kind = VIEW_KINDS.includes(savedMode as ViewKind) ? (savedMode as ViewKind) : null;
+      setState(kind ? { ...saved, active: kind } : saved);
+      setMode(kind ?? "list");
+    }
     setLoaded(true);
   }, []);
   useEffect(() => { if (loaded) saveViews(state); }, [state, loaded]);
+  useEffect(() => { if (loaded) { try { localStorage.setItem(MODE_KEY, mode); } catch { /* 忽略 */ } } }, [mode, loaded]);
 
   const view = state.views[state.active];
   const patch = useCallback((p: Partial<ViewConfig>) => {
     setState((s) => ({ ...s, views: { ...s.views, [s.active]: { ...s.views[s.active], ...p } } }));
   }, []);
   const setActive = (active: ViewKind) => setState((s) => ({ ...s, active }));
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setOpenId(null);
+    if (next !== "list") setActive(next);
+  };
   const reset = () => setState((s) => ({ ...s, views: { ...s.views, [s.active]: defaultView(s.active) } }));
 
   const shown = useMemo(() => applyView(jobs, view, search), [jobs, view, search]);
@@ -142,26 +168,53 @@ export default function JobsPage() {
     }
   };
 
-  return (
-    <div className="ou-page ou-page-wide space-y-4">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">岗位</h1>
-        {unscored > 0 && (
-          <span className="flex items-center gap-2 text-[13px] text-[var(--foreground-muted)]">
-            {unscored} 个岗位还没评估
-            <button type="button" onClick={() => void rank()} disabled={ranking} className="ou-button ou-button-secondary ou-button-sm">{ranking ? (rankProgress ? `正在评估 ${rankProgress}…` : "正在评估…") : "评估未评估的"}</button>
-          </span>
-        )}
-        {error && <span role="alert" className="text-[12.5px] text-[var(--foreground)]">{error}</span>}
+  const active = jobs.filter((j) => j.status === "applied" || j.status === "test" || j.status === "interview").length;
+  const header = ({ inkAdd }: { inkAdd: boolean }) => (
+    <div className="flex flex-col gap-4">
+      <header className="jb-head">
+        <div className="min-w-0">
+          <h1 className="jb-title">岗位</h1>
+          <div className="jb-sub">
+            <span>{data ? (jobs.length ? `${jobs.length} 个岗位 · ${active} 个进行中` : "还没有岗位") : "正在读取…"}</span>
+            {unscored > 0 && (
+              <button type="button" onClick={() => void rank()} disabled={ranking} className="jb-text" data-size="sm" data-testid="jobs-rank">
+                {ranking ? (rankProgress ? `正在评估 ${rankProgress}…` : "正在评估…") : `评估 ${unscored} 个未评估的`}
+              </button>
+            )}
+            {error && <span role="alert" className="jb-error">{error}</span>}
+          </div>
+        </div>
+        <div className="jb-head-actions">
+          {adding
+            ? <button type="button" onClick={() => setAdding(false)} className="jb-text" data-testid="jobs-add-toggle">收起</button>
+            : <button type="button" onClick={() => setAdding(true)} className={inkAdd ? "jb-primary" : "jb-secondary"} data-testid="jobs-add-toggle"><Plus size={16} aria-hidden="true" />添加岗位</button>}
+        </div>
+      </header>
+      <DisclosurePanel open={adding}><AddJob /></DisclosurePanel>
+      <div className="jb-bar">
+        <div className="jb-modes"><ModeTrack label="视图" value={mode} options={MODES} onChange={switchMode} testId="jobs-mode" /></div>
       </div>
+    </div>
+  );
+
+  if (mode === "list") {
+    return (
+      <div className="ou-page ou-page-wide">
+        <JobsList header={header} jobs={jobs} loaded={Boolean(data)} search={search} setSearch={setSearch} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="ou-page ou-page-wide jb space-y-4">
+      {header({ inkAdd: true })}
 
       <ViewBar state={state} jobs={jobs} search={search} adding={adding} setActive={setActive} setSearch={setSearch}
-        patch={patch} reset={reset} onAdd={() => setAdding((a) => !a)} onAddRecord={() => void addRecord()} />
-      {adding && <AddJob />}
+        patch={patch} reset={reset} onAdd={() => setAdding((a) => !a)} onAddRecord={() => void addRecord()} tabs={null} showAdd={false} />
 
       {state.active === "table" && (
         data && !jobs.length
-          ? <p className="text-[13.5px] text-[var(--foreground-muted)]">还没有岗位。点右上角「添加岗位」贴一个链接或 JD。</p>
+          ? <p className="text-[length:var(--ou-type-body)] text-[var(--ou-text-secondary)]">还没有岗位。点右上角「添加岗位」贴一个链接或 JD。</p>
           : <JobsTable jobs={shown} view={view} patch={patch} openId={openId} onOpen={setOpenId} onAdd={() => setAdding(true)} />
       )}
       {state.active === "board" && data && <JobBoard embedded jobs={shown} view={view} patch={patch} openId={openId} onOpen={setOpenId} events={events} />}

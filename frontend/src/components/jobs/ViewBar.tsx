@@ -19,7 +19,7 @@ const icon = (Icon: typeof Search, name: string, count = 0): ReactNode => (
   </span>
 );
 
-export function ViewBar({ state, jobs, search, adding, setActive, setSearch, patch, reset, onAdd, onAddRecord }: {
+export function ViewBar({ state, jobs, search, adding, setActive, setSearch, patch, reset, onAdd, onAddRecord, tabs, showAdd = true }: {
   state: ViewState;
   jobs: Job[];
   search: string;
@@ -31,6 +31,10 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
   onAdd: () => void;
   /** 看板的「⊕ 添加记录」：新建一条空记录并在右侧面板打开。 */
   onAddRecord: () => void;
+  /** 换掉左边的视图 tab（新版岗位页用页头的视图分段，这里就不再画一遍）。 */
+  tabs?: ReactNode;
+  /** 页头已有「添加岗位」时关掉这里的主按钮，保证一屏只有一个墨黑按钮。 */
+  showAdd?: boolean;
 }) {
   const view = state.views[state.active];
   const n = activeCounts(view);
@@ -42,15 +46,17 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
   return (
     <div className="space-y-2 pb-1">
     <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
-      <div role="tablist" aria-label="视图" className="ou-segment ou-pill-host">
-        <ActivePill />
-        {VIEW_KINDS.map((k) => (
-          <button key={k} type="button" role="tab" aria-selected={state.active === k} onClick={() => setActive(k)}
-            className="ou-segment-item">
-            {VIEW_NAME[k]}
-          </button>
-        ))}
-      </div>
+      {tabs !== undefined ? tabs : (
+        <div role="tablist" aria-label="视图" className="ou-segment ou-pill-host">
+          <ActivePill />
+          {VIEW_KINDS.map((k) => (
+            <button key={k} type="button" role="tab" aria-selected={state.active === k} onClick={() => setActive(k)}
+              className="ou-segment-item">
+              {VIEW_NAME[k]}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="ou-button-group ml-auto flex-wrap">
         {listing && (
           <>
@@ -67,9 +73,11 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
             <button type="button" className={ghost} onClick={reset} title="恢复这个视图默认的筛选、分组、排序、字段和列宽">{icon(RotateCcw, "重置")}</button>
           </>
         )}
-        <button type="button" onClick={onAdd} className="ou-button ou-button-primary ml-2">
-          {adding ? "收起" : "添加岗位"}
-        </button>
+        {showAdd && (
+          <button type="button" onClick={onAdd} className="ou-button ou-button-primary ml-2">
+            {adding ? "收起" : "添加岗位"}
+          </button>
+        )}
       </div>
     </div>
     {state.active === "board" && (

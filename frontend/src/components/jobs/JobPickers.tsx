@@ -3,7 +3,7 @@
 import { ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { LabelPicker, type LabelOption, Pill, Tag, toneOf } from "@/components/ui";
+import { LabelPicker, type LabelOption, Pill, Tag, type Tone, toneOf } from "@/components/ui";
 import { JOB_STATUS, type Job, type JobStatus } from "@/lib/core";
 import { STATUS_ORDER, STATUS_TONE, tagPatch } from "@/lib/jobView";
 import { write } from "@/lib/core";
@@ -15,9 +15,17 @@ const STATUS_OPTIONS: LabelOption[] = STATUS_ORDER.map((s) => ({ value: s, label
 
 export const saveJobTags = (job: Job, tags: string[]) => write("save", { type: "job", id: job.id, data: tagPatch(job, tags) });
 
-export function StatusPicker({ job, trigger, onPick, align }: { job: Job; trigger: ReactNode; onPick?: (s: JobStatus) => void; align?: "start" | "end" }) {
+export function StatusPicker({ job, trigger, onPick, align, tones }: {
+  job: Job;
+  trigger: ReactNode;
+  onPick?: (s: JobStatus) => void;
+  align?: "start" | "end";
+  /** 换一套状态配色（新版岗位页不用蓝色）；不给就用多维表的 STATUS_TONE。 */
+  tones?: Record<JobStatus, Tone>;
+}) {
+  const options = tones ? STATUS_ORDER.map((s) => ({ value: s, label: JOB_STATUS[s], tone: tones[s] })) : STATUS_OPTIONS;
   return (
-    <LabelPicker label="投递状态" placeholder="改成…" multiple={false} align={align} options={STATUS_OPTIONS} value={[job.status]}
+    <LabelPicker label="投递状态" placeholder="改成…" multiple={false} align={align} options={options} value={[job.status]}
       trigger={trigger}
       onChange={([s]) => {
         if (!s || s === job.status) return;
