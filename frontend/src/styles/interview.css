@@ -1,0 +1,240 @@
+/* ── 面试（准备 / 模拟面试 / 姿态训练 / 复盘）──
+   v3 Glass + Apple HIG：一屏一个焦点；大标题 → 内容 → 一个墨黑主操作；次要操作是安静的文字钮；
+   说明、隐私、明细折进披露。只用 --ou-* Token；动效走 framer 弹簧或 --ou-motion-*。 */
+
+.iv-page { width: 100%; max-width: var(--ou-width-reading); margin-inline: auto; }
+.iv-page-wide { width: 100%; max-width: var(--ou-width-page); margin-inline: auto; }
+
+/* 页头：一个大标题 + 一行 */
+.iv-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--ou-space-4); }
+.iv-title { font-size: var(--ou-type-page); font-weight: 650; line-height: 1.15; letter-spacing: -0.02em; color: var(--ou-text-primary); }
+.iv-lede { margin-top: var(--ou-space-2); max-width: 36rem; font-size: var(--ou-type-body); line-height: var(--ou-line-body); color: var(--ou-text-secondary); }
+.iv-eyebrow { font-size: var(--ou-type-xs); font-weight: 550; color: var(--ou-text-tertiary); letter-spacing: 0.02em; }
+.iv-h2 { font-size: var(--ou-type-doc-heading); font-weight: 650; line-height: 1.3; letter-spacing: -0.01em; color: var(--ou-text-primary); }
+.iv-h3 { font-size: var(--ou-type-section); font-weight: 600; color: var(--ou-text-primary); }
+.iv-label { font-size: var(--ou-type-sm); font-weight: 550; color: var(--ou-text-secondary); }
+.iv-muted { font-size: var(--ou-type-sm); line-height: var(--ou-line-body); color: var(--ou-text-secondary); }
+.iv-meta { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+
+/* 卡片：白纸面，靠阴影浮起 */
+.iv-card { border-radius: var(--ou-radius-panel); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-2); padding: clamp(var(--ou-space-4), 3vw, var(--ou-space-8)); min-width: 0; }
+.iv-card-flat { border-radius: var(--ou-radius-card); background: var(--ou-bg-control); padding: var(--ou-space-4); min-width: 0; }
+.iv-stack > * + * { margin-top: var(--ou-space-6); }
+
+/* 按钮：44px 触控高度 */
+.iv-primary, .iv-secondary, .iv-quiet {
+  display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; gap: var(--ou-space-2);
+  padding: 0 var(--ou-space-6); border-radius: var(--ou-radius-button); font-size: var(--ou-type-body); font-weight: 600; white-space: nowrap;
+  transition: background-color var(--ou-motion-fast) var(--ou-ease-standard), box-shadow var(--ou-motion-fast) var(--ou-ease-standard), color var(--ou-motion-fast) var(--ou-ease-standard), transform var(--ou-motion-fast) var(--ou-ease-standard);
+}
+.iv-primary { background: var(--ou-action-primary); color: var(--ou-on-action-primary); }
+.iv-primary:hover:not(:disabled) { background: var(--ou-action-primary-hover); }
+.iv-primary:disabled { cursor: not-allowed; background: var(--ou-action-disabled-bg, var(--ou-action-primary)); color: var(--ou-on-action-disabled, var(--ou-on-action-primary)); opacity: var(--ou-action-disabled-alpha, 0.4); }
+.iv-secondary { background: var(--ou-capsule-bg); color: var(--ou-text-primary); box-shadow: var(--ou-capsule-shadow); }
+.iv-secondary:hover:not(:disabled) { box-shadow: var(--ou-elev-2); }
+.iv-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
+.iv-quiet { padding: 0 var(--ou-space-3); background: transparent; color: var(--ou-text-secondary); font-weight: 550; }
+.iv-quiet:hover:not(:disabled) { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.iv-quiet:disabled { opacity: 0.4; cursor: not-allowed; }
+.iv-primary:active:not(:disabled), .iv-secondary:active:not(:disabled), .iv-quiet:active:not(:disabled) { transform: scale(0.97); }
+:is(.iv-primary, .iv-secondary, .iv-quiet, .iv-chip, .iv-option, .iv-seg-item, .iv-disclosure-toggle):focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.iv-block { width: 100%; }
+
+/* 选择摘要 chip：一排浅胶囊，点哪个回哪一步 */
+.iv-chips { display: flex; flex-wrap: wrap; gap: var(--ou-space-2); }
+.iv-chip {
+  position: relative; display: inline-flex; max-width: 100%; min-height: 2rem; align-items: center; gap: var(--ou-space-1);
+  padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow);
+  color: var(--ou-text-primary); font-size: var(--ou-type-sm); font-weight: 550;
+}
+.iv-chip::after { content: ""; position: absolute; inset: -0.375rem -0.125rem; }
+.iv-chip[data-empty] { background: var(--ou-glass-subtle); box-shadow: none; color: var(--ou-text-tertiary); }
+.iv-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 步骤进度：几段细条 */
+.iv-progress { display: flex; align-items: center; gap: var(--ou-space-3); }
+.iv-progress .ou-steps { flex: 1; min-width: 0; }
+
+/* 步骤切换的舞台：横向滑入时不撑出横向滚动 */
+.iv-step-host { position: relative; overflow: hidden; margin: calc(-1 * var(--ou-space-4)); padding: var(--ou-space-4); }
+
+/* 选项卡片：磨砂轨道 + 一颗共享的白胶囊（layoutId）在选项间滑动 */
+.iv-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem; padding: 0.25rem; border-radius: var(--ou-radius-card); background: var(--ou-bg-control); }
+.iv-option { position: relative; min-height: 2.75rem; padding: var(--ou-space-4); border-radius: calc(var(--ou-radius-card) - 0.25rem); text-align: left; color: var(--ou-text-secondary); transition: color var(--ou-motion-fast) var(--ou-ease-standard); }
+.iv-option:hover { color: var(--ou-text-primary); }
+.iv-option[aria-pressed="true"], .iv-option[aria-checked="true"] { color: var(--ou-text-primary); }
+.iv-option > :not(.iv-highlight) { position: relative; }
+.iv-option-title { display: block; font-size: var(--ou-type-section); font-weight: 600; color: var(--ou-text-primary); }
+.iv-option-detail { display: block; margin-top: var(--ou-space-1); font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
+.iv-highlight { position: absolute; inset: 0; border-radius: inherit; background: var(--ou-capsule-bg); box-shadow: var(--ou-capsule-shadow); }
+
+.iv-seg { display: flex; gap: 0.125rem; padding: 0.1875rem; border-radius: var(--ou-radius-pill); background: var(--ou-bg-control); }
+.iv-seg-item { position: relative; flex: 1; min-height: 2.5rem; padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); font-size: var(--ou-type-body); font-weight: 550; color: var(--ou-text-secondary); white-space: nowrap; }
+.iv-seg-item[aria-checked="true"], .iv-seg-item[aria-pressed="true"], .iv-seg-item[aria-selected="true"] { color: var(--ou-text-primary); }
+.iv-seg-item > span:not(.iv-highlight) { position: relative; }
+.iv-seg-inline { display: inline-flex; }
+.iv-seg-inline .iv-seg-item { flex: none; padding: 0 var(--ou-space-4); }
+
+/* 披露：一行安静的标题，点开再给细节 */
+.iv-disclosure { border-radius: var(--ou-radius-card); background: var(--ou-glass-subtle); }
+.iv-disclosure[data-tone="paper"] { background: var(--ou-bg-control); }
+.iv-disclosure-toggle { display: flex; width: 100%; min-height: 2.75rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-4); border-radius: inherit; text-align: left; font-size: var(--ou-type-sm); font-weight: 550; color: var(--ou-text-secondary); }
+.iv-disclosure-toggle:hover { color: var(--ou-text-primary); }
+.iv-disclosure-toggle > .iv-disclosure-summary { margin-left: auto; font-weight: 500; color: var(--ou-text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.iv-disclosure-chevron { flex: none; color: var(--ou-text-tertiary); transition: transform var(--ou-motion-base) var(--ou-ease-spring); }
+.iv-disclosure[data-open] .iv-disclosure-chevron { transform: rotate(180deg); }
+.iv-disclosure-body { overflow: hidden; }
+.iv-disclosure-inner { padding: 0 var(--ou-space-4) var(--ou-space-4); font-size: var(--ou-type-sm); line-height: var(--ou-line-body); color: var(--ou-text-secondary); }
+
+/* 输入：大号岗位输入框 */
+.iv-input-lg { width: 100%; min-height: 3.25rem; padding: 0 var(--ou-space-4); border-radius: var(--ou-radius-control); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-elev-1); font-size: var(--ou-type-doc); color: var(--ou-text-primary); outline: none; transition: box-shadow var(--ou-motion-fast) var(--ou-ease-standard); }
+.iv-input-lg::placeholder { color: var(--ou-text-placeholder); }
+.iv-input-lg:focus-visible { box-shadow: var(--ou-ring-focus); }
+.iv-input-lg[readonly] { background: var(--ou-bg-control); box-shadow: none; }
+.iv-textarea { display: block; width: 100%; min-height: 9rem; resize: vertical; padding: var(--ou-space-4); border-radius: var(--ou-radius-card); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-elev-1); font-size: var(--ou-type-doc); line-height: var(--ou-line-doc); color: var(--ou-text-primary); outline: none; }
+.iv-textarea::placeholder { color: var(--ou-text-placeholder); }
+.iv-textarea:focus-visible { box-shadow: var(--ou-ring-focus); }
+
+.iv-alert { border-radius: var(--ou-radius-card); background: var(--ou-tone-red-bg); color: var(--ou-tone-red-text); padding: var(--ou-space-3) var(--ou-space-4); font-size: var(--ou-type-sm); }
+.iv-consent { display: flex; align-items: flex-start; gap: var(--ou-space-3); border-radius: var(--ou-radius-card); background: var(--ou-bg-control); padding: var(--ou-space-3) var(--ou-space-4); }
+
+/* 摘要清单（时长、方向…） */
+.iv-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ou-space-3); }
+.iv-fact dt { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+.iv-fact dd { margin-top: var(--ou-space-1); font-size: var(--ou-type-body); font-weight: 600; color: var(--ou-text-primary); overflow-wrap: anywhere; }
+@media (max-width: 30rem) {
+  .iv-options { grid-template-columns: minmax(0, 1fr); }
+  .iv-facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+
+/* ── 面试房间 ── */
+.iv-room { display: grid; gap: var(--ou-space-6); grid-template-columns: minmax(0, 1fr); align-items: start; padding-bottom: 6.5rem; }
+@media (min-width: 64rem) { .iv-room { grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); } .iv-room-side { position: sticky; top: var(--ou-space-4); } }
+.iv-question { font-size: clamp(1.25rem, 1.05rem + 0.8vw, 1.75rem); font-weight: 650; line-height: 1.35; letter-spacing: -0.015em; color: var(--ou-text-primary); overflow-wrap: anywhere; }
+
+/* 舞台：镜头永远在暗底上；不随浅色主题变白 */
+.iv-stage { --iv-stage: var(--ou-color-ink); --iv-on-stage: var(--ou-color-surface); position: relative; overflow: hidden; border-radius: var(--ou-radius-panel); background: var(--iv-stage); color: var(--iv-on-stage); box-shadow: var(--ou-elev-2); }
+:root.dark .iv-stage, :root[data-theme="dark"] .iv-stage { --iv-stage: var(--ou-color-paper); --iv-on-stage: var(--ou-color-ink); }
+.iv-stage-veil { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--ou-space-6); text-align: center; background: color-mix(in oklab, var(--iv-stage) 62%, transparent); }
+.iv-stage-top { position: absolute; inset: 0 0 auto 0; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ou-space-2); padding: var(--ou-space-3); }
+.iv-stage-glass {
+  display: inline-flex; align-items: center; gap: var(--ou-space-2); min-height: 2rem; padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill);
+  background: color-mix(in oklab, var(--iv-stage) 48%, transparent); color: var(--iv-on-stage); font-size: var(--ou-type-xs); font-weight: 550;
+  -webkit-backdrop-filter: blur(var(--ou-glass-blur)); backdrop-filter: blur(var(--ou-glass-blur));
+}
+.iv-stage-icon { display: inline-grid; width: 2.75rem; height: 2.75rem; place-items: center; border-radius: var(--ou-radius-pill); background: color-mix(in oklab, var(--iv-stage) 48%, transparent); color: var(--iv-on-stage); -webkit-backdrop-filter: blur(var(--ou-glass-blur)); backdrop-filter: blur(var(--ou-glass-blur)); }
+.iv-stage-dot { width: var(--ou-tag-dot); height: var(--ou-tag-dot); border-radius: var(--ou-radius-pill); background: color-mix(in oklab, var(--iv-on-stage) 45%, transparent); }
+.iv-stage-dot[data-live] { background: var(--ou-tone-green-dot); }
+.iv-stage-cta { display: inline-flex; min-height: 2.75rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-6); border-radius: var(--ou-radius-pill); background: var(--iv-on-stage); color: var(--iv-stage); font-size: var(--ou-type-body); font-weight: 600; transition: transform var(--ou-motion-fast) var(--ou-ease-standard); }
+.iv-stage-cta:active { transform: scale(0.97); }
+.iv-stage-soft { color: color-mix(in oklab, var(--iv-on-stage) 70%, transparent); }
+.iv-stage-bar { position: absolute; top: 3.25rem; left: var(--ou-space-3); width: min(16rem, calc(100% - 1.5rem)); padding: var(--ou-space-3); border-radius: var(--ou-radius-card); background: color-mix(in oklab, var(--iv-stage) 55%, transparent); -webkit-backdrop-filter: blur(var(--ou-glass-blur)); backdrop-filter: blur(var(--ou-glass-blur)); font-size: var(--ou-type-xs); }
+.iv-stage-meter { margin-top: var(--ou-space-2); height: 0.25rem; overflow: hidden; border-radius: var(--ou-radius-pill); background: color-mix(in oklab, var(--iv-on-stage) 22%, transparent); }
+.iv-stage-meter > i { display: block; height: 100%; border-radius: inherit; background: var(--iv-on-stage); transition: width var(--ou-motion-base) var(--ou-ease-standard); }
+
+/* AI 面试官：浮在镜头角落的一张玻璃卡（窄屏放到镜头下方） */
+.iv-avatar { display: flex; align-items: center; gap: var(--ou-space-3); min-width: 0; padding: var(--ou-space-3); border-radius: var(--ou-radius-card); background: var(--ou-glass-strong); color: var(--ou-text-primary); box-shadow: var(--ou-elev-3); -webkit-backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); backdrop-filter: saturate(var(--ou-glass-saturate)) blur(var(--ou-glass-blur)); }
+.iv-avatar-art { position: relative; flex: none; width: 4.5rem; height: 4.5rem; overflow: hidden; border-radius: var(--ou-radius-1); background: var(--ou-bg-control); }
+.iv-avatar-art > img, .iv-avatar-art > div { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.iv-stage-wrap { position: relative; min-width: 0; }
+.iv-stage-pip { position: absolute; right: var(--ou-space-3); bottom: var(--ou-space-3); width: min(17rem, calc(100% - 1.5rem)); }
+@media (max-width: 40rem) { .iv-stage-pip { position: static; width: auto; margin-top: var(--ou-space-3); } }
+
+/* 底部浮动玻璃操作条 */
+.iv-dock {
+  position: fixed; left: 50%; bottom: calc(var(--ou-space-4) + env(safe-area-inset-bottom)); z-index: var(--ou-layer-sticky); transform: translateX(-50%);
+  display: flex; width: min(44rem, calc(100vw - 2 * var(--ou-gutter))); align-items: center; gap: var(--ou-space-3);
+  padding: var(--ou-space-2) var(--ou-space-2) var(--ou-space-2) var(--ou-space-4); border-radius: var(--ou-radius-pill);
+  background: var(--ou-glass-menu); box-shadow: var(--ou-elev-menu), var(--ou-glass-highlight);
+  -webkit-backdrop-filter: blur(var(--ou-glass-blur-heavy)) saturate(var(--ou-glass-saturate)); backdrop-filter: blur(var(--ou-glass-blur-heavy)) saturate(var(--ou-glass-saturate));
+}
+.iv-dock-info { min-width: 0; flex: 1; font-size: var(--ou-type-sm); color: var(--ou-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iv-dock-info b { color: var(--ou-text-primary); font-weight: 650; }
+.iv-kbd { font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+@media (max-width: 30rem) { .iv-kbd { display: none; } .iv-dock .iv-primary { padding: 0 var(--ou-space-4); } }
+
+/* 分数 */
+.iv-score { font-size: clamp(3rem, 2.2rem + 3vw, 4.5rem); font-weight: 650; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--ou-text-primary); }
+.iv-score[data-empty] { color: var(--ou-text-placeholder); }
+.iv-score-sm { font-size: 2rem; font-weight: 650; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--ou-text-primary); }
+.iv-bar { height: 0.375rem; overflow: hidden; border-radius: var(--ou-radius-pill); background: var(--ou-bg-selected); }
+.iv-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--ou-action-primary); transition: width var(--ou-motion-slow) var(--ou-ease-spring); }
+.iv-bar[data-tone="green"] > i { background: var(--ou-tone-green-dot); }
+.iv-bar[data-tone="yellow"] > i { background: var(--ou-tone-yellow-dot); }
+.iv-bar[data-tone="red"] > i { background: var(--ou-tone-red-dot); }
+.iv-dims { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ou-space-4) var(--ou-space-6); }
+@media (max-width: 30rem) { .iv-dims { grid-template-columns: minmax(0, 1fr); } }
+.iv-list { display: grid; gap: var(--ou-space-2); }
+.iv-list > li { display: flex; gap: var(--ou-space-2); font-size: var(--ou-type-sm); line-height: var(--ou-line-body); color: var(--ou-text-secondary); }
+.iv-list > li > svg { flex: none; margin-top: 0.2rem; }
+.iv-quote { font-size: var(--ou-type-xs); line-height: var(--ou-line-body); color: var(--ou-text-tertiary); }
+.iv-cols { display: grid; gap: var(--ou-space-6); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 48rem) { .iv-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* ── 准备 ── */
+.iv-hero-actions { display: grid; gap: var(--ou-space-3); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 48rem) { .iv-hero-actions { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); } }
+.iv-launch { display: flex; min-height: 8.5rem; flex-direction: column; justify-content: space-between; gap: var(--ou-space-4); padding: var(--ou-space-6); border-radius: var(--ou-radius-panel); background: var(--ou-action-primary); color: var(--ou-on-action-primary); box-shadow: var(--ou-elev-2); transition: transform var(--ou-motion-base) var(--ou-ease-spring), box-shadow var(--ou-motion-base) var(--ou-ease-standard); }
+.iv-launch:hover { transform: translateY(-2px); box-shadow: var(--ou-elev-2-hover); }
+.iv-launch-soft { color: color-mix(in oklab, var(--ou-on-action-primary) 72%, transparent); }
+.iv-tile-link { display: flex; min-height: 8.5rem; flex-direction: column; justify-content: space-between; gap: var(--ou-space-4); padding: var(--ou-space-6); border-radius: var(--ou-radius-panel); background: var(--ou-bg-surface); color: var(--ou-text-primary); box-shadow: var(--ou-elev-1); transition: transform var(--ou-motion-base) var(--ou-ease-spring), box-shadow var(--ou-motion-base) var(--ou-ease-standard); }
+.iv-tile-link:hover { transform: translateY(-2px); box-shadow: var(--ou-elev-2); }
+.iv-launch:focus-visible, .iv-tile-link:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+.iv-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-3); }
+.iv-search { display: flex; flex: 1 1 14rem; min-width: 0; max-width: 22rem; min-height: 2.5rem; align-items: center; gap: var(--ou-space-2); padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); background: var(--ou-bg-surface-solid); box-shadow: var(--ou-elev-1); color: var(--ou-text-tertiary); }
+.iv-search > input { min-width: 0; flex: 1; background: transparent; font-size: var(--ou-type-body); color: var(--ou-text-primary); outline: none; }
+.iv-search > input::placeholder { color: var(--ou-text-placeholder); }
+.iv-filter { display: flex; gap: var(--ou-space-2); overflow-x: auto; scrollbar-width: none; padding-block: 0.125rem; }
+.iv-filter::-webkit-scrollbar { display: none; }
+.iv-filter .iv-chip { flex: none; cursor: pointer; }
+.iv-filter .iv-chip[aria-pressed="false"] { background: transparent; box-shadow: none; color: var(--ou-text-secondary); }
+.iv-filter .iv-chip[aria-pressed="false"]:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.iv-row { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--ou-space-3); }
+.iv-empty { display: grid; place-items: center; gap: var(--ou-space-2); padding: var(--ou-space-8) var(--ou-space-4); text-align: center; }
+
+/* ── 复盘 ── */
+.iv-review { display: grid; gap: var(--ou-space-6); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 56rem) { .iv-review { grid-template-columns: 15rem minmax(0, 1fr); gap: var(--ou-space-8); } }
+.iv-review-nav { display: flex; gap: var(--ou-space-2); overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * var(--ou-gutter)); padding: 0.25rem var(--ou-gutter); }
+.iv-review-nav::-webkit-scrollbar { display: none; }
+.iv-review-nav-item { position: relative; display: flex; flex: none; min-height: 2.75rem; max-width: 15rem; flex-direction: column; justify-content: center; padding: var(--ou-space-2) var(--ou-space-3); border-radius: var(--ou-radius-control); text-align: left; color: var(--ou-text-primary); }
+.iv-review-new { flex-direction: row; align-items: center; justify-content: flex-start; gap: var(--ou-space-2); }
+.iv-review-nav-item > :not(.iv-highlight) { position: relative; }
+.iv-review-nav-item:hover:not([aria-current]) { background: var(--ou-bg-hover); }
+.iv-review-nav-item:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+@media (min-width: 56rem) {
+  .iv-review-nav { flex-direction: column; gap: 0.125rem; overflow: visible; margin: 0; padding: 0; position: sticky; top: var(--ou-space-4); }
+  .iv-review-nav-item { max-width: none; width: 100%; }
+}
+@media (max-width: 55.99rem) { .iv-review-nav-item { background: var(--ou-glass-subtle); } }
+.iv-review-sep { flex: none; align-self: stretch; width: 1px; background: var(--ou-line-separator); }
+@media (min-width: 56rem) { .iv-review-sep { width: auto; height: 1px; margin: var(--ou-space-2) 0; } }
+.iv-q { border-radius: var(--ou-radius-card); background: var(--ou-bg-surface); box-shadow: var(--ou-elev-1); padding: var(--ou-space-4); min-width: 0; }
+.iv-q + .iv-q { margin-top: var(--ou-space-3); }
+.iv-q-num { flex: none; display: inline-grid; width: 1.75rem; height: 1.75rem; place-items: center; border-radius: var(--ou-radius-pill); background: var(--ou-bg-control); font-size: var(--ou-type-xs); font-weight: 600; color: var(--ou-text-secondary); font-variant-numeric: tabular-nums; }
+.iv-q-fields { display: grid; gap: var(--ou-space-2); margin-top: var(--ou-space-3); }
+.iv-q-field { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: var(--ou-space-3); align-items: start; }
+@media (max-width: 30rem) { .iv-q-field { grid-template-columns: minmax(0, 1fr); gap: var(--ou-space-1); } }
+.iv-field-doc { display: block; width: 100%; resize: none; overflow: hidden; background: transparent; font-size: var(--ou-type-body); line-height: var(--ou-line-body); color: var(--ou-text-primary); outline: none; }
+.iv-field-doc::placeholder { color: var(--ou-text-placeholder); }
+.iv-field-doc[data-size="lead"] { font-size: var(--ou-type-section); font-weight: 600; }
+.iv-meta-input { min-width: 0; min-height: 2.25rem; padding: 0 var(--ou-space-3); border-radius: var(--ou-radius-pill); background: var(--ou-glass-subtle); font-size: var(--ou-type-sm); color: var(--ou-text-primary); outline: none; }
+.iv-meta-input::placeholder { color: var(--ou-text-placeholder); }
+.iv-meta-input:focus-visible { box-shadow: var(--ou-ring-focus); background: var(--ou-bg-surface-solid); }
+.iv-title-input { width: 100%; min-width: 0; background: transparent; font-size: var(--ou-type-page); font-weight: 650; letter-spacing: -0.02em; color: var(--ou-text-primary); outline: none; }
+.iv-title-input::placeholder { color: var(--ou-text-placeholder); }
+.iv-icon-btn { display: inline-grid; width: 2.75rem; height: 2.75rem; flex: none; place-items: center; border-radius: var(--ou-radius-pill); color: var(--ou-text-tertiary); }
+.iv-icon-btn:hover { background: var(--ou-bg-hover); color: var(--ou-text-primary); }
+.iv-icon-btn:focus-visible { outline: none; box-shadow: var(--ou-ring-focus); }
+
+/* ── 姿态训练 ── */
+.iv-pose { display: grid; gap: var(--ou-space-6); grid-template-columns: minmax(0, 1fr); align-items: start; padding-bottom: 6.5rem; }
+@media (min-width: 64rem) { .iv-pose { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); } }
+.iv-sparkbars { display: flex; height: 5rem; align-items: flex-end; gap: 0.375rem; }
+.iv-sparkbars > i { flex: 1; min-width: 0.25rem; border-radius: var(--ou-radius-pixel) var(--ou-radius-pixel) 0 0; background: var(--ou-action-primary); }
+.iv-sparkbars > i[data-tone="yellow"] { background: var(--ou-tone-yellow-dot); }
+.iv-sparkbars > i[data-tone="red"] { background: var(--ou-tone-red-dot); }
+
+@media (prefers-reduced-motion: reduce) {
+  .iv-primary, .iv-secondary, .iv-quiet, .iv-launch, .iv-tile-link, .iv-bar > i, .iv-disclosure-chevron, .iv-stage-meter > i { transition: none; }
+}

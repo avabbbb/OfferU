@@ -1,8 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Button } from "@heroui/react";
 import { FACTOR_LABEL, scoreColor, type FactorKey, type ScoreVector } from "../postureMath";
+import { Disclosure } from "../../kit";
 
 interface SessionSample {
   composite: number;
@@ -15,9 +15,6 @@ interface Props {
   state: AppState;
   sessionElapsed: number;
   sessionSamples: SessionSample[];
-  onStart: () => void;
-  onRecalibrate: () => void;
-  onStop: () => void;
 }
 
 export type AppState =
@@ -28,7 +25,7 @@ export type AppState =
   | "live"
   | "stopped";
 
-const STATE_LABEL: Record<AppState, string> = {
+export const STATE_LABEL: Record<AppState, string> = {
   idle: "待机",
   requestingCamera: "请求摄像头",
   loadingModel: "加载模型",
@@ -37,111 +34,64 @@ const STATE_LABEL: Record<AppState, string> = {
   stopped: "已停止",
 };
 
-function formatTime(s: number): string {
+export function formatTime(s: number): string {
   const m = Math.floor(s / 60);
   const ss = Math.floor(s % 60);
   return `${m}:${ss.toString().padStart(2, "0")}`;
 }
 
-function colorClass(score: number | null): string {
-  if (score === null) return "text-[var(--foreground-muted)]";
-  const c = scoreColor(score);
-  if (c === "green") return "text-[var(--primary-green)]";
-  if (c === "yellow") return "text-[var(--primary-yellow)]";
-  return "text-[var(--primary-red)]";
-}
+const VERDICT = { green: "坐姿稳定", yellow: "稍微调整一下", red: "需要坐直" } as const;
+const FACTORS: FactorKey[] = ["headDrop", "forwardLean", "shoulderTilt", "earTilt", "lateralLean"];
 
-export default function ScorePanel({
-  composite,
-  scores,
-  state,
-  sessionElapsed,
-  sessionSamples,
-  onStart,
-  onRecalibrate,
-  onStop,
-}: Props) {
+export default function ScorePanel({ composite, scores, state, sessionElapsed, sessionSamples }: Props) {
   const avg = sessionSamples.length
     ? Math.round(sessionSamples.reduce((s, x) => s + x.composite, 0) / sessionSamples.length)
     : null;
-  const factors: FactorKey[] = ["headDrop", "forwardLean", "shoulderTilt", "earTilt", "lateralLean"];
+  const weakest = scores ? FACTORS.reduce((low, key) => (scores[key] < scores[low] ? key : low), FACTORS[0]) : null;
 
   return (
-    <div
-      className="flex flex-col gap-6 rounded-xl border bg-[var(--surface)] p-6"
-      style={{ borderColor: "var(--border)" }}
-    >
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold tracking-[-0.01em] text-[var(--foreground-soft)]">
-          姿态评估
-        </h2>
-        <span className="text-xs text-[var(--foreground-muted)]">
-          {STATE_LABEL[state]} · {formatTime(sessionElapsed)}
-        </span>
+    <section className="iv-card" aria-label="姿态评估">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="iv-eyebrow">综合分 · 满分 100</p>
+        <span className="iv-meta tabular-nums">{STATE_LABEL[state]} · {formatTime(sessionElapsed)}</span>
       </div>
+      <motion.p
+        key={composite ?? "—"}
+        initial={{ opacity: 0.5, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.16 }}
+        className="iv-score mt-2"
+        data-empty={composite === null ? "" : undefined}
+        aria-live="polite"
+      >
+        {composite ?? "--"}
+      </motion.p>
+      <p className="iv-muted mt-2">
+        {composite === null ? "开始后这里实时显示分数。" : VERDICT[scoreColor(composite)]}
+        {weakest && scores && scores[weakest] < 60 ? ` · 注意${FACTOR_LABEL[weakest]}` : ""}
+        {avg !== null ? ` · 本组平均 ${avg}` : ""}
+      </p>
 
-      <div className="text-center">
-        <motion.div
-          key={composite ?? "—"}
-          initial={{ opacity: 0.4, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.16 }}
-          className={`text-7xl font-bold tracking-[-0.05em] ${colorClass(composite)}`}
-        >
-          {composite ?? "—"}
-        </motion.div>
-        <div className="mt-1 text-xs text-[var(--foreground-muted)]">综合分 / 满分 100</div>
-        {avg !== null && (
-          <div className="mt-2 text-xs text-[var(--foreground-soft)]">本会话平均 {avg}</div>
-        )}
+      <div className="mt-5">
+        <Disclosure title="五项分解" summary={scores ? FACTORS.map((k) => scores[k]).join(" · ") : undefined}>
+          <div className="space-y-3 pt-1">
+            {FACTORS.map((k) => {
+              const v = scores?.[k] ?? null;
+              return (
+                <div key={k}>
+                  <div className="mb-1.5 flex items-center justify-between text-[length:var(--ou-type-sm)]">
+                    <span>{FACTOR_LABEL[k]}</span>
+                    <span className="font-semibold tabular-nums text-[var(--ou-text-primary)]">{v ?? "—"}</span>
+                  </div>
+                  <div className="iv-bar" data-tone={v === null ? undefined : v >= 60 ? "green" : v >= 40 ? "yellow" : "red"}>
+                    <i style={{ width: v === null ? "0%" : `${v}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Disclosure>
       </div>
-
-      <div className="space-y-3">
-        {factors.map((k) => {
-          const v = scores?.[k] ?? null;
-          return (
-            <div key={k}>
-              <div className="mb-1 flex items-center justify-between text-xs">
-                <span className="text-[var(--foreground-soft)]">{FACTOR_LABEL[k]}</span>
-                <span className={`font-semibold ${colorClass(v)}`}>{v ?? "—"}</span>
-              </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-muted)]">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: v === null ? "0%" : `${v}%`,
-                    background:
-                      v === null
-                        ? "var(--foreground-faint)"
-                        : v >= 60
-                        ? "var(--primary-green)"
-                        : v >= 40
-                        ? "var(--primary-yellow)"
-                        : "var(--primary-red)",
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex gap-2">
-        {state === "idle" || state === "stopped" ? (
-          <Button onPress={onStart} size="sm" className="flex-1" color="primary" variant="flat">
-            开始
-          </Button>
-        ) : (
-          <>
-            <Button onPress={onRecalibrate} size="sm" variant="flat" className="flex-1">
-              重新校准
-            </Button>
-            <Button onPress={onStop} size="sm" variant="flat" color="danger" className="flex-1">
-              停止
-            </Button>
-          </>
-        )}
-      </div>
-    </div>
+    </section>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import reactionAssets from "virtual:offeru-interview-reactions";
 import type { InterviewReaction, ReactionAssetCatalog } from "../reactionConfig";
 
@@ -62,22 +62,17 @@ export default function ReactionAvatar({ reaction, score }: Props) {
   }, [reaction]);
 
   return (
-    <div className="relative flex h-full min-h-[320px] flex-col items-center justify-center overflow-hidden bg-[var(--surface-muted)] p-6 text-center">
-      <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-5 py-4">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-muted)]">{copy.eyebrow}</span>
-        {score !== null && <span className="rounded-full border border-[var(--border-strong)] bg-white px-2.5 py-1 text-[11px] font-semibold text-[var(--foreground-soft)]">姿态 {score}</span>}
-      </div>
-
-      <div className="relative flex h-56 w-full max-w-sm items-center justify-center">
+    <div className="iv-avatar" aria-live="polite">
+      <div className="iv-avatar-art">
         {!imageReady && <FallbackIllustration reaction={reaction} />}
         {imageSrc && (
           <motion.img
             key={imageSrc}
             src={imageSrc}
             alt={copy.title}
-            className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-200 ${imageReady ? "opacity-100" : "opacity-0"}`}
-            initial={{ opacity: 0, scale: 0.96 }}
+            initial={{ opacity: 0, scale: 0.94 }}
             animate={{ opacity: imageReady ? 1 : 0, scale: 1 }}
+            transition={{ type: "spring", stiffness: 420, damping: 36 }}
             onLoad={() => setImageReady(true)}
             onError={() => {
               setImageReady(false);
@@ -86,11 +81,16 @@ export default function ReactionAvatar({ reaction, score }: Props) {
           />
         )}
       </div>
-
-      <motion.div key={`${reaction}-copy`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="relative -mt-1 max-w-sm">
-        <p className="text-lg font-semibold tracking-[-0.03em] text-[var(--foreground)]">{copy.title}</p>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--foreground-muted)]">{copy.detail}</p>
-      </motion.div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div key={reaction} className="min-w-0 flex-1" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="iv-eyebrow truncate">{copy.eyebrow}</span>
+            {score !== null && <span className="iv-meta shrink-0 tabular-nums">姿态 {score}</span>}
+          </div>
+          <p className="mt-0.5 truncate text-[length:var(--ou-type-body)] font-semibold">{copy.title}</p>
+          <p className="iv-meta mt-0.5 line-clamp-2">{copy.detail}</p>
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -102,7 +102,7 @@ function FallbackIllustration({ reaction }: { reaction: InterviewReaction }) {
   const symbol = GESTURE_SYMBOL[reaction];
 
   return (
-    <motion.div key={reaction} className="relative h-52 w-60" initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: [0, -3, 0] }} transition={{ opacity: { duration: 0.2 }, scale: { duration: 0.24 }, y: { duration: 3.2, repeat: Infinity } }}>
+    <motion.div key={reaction} className="relative h-full w-full" initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: [0, -3, 0] }} transition={{ opacity: { duration: 0.2 }, scale: { duration: 0.24 }, y: { duration: 3.2, repeat: Infinity } }}>
       <svg viewBox="0 0 260 230" role="img" aria-label="内置缺图兜底插画" className="h-full w-full">
         <path d="M70 190C58 158 64 102 87 62C100 39 119 29 133 29C153 29 174 47 186 73C203 109 207 165 191 193C169 211 95 211 70 190Z" fill="#fffdf9" stroke="var(--foreground)" strokeWidth="3" strokeLinejoin="round" />
         <path d="M92 82C99 76 107 76 114 82M148 82C155 76 163 76 170 82" fill="none" stroke="var(--foreground)" strokeWidth="3" strokeLinecap="round" />
@@ -113,7 +113,7 @@ function FallbackIllustration({ reaction }: { reaction: InterviewReaction }) {
         {isHappy ? <path d="M112 117C122 132 143 132 152 117" fill="none" stroke="var(--foreground)" strokeWidth="3.5" strokeLinecap="round" /> : isConcerned ? <path d="M116 128C126 118 139 118 149 128" fill="none" stroke="var(--foreground)" strokeWidth="3.5" strokeLinecap="round" /> : <path d="M116 120C125 128 138 128 147 120" fill="none" stroke="var(--foreground)" strokeWidth="3.5" strokeLinecap="round" />}
         <path d="M99 190C98 178 102 169 110 164M164 190C165 178 161 169 153 164" fill="none" stroke="var(--foreground)" strokeWidth="3" strokeLinecap="round" />
       </svg>
-      {symbol && <span className="absolute right-1 top-20 text-5xl drop-shadow-sm" aria-hidden="true">{symbol}</span>}
+      {symbol && <span className="absolute bottom-0 right-0 text-[length:var(--ou-type-doc-heading)]" aria-hidden="true">{symbol}</span>}
     </motion.div>
   );
 }

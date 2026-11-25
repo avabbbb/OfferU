@@ -2,22 +2,19 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { motion } from "framer-motion";
-import { Button, Checkbox, Chip, Input, Progress, Spinner, Textarea } from "@heroui/react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowLeft,
   ArrowRight,
-  Bot,
   BrainCircuit,
-  Building2,
   CheckCircle2,
-  ChevronDown,
+  Info,
   Lightbulb,
-  MessageSquareText,
-  RotateCcw,
+  LogOut,
+  Plus,
   ShieldCheck,
   Sparkles,
   Target,
-  Video,
 } from "lucide-react";
 import {
   createAIInterview,
@@ -30,12 +27,12 @@ import {
   type AIInterviewSession,
   type InterviewFocusPlan,
 } from "@/lib/hooks";
-import { bauhausFieldClassNames } from "@/lib/bauhaus";
-import { Pill, SegmentedProgress } from "@/components/ui";
+import { Pill, SegmentedProgress, StatusIsland } from "@/components/ui";
 import { dataModeLabel } from "@/lib/api";
 import { listReviews } from "@/lib/interviewReviews";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import InterviewStage from "./components/InterviewStage";
+import { Disclosure, OptionCards, Reveal, SPRING, Segmented, StepSwitch } from "../kit";
 
 type InterviewType = "behavioral" | "technical" | "case" | "mixed";
 type Difficulty = "easy" | "medium" | "hard";
@@ -97,7 +94,9 @@ export default function AIInterviewPage() {
   const [answer, setAnswer] = useState("");
   const [evaluation, setEvaluation] = useState<AIInterviewEvaluation | null>(null);
   const [report, setReport] = useState<AIInterviewReport | null>(null);
-  const [showTips, setShowTips] = useState(false);
+  const [step, setStep] = useState(0);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const [showCompany, setShowCompany] = useState(false);
   const [creating, setCreating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -186,7 +185,6 @@ export default function AIInterviewPage() {
     setAnswer("");
     setEvaluation(null);
     setReport(null);
-    setShowTips(false);
     setError("");
     setDataConsent(false);
     setBehaviorSummary({});
@@ -261,8 +259,7 @@ export default function AIInterviewPage() {
       );
       setEvaluation(roleIntelligenceRoute ? null : result.evaluation);
       setAnswer("");
-      setShowTips(false);
-      if (roleIntelligenceRoute) {
+        if (roleIntelligenceRoute) {
         setFollowUpNotice(
           result.adaptive_follow_up?.required
             ? `已记录。本轮回答触发 ${QUESTION_MODE_LABEL.follow_up}。`
@@ -303,212 +300,235 @@ export default function AIInterviewPage() {
     }
   };
 
+  const goTo = (next: number) => {
+    setDirection(next >= step ? 1 : -1);
+    setStep(next);
+    setError("");
+  };
+
   if (report && session) {
     return <InterviewReport report={report} session={session} behaviorSummary={behaviorSummary} onRestart={reset} />;
   }
 
   if (session && currentQuestion) {
+    const total = session.questions.length;
+    const isLast = currentQuestionIndex === total - 1;
     return (
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-7xl space-y-5">
-        <header className="flex flex-col gap-4 ou-sheet p-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--foreground-muted)]">
-              <Chip size="sm" variant="flat" className="bg-[var(--status-sage)] font-semibold text-[var(--primary-green)]">进行中</Chip>
-              {roleIntelligenceRoute && <Pill tone="gray">面试官模式 · 专项训练</Pill>}
-              <span>{session.target_company || "通用场景"}</span>
-              <span>·</span>
-              <span>{session.target_position}</span>
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="iv-page-wide">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="iv-eyebrow truncate">{[session.target_company || "通用场景", session.target_position].join(" · ")}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <h1 className="iv-h2">第 {currentQuestionIndex + 1} 题<span className="font-medium text-[var(--ou-text-tertiary)]"> / {total}</span></h1>
+              {roleIntelligenceRoute && <Pill tone="gray">面试官模式</Pill>}
             </div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">AI 模拟面试</h1>
           </div>
-          <div className="w-full md:w-72">
-            <div className="mb-2 flex items-center justify-between text-xs text-[var(--foreground-muted)]">
-              <span>第 {currentQuestionIndex + 1} / {session.questions.length} 题</span>
-              <button onClick={reset} className="flex items-center gap-1 transition hover:text-[var(--foreground)]"><RotateCcw size={12} /> 退出本场</button>
-            </div>
-            <SegmentedProgress label="面试进度" total={session.questions.length} done={currentQuestionIndex + (report ? 1 : 0)} />
-          </div>
+          <button type="button" onClick={reset} className="iv-quiet"><LogOut size={15} aria-hidden="true" /> 退出本场</button>
         </header>
+        <div className="mt-3">
+          <SegmentedProgress label="面试进度" total={total} done={currentQuestionIndex} />
+        </div>
 
-        <InterviewStage interviewId={session.id} questionIndex={currentQuestionIndex} onBehaviorSummary={setBehaviorSummary} />
+        <div className="iv-room mt-6">
+          <InterviewStage interviewId={session.id} questionIndex={currentQuestionIndex} onBehaviorSummary={setBehaviorSummary} />
 
-        {error && <div role="alert" className="rounded-xl border border-[var(--ou-tone-red-border)]/20 bg-[var(--status-blush)] px-4 py-3 text-sm text-[var(--primary-red)]">{error}</div>}
-
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="ou-sheet p-5 md:p-7">
-            <div className="flex flex-wrap items-center gap-2">
-              <Chip size="sm" variant="flat" className="bg-[var(--ou-bg-control)] font-semibold text-[var(--foreground-soft)]">
-                {QUESTION_TYPE_LABEL[currentQuestion.type] || "面试题"}
-              </Chip>
-              {roleIntelligenceRoute && currentQuestion.mode && <Chip size="sm" variant="flat" className="bg-[var(--ou-bg-control)] font-semibold text-[var(--foreground-soft)]">{QUESTION_MODE_LABEL[currentQuestion.mode] || currentQuestion.mode}</Chip>}
-              {currentQuestion.focus && <span className="text-xs text-[var(--foreground-muted)]">考察：{currentQuestion.focus}</span>}
-            </div>
-            <h2 className="mt-4 text-2xl font-semibold leading-snug tracking-[-0.035em] text-[var(--foreground)]">{currentQuestion.question}</h2>
-
-            {currentQuestion.tips && !roleIntelligenceRoute && (
-              <div className="mt-4">
-                <button onClick={() => setShowTips((value) => !value)} className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground-muted)] transition hover:text-[var(--foreground)]">
-                  <Lightbulb size={14} /> {showTips ? "收起回答提示" : "卡住了？查看回答提示"} <ChevronDown size={13} className={`transition-transform ${showTips ? "rotate-180" : ""}`} />
-                </button>
-                {showTips && <p className="mt-2 rounded-xl bg-[var(--ou-bg-control)] p-3 text-sm leading-relaxed text-[var(--foreground-soft)]">{currentQuestion.tips}</p>}
+          <div className="iv-room-side space-y-4">
+            <section className="iv-card" aria-labelledby="iv-current-question">
+              <div className="flex flex-wrap items-center gap-2">
+                <Pill tone="gray">{QUESTION_TYPE_LABEL[currentQuestion.type] || "面试题"}</Pill>
+                {roleIntelligenceRoute && currentQuestion.mode && <Pill tone="gray">{QUESTION_MODE_LABEL[currentQuestion.mode] || currentQuestion.mode}</Pill>}
+                {currentQuestion.focus && <span className="iv-meta">考察 · {currentQuestion.focus}</span>}
               </div>
-            )}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.h2
+                  key={currentQuestionIndex}
+                  id="iv-current-question"
+                  className="iv-question mt-4"
+                  initial={{ opacity: 0, x: 24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -24 }}
+                  transition={SPRING}
+                >
+                  {currentQuestion.question}
+                </motion.h2>
+              </AnimatePresence>
 
-            <Textarea
-              aria-label="输入本题回答"
-              placeholder="像真实面试一样作答。建议先说结论，再用具体经历和结果支撑……"
-              minRows={7}
-              maxRows={14}
-              value={answer}
-              onValueChange={setAnswer}
-              className="mt-6"
-              classNames={bauhausFieldClassNames}
-              onKeyDown={(event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key === "Enter") handleSubmit();
-              }}
-            />
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <span className="text-[11px] text-[var(--foreground-muted)]">{roleIntelligenceRoute ? "Interviewer Mode：不提供答案；模糊或缺少证据时会继续追问。" : "Ctrl / ⌘ + Enter 提交 · 回答文本会发送给本地后端配置的模型"}</span>
-              <Button onPress={handleSubmit} isDisabled={!answer.trim() || submitting} className="bg-[var(--foreground)] font-semibold text-white" endContent={submitting ? <Spinner color="current" size="sm" /> : <ArrowRight size={15} />}>
-                {submitting ? "AI 正在评估" : currentQuestionIndex === session.questions.length - 1 ? "提交并生成报告" : "提交并进入下一题"}
-              </Button>
-            </div>
-          </section>
+              {currentQuestion.tips && !roleIntelligenceRoute && (
+                <div className="mt-4">
+                  <Disclosure key={currentQuestionIndex} title="卡住了？看回答提示" icon={<Lightbulb size={15} aria-hidden="true" />}>
+                    {currentQuestion.tips}
+                  </Disclosure>
+                </div>
+              )}
 
-          {roleIntelligenceRoute ? <InterviewerStatus notice={followUpNotice} /> : <EvaluationPanel evaluation={evaluation} />}
+              <textarea
+                aria-label="输入本题回答"
+                placeholder="像真实面试一样作答：先说结论，再用具体经历和结果支撑。"
+                rows={6}
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                className="iv-textarea mt-5"
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") handleSubmit();
+                }}
+              />
+              {error && <p role="alert" className="iv-alert mt-4">{error}</p>}
+            </section>
+
+            {roleIntelligenceRoute ? <InterviewerStatus notice={followUpNotice} /> : evaluation && <EvaluationPanel key={currentQuestionIndex} evaluation={evaluation} />}
+          </div>
+        </div>
+
+        <div className="iv-dock" data-full="">
+          <p className="iv-dock-info">
+            <b>{currentQuestionIndex + 1} / {total}</b>
+            <span className="iv-kbd"> · {roleIntelligenceRoute ? "模糊或缺证据会被追问" : "Ctrl / ⌘ + Enter 提交"}</span>
+          </p>
+          <button type="button" onClick={handleSubmit} disabled={!answer.trim() || submitting} className="iv-primary">
+            {submitting ? <><span className="ou-island-dot" aria-hidden="true" /> AI 正在评估</> : <>{isLast ? "提交并生成报告" : "提交，下一题"} <ArrowRight size={16} aria-hidden="true" /></>}
+          </button>
         </div>
       </motion.div>
     );
   }
 
+  const roleLabel = [position.trim(), company.trim()].filter(Boolean).join(" · ");
+  const count = fixedQuestions.length || questionCount;
+  const difficultyLabel = DIFFICULTY_OPTIONS.find((option) => option.value === difficulty)?.label;
+  const canStart = !creating && !focusLoading && !!position.trim() && !!runtime && dataConsent && (!roleIntelligenceRoute || !!focusPlan);
+  const summary: { step: number; label: string; empty?: boolean }[] = [
+    { step: 0, label: roleLabel || "目标岗位", empty: !roleLabel },
+    { step: 1, label: selectedType?.label ?? "" },
+    { step: 2, label: `${difficultyLabel} · ${count} 题` },
+  ];
+
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-6xl space-y-6">
-      <section className="overflow-hidden ou-sheet">
-        <div className="grid gap-8 p-6 md:p-8 lg:grid-cols-[1.12fr_0.88fr] lg:p-10">
-          <div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--status-sage)] px-3 py-1 text-[11px] font-semibold text-[var(--primary-green)]"><Sparkles size={13} /> {roleIntelligenceRoute ? "ROLE INTELLIGENCE · INTERVIEW LEARNING" : "AI INTERVIEW STUDIO"}</span>
-            <h1 className="mt-5 max-w-2xl text-4xl font-semibold leading-[1.04] tracking-[-0.055em] text-[var(--foreground)] md:text-5xl">
-              {roleIntelligenceRoute ? <>针对岗位差异，<br />练出可验证的回答。</> : <>不只练答案，<br />也练镜头前的表达。</>}
-            </h1>
-            <p className="mt-5 max-w-xl text-sm leading-7 text-[var(--foreground-soft)]">
-              {roleIntelligenceRoute
-                ? "问题来自当前岗位相对同类岗位的 Delta，并结合你的 Career Evidence Gap 排序。训练中保持 Interviewer Mode，结束后才进入 Coach 复盘。"
-                : "AI 根据目标岗位生成连续问题、逐题评估回答；摄像头只在本机识别姿态、笑容与手势，右侧图片实时映射你的表达状态。"}
-            </p>
-          </div>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="iv-page">
+      <header>
+        <h1 className="iv-title">{roleIntelligenceRoute ? "专项面试训练" : "模拟面试"}</h1>
+        <p className="iv-lede">
+          {roleIntelligenceRoute ? "按这个岗位和你证据最弱的地方出题，结束后再复盘。" : "三步设好，AI 出题、逐题反馈，镜头只在本机分析。"}
+        </p>
+      </header>
 
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            {(roleIntelligenceRoute
-              ? [
-                { icon: Target, title: "岗位 Delta", detail: "问题来自特殊要求" },
-                { icon: BrainCircuit, title: "Evidence Gap", detail: "优先练证据较弱处" },
-                { icon: MessageSquareText, title: "结束后复盘", detail: "引用实际回答与来源" },
-              ]
-              : [
-                { icon: BrainCircuit, title: "岗位化提问", detail: "由浅入深生成面试题" },
-                { icon: Video, title: "本地视觉反馈", detail: "姿态、笑容与手势实时响应" },
-                { icon: MessageSquareText, title: "逐题复盘", detail: "结构、相关性与具体度" },
-              ]).map(({ icon: Icon, title, detail }) => (
-              <div key={title} className="flex items-center gap-3 rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-4">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--ou-bg-surface-solid)] text-[var(--ou-text-primary)]"><Icon size={17} /></div>
-                <div><p className="text-sm font-semibold">{title}</p><p className="mt-0.5 text-xs text-[var(--foreground-muted)]">{detail}</p></div>
+      <div className="mt-6 iv-progress">
+        <span className="iv-meta shrink-0 tabular-nums">{step + 1} / 3</span>
+        <SegmentedProgress label="设置进度" total={3} done={step} />
+      </div>
+      <nav className="iv-chips mt-4" aria-label="已选">
+        {summary.map((item) => (
+          <button key={item.step} type="button" className="iv-chip" data-empty={item.empty ? "" : undefined} aria-current={item.step === step ? "step" : undefined} onClick={() => goTo(item.step)}>
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div className="mt-6">
+        <StepSwitch step={step} direction={direction}>
+          <section className="iv-card">
+            {step === 0 && (
+              <div className="space-y-5">
+                <h2 className="iv-h2">{roleIntelligenceRoute ? "确认目标岗位" : "你要面哪个岗位？"}</h2>
+                <input
+                  aria-label="目标岗位"
+                  className="iv-input-lg"
+                  placeholder="例如：前端开发工程师"
+                  value={position}
+                  onChange={(event) => setPosition(event.target.value)}
+                  readOnly={roleIntelligenceRoute}
+                  required
+                  autoFocus={!roleIntelligenceRoute}
+                  onKeyDown={(event) => { if (event.key === "Enter" && position.trim()) goTo(1); }}
+                />
+                {showCompany || company || roleIntelligenceRoute ? (
+                  <input aria-label="目标公司（可选）" className="iv-input-lg" placeholder="目标公司（可选），例如：字节跳动" value={company} onChange={(event) => setCompany(event.target.value)} readOnly={roleIntelligenceRoute} autoFocus={showCompany && !company} />
+                ) : (
+                  <button type="button" className="iv-quiet -ml-3" onClick={() => setShowCompany(true)}><Plus size={15} aria-hidden="true" /> 添加目标公司</button>
+                )}
+                {roleIntelligenceRoute && (focusPlan ? <FocusPlanPreview plan={focusPlan} /> : focusLoading && <div className="ou-skeleton h-24" aria-label="正在准备专项训练计划" />)}
+                {fixedQuestions.length > 0 && (
+                  <Disclosure tone="paper" title={`练复盘里的 ${fixedQuestions.length} 道题`} testId="review-practice-questions">
+                    <ol className="list-decimal space-y-1 pl-5">{fixedQuestions.map((q, i) => <li key={i}>{q}</li>)}</ol>
+                  </Disclosure>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+            )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px]">
-          <section className="ou-sheet p-6 md:p-8">
-          <div className="flex items-center gap-2"><Target size={17} /><h2 className="text-base font-semibold">{roleIntelligenceRoute ? "确认专项训练" : "设置本场面试"}</h2></div>
-          {roleIntelligenceRoute && focusPlan && <FocusPlanPreview plan={focusPlan} />}
-          {fixedQuestions.length > 0 && (
-            <div className="mt-4 ou-sheet px-4 py-3" data-testid="review-practice-questions">
-              <p className="text-[13px] font-medium">练复盘里的 {fixedQuestions.length} 道题</p>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] text-[var(--foreground-muted)]">
-                {fixedQuestions.map((q, i) => <li key={i}>{q}</li>)}
-              </ol>
-            </div>
-          )}
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <Input label="目标公司（可选）" placeholder="例如：字节跳动" value={company} onValueChange={setCompany} isReadOnly={roleIntelligenceRoute} startContent={<Building2 size={15} className="text-[var(--foreground-muted)]" />} classNames={bauhausFieldClassNames} />
-            <Input label="目标岗位" placeholder="例如：前端开发工程师" value={position} onValueChange={setPosition} isRequired isReadOnly={roleIntelligenceRoute} classNames={bauhausFieldClassNames} />
-          </div>
+            {step === 1 && (
+              <div className="space-y-5">
+                <h2 className="iv-h2">选择面试类型</h2>
+                <OptionCards label="面试类型" value={interviewType} options={TYPE_OPTIONS} onChange={setInterviewType} />
+              </div>
+            )}
 
-          <div className="mt-6">
-            <p className="text-xs font-semibold text-[var(--foreground-soft)]">面试类型</p>
-            <div className="ou-segmented-cards mt-2" role="group" aria-label="面试类型">
-              {TYPE_OPTIONS.map((option) => (
-                <button key={option.value} type="button" aria-pressed={interviewType === option.value} onClick={() => setInterviewType(option.value)}>
-                  <p className="text-sm font-semibold">{option.label}</p><p className="mt-1 text-xs text-[var(--foreground-muted)]">{option.detail}</p>
+            {step === 2 && (
+              <div className="space-y-5">
+                <h2 className="iv-h2">{roleIntelligenceRoute ? "确认专项训练" : "准备好了"}</h2>
+                <dl className="iv-facts">
+                  <div className="iv-fact"><dt>方向</dt><dd>{selectedType?.label}</dd></div>
+                  <div className="iv-fact"><dt>题数</dt><dd>{count} 题 · {difficultyLabel}</dd></div>
+                  <div className="iv-fact"><dt>预计</dt><dd>{count * 3}–{count * 5} 分钟</dd></div>
+                </dl>
+                <Disclosure title="调整难度与题数" summary={`${difficultyLabel} · ${count} 题`}>
+                  <div className="space-y-4 pt-1">
+                    <div>
+                      <p className="iv-label mb-2">难度</p>
+                      <Segmented label="难度" value={difficulty} options={DIFFICULTY_OPTIONS} onChange={setDifficulty} />
+                    </div>
+                    {!fixedQuestions.length && (
+                      <div>
+                        <p className="iv-label mb-2">题目数量</p>
+                        <Segmented label="题目数量" value={questionCount} options={[3, 5, 8].filter((n) => !roleIntelligenceRoute || n >= 5).map((n) => ({ value: n, label: `${n} 题` }))} onChange={setQuestionCount} />
+                      </div>
+                    )}
+                  </div>
+                </Disclosure>
+
+                <label className="iv-consent cursor-pointer">
+                  <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[var(--ou-action-primary)]" checked={dataConsent} onChange={(event) => setDataConsent(event.target.checked)} disabled={!runtime || (roleIntelligenceRoute && focusLoading)} />
+                  <span className="min-w-0">
+                    <span className="block text-[length:var(--ou-type-sm)] font-medium text-[var(--ou-text-primary)]">回答发给模型评估，镜头只同步派生事件</span>
+                    <span className="iv-meta mt-0.5 block">
+                      {runtime ? `${runtime.runtime.provider} / ${runtime.runtime.model}${runtime.runtime.is_local ? "（本地）" : "（云端）"}` : "正在读取模型配置…"}
+                    </span>
+                  </span>
+                </label>
+
+                <Disclosure title="隐私与评分说明" icon={<Info size={15} aria-hidden="true" />}>
+                  <ul className="space-y-2">
+                    <li className="flex gap-2"><ShieldCheck size={14} className="mt-0.5 shrink-0" aria-hidden="true" />视频帧不会发送到后端，摄像头只在本机识别姿态、表情和手势。</li>
+                    {roleIntelligenceRoute ? (
+                      <>
+                        <li className="flex gap-2"><Target size={14} className="mt-0.5 shrink-0" aria-hidden="true" />问题来自岗位 Delta，并按 Career Evidence Gap 排序。</li>
+                        <li className="flex gap-2"><BrainCircuit size={14} className="mt-0.5 shrink-0" aria-hidden="true" />训练中只追问事实、指标、机制和权衡，不给答案或提前评分；新观察不会自动写入正式 Profile。</li>
+                      </>
+                    ) : (
+                      <>
+                        <li className="flex gap-2"><BrainCircuit size={14} className="mt-0.5 shrink-0" aria-hidden="true" />回答文本发给你配置的 AI 服务，用于出题与逐题评估（结构、相关性、具体度）。</li>
+                        <li className="flex gap-2"><Sparkles size={14} className="mt-0.5 shrink-0" aria-hidden="true" />镜头事件单独统计，不与内容分合并。</li>
+                      </>
+                    )}
+                  </ul>
+                </Disclosure>
+              </div>
+            )}
+
+            {error && <p role="alert" className="iv-alert mt-5">{error}</p>}
+
+            <div className="mt-8 flex flex-wrap-reverse items-center justify-between gap-3">
+              {step > 0 ? <button type="button" className="iv-quiet -ml-3" onClick={() => goTo(step - 1)}><ArrowLeft size={15} aria-hidden="true" /> 上一步</button> : <span />}
+              {step < 2 ? (
+                <button type="button" className="iv-primary" disabled={!position.trim() || (roleIntelligenceRoute && !focusPlan)} onClick={() => goTo(step + 1)}>
+                  下一步 <ArrowRight size={16} aria-hidden="true" />
                 </button>
-              ))}
+              ) : (
+                <button type="button" className="iv-primary" disabled={!canStart} onClick={handleCreate}>
+                  {creating ? <><span className="ou-island-dot" aria-hidden="true" /> 正在准备本场问题</> : <>{roleIntelligenceRoute ? "生成专项问题并开始" : "生成面试并进入房间"} <ArrowRight size={16} aria-hidden="true" /></>}
+                </button>
+              )}
             </div>
-          </div>
-
-          <div className="mt-6 grid gap-5 sm:grid-cols-2">
-            <div>
-              <p className="text-xs font-semibold text-[var(--foreground-soft)]">难度</p>
-              <div className="ou-segmented mt-2" role="group" aria-label="难度">
-                {DIFFICULTY_OPTIONS.map((option) => (
-                  <button key={option.value} type="button" aria-pressed={difficulty === option.value} onClick={() => setDifficulty(option.value)}>{option.label}</button>
-                ))}
-              </div>
-            </div>
-            {!fixedQuestions.length && <div>
-              <p className="text-xs font-semibold text-[var(--foreground-soft)]">题目数量</p>
-              <div className="ou-segmented mt-2" role="group" aria-label="题目数量">
-                {[3, 5, 8].filter((count) => !roleIntelligenceRoute || count >= 5).map((count) => (
-                  <button key={count} type="button" aria-pressed={questionCount === count} onClick={() => setQuestionCount(count)}>{count} 题</button>
-                ))}
-              </div>
-            </div>}
-          </div>
-
-          <div className="mt-6 rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-4">
-            <Checkbox isSelected={dataConsent} onValueChange={setDataConsent} isDisabled={!runtime || (roleIntelligenceRoute && focusLoading)}>
-              <span className="text-xs font-medium">确认本场数据范围：配置与回答发给模型，摄像头只同步派生事件</span>
-            </Checkbox>
-            <p className="mt-2 pl-7 text-[11px] leading-5 text-[var(--foreground-muted)]">
-              {runtime
-                ? `${runtime.runtime.provider} / ${runtime.runtime.model}${runtime.runtime.is_local ? "（本地）" : "（云端）"}`
-                : "正在读取模型配置…"}
-              。视频帧不会发送到后端；只会同步你已确认的派生行为事件。
-            </p>
-          </div>
-
-          {error && <p role="alert" className="mt-5 rounded-xl bg-[var(--status-blush)] p-3 text-sm text-[var(--primary-red)]">{error}</p>}
-
-          <Button onPress={handleCreate} isDisabled={creating || focusLoading || !position.trim() || !runtime || !dataConsent || (roleIntelligenceRoute && !focusPlan)} size="lg" className="mt-7 w-full bg-[var(--foreground)] font-semibold text-white" endContent={creating ? <Spinner color="current" size="sm" /> : <ArrowRight size={16} />}>
-            {creating ? "正在准备本场问题" : roleIntelligenceRoute ? "生成专项问题并开始" : "生成面试并进入房间"}
-          </Button>
-        </section>
-
-        <aside className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-6">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--ou-bg-surface-solid)]"><Bot size={20} /></div>
-          <h2 className="mt-5 text-lg font-semibold tracking-[-0.03em]">{roleIntelligenceRoute ? "训练规则" : "本场预览"}</h2>
-          {roleIntelligenceRoute && focusPlan ? (
-            <div className="mt-5 space-y-3">
-              <p className="text-xs leading-5 text-[var(--foreground-muted)]">样本 {focusPlan.source.valid_sample_count} 个 · {focusPlan.source.company_count} 家公司 · {dataModeLabel(focusPlan.source.data_mode)}</p>
-              <div className="space-y-2">
-                {focusPlan.focuses.map((focus) => <div key={focus.capability} className="flex items-center justify-between gap-3 rounded-lg bg-[var(--ou-bg-surface-solid)] px-3 py-2 text-xs"><span className="font-semibold">{focus.capability}</span><span className="font-semibold text-[var(--primary-red)]">{focus.priority_percent}%</span></div>)}
-              </div>
-              <p className="border-t border-[var(--ou-line-control)] pt-4 text-xs leading-6 text-[var(--ou-text-secondary)]">训练中只追问事实、指标、机制和权衡，不给答案或提前评分；新观察不会自动写入正式 Profile。</p>
-            </div>
-          ) : (
-            <>
-          <dl className="mt-5 space-y-4 text-sm">
-            <div><dt className="text-xs text-[var(--foreground-muted)]">面试方向</dt><dd className="mt-1 font-medium">{selectedType?.label}</dd></div>
-            <div><dt className="text-xs text-[var(--foreground-muted)]">目标岗位</dt><dd className="mt-1 font-medium">{position.trim() || "等待填写"}</dd></div>
-            <div><dt className="text-xs text-[var(--foreground-muted)]">预计时长</dt><dd className="mt-1 font-medium">约 {questionCount * 3}–{questionCount * 5} 分钟</dd></div>
-          </dl>
-          <div className="mt-6 border-t border-[var(--ou-line-control)] pt-5">
-            <p className="flex items-center gap-2 text-xs font-semibold"><ShieldCheck size={15} /> 隐私边界</p>
-            <p className="mt-2 text-xs leading-6 text-[var(--foreground-muted)]">摄像头视频只参与本地姿态、表情和手势推理。回答文本会发送给你在 OfferU 中配置的 AI 服务，用于生成问题与评估。</p>
-          </div>
-            </>
-          )}
-        </aside>
+          </section>
+        </StepSwitch>
       </div>
     </motion.div>
   );
@@ -516,66 +536,87 @@ export default function AIInterviewPage() {
 
 function FocusPlanPreview({ plan }: { plan: InterviewFocusPlan }) {
   return (
-    <div className="mt-5 rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-4" data-testid="interview-focus-plan">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[length:var(--ou-type-sm)] font-semibold text-[var(--ou-text-primary)]">专项训练重点</p>
-        <span className="text-[length:var(--ou-type-xs)] text-[var(--ou-text-tertiary)]">{dataModeLabel(plan.source.data_mode)} · {plan.source.valid_sample_count} 个 comparator</span>
+    <div className="space-y-3" data-testid="interview-focus-plan">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="iv-label">专项训练重点</p>
+        <span className="iv-meta">{dataModeLabel(plan.source.data_mode)} · {plan.source.valid_sample_count} 个样本 · {plan.source.company_count} 家公司</span>
       </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <ul className="space-y-3">
         {plan.focuses.map((focus) => (
-          <div key={focus.capability} className="rounded-[var(--ou-radius-1)] ou-capsule-card px-3 py-2">
-            <div className="flex items-center justify-between gap-2"><span className="text-sm font-semibold text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--primary-red)]">{focus.priority_percent}%</span></div>
-            <p className="mt-1 text-[length:var(--ou-type-xs)] text-[var(--ou-text-tertiary)]">岗位特殊度 {focus.role_distinctiveness} · 证据强度 {focus.evidence_strength} · 缺口 {focus.evidence_gap}</p>
-          </div>
+          <li key={focus.capability}>
+            <div className="mb-1.5 flex items-center justify-between gap-3 text-[length:var(--ou-type-body)]">
+              <span className="min-w-0 truncate font-semibold text-[var(--ou-text-primary)]">{focus.capability}</span>
+              <span className="shrink-0 tabular-nums text-[var(--ou-text-secondary)]">{focus.priority_percent}%</span>
+            </div>
+            <div className="iv-bar"><i style={{ width: `${focus.priority_percent}%` }} /></div>
+          </li>
         ))}
-      </div>
-      <p className="mt-3 text-xs leading-5 text-[var(--foreground-soft)]">问题优先级由 Runtime 的岗位特殊度 × Career Evidence Gap × signal confidence 确定；模型只负责把蓝图转成问题文字。</p>
+      </ul>
+      <Disclosure title="这些重点怎么来的">
+        <p>优先级 = 岗位特殊度 × Career Evidence Gap × signal confidence，由 Runtime 确定；模型只负责把蓝图转成问题文字。</p>
+        <ul className="mt-2 space-y-1">
+          {plan.focuses.map((focus) => (
+            <li key={focus.capability}>{focus.capability}：特殊度 {focus.role_distinctiveness} · 证据强度 {focus.evidence_strength} · 缺口 {focus.evidence_gap}</li>
+          ))}
+        </ul>
+      </Disclosure>
     </div>
   );
 }
 
 function InterviewerStatus({ notice }: { notice: string }) {
   return (
-    <aside className="ou-sheet flex min-h-72 flex-col justify-between p-6" data-testid="interviewer-mode-status">
-      <div>
-        <Pill tone="gray">面试官模式</Pill>
-        <h3 className="mt-4 text-lg font-semibold tracking-[-0.03em] text-[var(--foreground)]">只继续追问</h3>
-        <p className="mt-3 text-sm leading-6 text-[var(--foreground-soft)]">本场不会即时夸奖、给答案或提前评分。模糊、缺事实/机制/指标的回答会触发下一条追问；与 Career Evidence 的表述差异会被中性澄清。</p>
-      </div>
-      <p className="mt-6 flex items-start gap-2 rounded-[var(--ou-radius-1)] bg-[var(--ou-bg-control)] px-3 py-2 text-[length:var(--ou-type-sm)] leading-5 text-[var(--ou-text-secondary)]" role="status"><CheckCircle2 size={14} className="mt-0.5 shrink-0 text-[var(--ou-tone-green-dot)]" aria-hidden="true" />{notice || "回答已记录。继续作答。"}</p>
-    </aside>
+    <div className="space-y-3" data-testid="interviewer-mode-status">
+      {notice && <Reveal key={notice}><StatusIsland state="done">{notice}</StatusIsland></Reveal>}
+      <Disclosure title="面试官模式：只继续追问" icon={<CheckCircle2 size={15} aria-hidden="true" />}>
+        本场不会即时夸奖、给答案或提前评分。模糊、缺事实 / 机制 / 指标的回答会触发下一条追问；与 Career Evidence 的表述差异会被中性澄清。
+      </Disclosure>
+    </div>
   );
 }
 
-function EvaluationPanel({ evaluation }: { evaluation: AIInterviewEvaluation | null }) {
-  if (!evaluation) {
-    return (
-      <aside className="flex min-h-72 flex-col items-center justify-center rounded-[var(--ou-radius-panel)] bg-[var(--ou-glass-subtle)] p-6 text-center">
-        <MessageSquareText size={26} className="text-[var(--foreground-muted)]" />
-        <p className="mt-3 text-sm font-semibold">上一题反馈会出现在这里</p>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--foreground-muted)]">先完成回答，AI 会按固定版本评分规则引用你的回答原文，再由后端确定性聚合内容分。</p>
-      </aside>
-    );
-  }
-
+function EvaluationPanel({ evaluation }: { evaluation: AIInterviewEvaluation }) {
+  const next = evaluation.improvements[0] || evaluation.suggestion;
   return (
-    <aside className="ou-sheet p-5">
-      <div className="flex items-center justify-between"><div><p className="text-sm font-semibold">上一题内容反馈</p><p className="mt-1 text-[10px] text-[var(--foreground-muted)]">{evaluation.skill_id}@{evaluation.skill_version} · {evaluation.score_band}</p></div><span className="text-3xl font-semibold tracking-[-0.05em]">{evaluation.content_score}</span></div>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        {Object.entries(evaluation.dimensions).map(([key, value]) => (
-          <div key={key} className="rounded-lg bg-[var(--ou-bg-control)] p-2.5"><p className="text-[length:var(--ou-type-xs)] text-[var(--ou-text-secondary)]">{DIMENSION_LABEL[key] || key}</p><p className="mt-1 text-sm font-semibold">{value.not_applicable ? "不适用" : value.score}</p>{value.evidence[0] && <p className="mt-1 line-clamp-2 text-[length:var(--ou-type-xs)] leading-4 text-[var(--ou-text-secondary)]">“{value.evidence[0]}”</p>}</div>
-        ))}
-      </div>
-      {!!evaluation.strengths.length && <FeedbackList title="做得好" items={evaluation.strengths} tone="good" />}
-      {!!evaluation.improvements.length && <FeedbackList title="下一题注意" items={evaluation.improvements} tone="improve" />}
-      {evaluation.suggestion && <p className="mt-4 rounded-[var(--ou-radius-card)] bg-[var(--status-sage)] p-3 text-xs leading-relaxed text-[var(--foreground-soft)]">{evaluation.suggestion}</p>}
-    </aside>
+    <Reveal>
+      <section className="iv-card" aria-label="上一题内容反馈">
+        <div className="flex items-center gap-4">
+          <span className="iv-score-sm">{evaluation.content_score}</span>
+          <div className="min-w-0">
+            <p className="iv-h3">上一题反馈</p>
+            {next && <p className="iv-muted mt-0.5">{next}</p>}
+          </div>
+        </div>
+        <div className="mt-4">
+          <Disclosure title="查看详情" summary={`${Object.keys(evaluation.dimensions).length} 个维度`}>
+            <div className="iv-dims pt-1">
+              {Object.entries(evaluation.dimensions).map(([key, value]) => (
+                <div key={key}>
+                  <div className="mb-1.5 flex justify-between gap-2 text-[length:var(--ou-type-sm)]"><span>{DIMENSION_LABEL[key] || key}</span><span className="font-semibold tabular-nums text-[var(--ou-text-primary)]">{value.not_applicable ? "不适用" : value.score}</span></div>
+                  <div className="iv-bar"><i style={{ width: value.not_applicable ? "0%" : `${value.score}%` }} /></div>
+                  {value.evidence[0] && <p className="iv-quote mt-1.5 line-clamp-2">“{value.evidence[0]}”</p>}
+                </div>
+              ))}
+            </div>
+            {!!evaluation.strengths.length && <FeedbackList title="做得好" items={evaluation.strengths} tone="good" />}
+            {evaluation.improvements.length > 1 && <FeedbackList title="下一题注意" items={evaluation.improvements} tone="improve" />}
+            {evaluation.suggestion && <p className="mt-4 text-[var(--ou-text-primary)]">{evaluation.suggestion}</p>}
+            <p className="iv-quote mt-3">{evaluation.skill_id}@{evaluation.skill_version} · {evaluation.score_band}</p>
+          </Disclosure>
+        </div>
+      </section>
+    </Reveal>
   );
 }
 
 function FeedbackList({ title, items, tone }: { title: string; items: string[]; tone: "good" | "improve" }) {
   return (
-    <div className="mt-4"><p className="text-xs font-semibold">{title}</p><ul className="mt-2 space-y-1.5">{items.map((item) => <li key={item} className="flex gap-2 text-xs leading-relaxed text-[var(--foreground-soft)]">{tone === "good" ? <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-[var(--primary-green)]" /> : <Target size={13} className="mt-0.5 shrink-0 text-[var(--primary-yellow)]" />}{item}</li>)}</ul></div>
+    <div className="mt-4">
+      <p className="iv-label">{title}</p>
+      <ul className="iv-list mt-2">
+        {items.map((item) => <li key={item}>{tone === "good" ? <CheckCircle2 size={14} className="text-[var(--ou-tone-green-dot)]" aria-hidden="true" /> : <Target size={14} className="text-[var(--ou-tone-yellow-dot)]" aria-hidden="true" />}{item}</li>)}
+      </ul>
+    </div>
   );
 }
 
@@ -583,69 +624,87 @@ function InterviewReport({ report, session, behaviorSummary, onRestart }: { repo
   const dimensions = useMemo(() => Object.entries(report.dimension_scores), [report.dimension_scores]);
   const delivery = Object.keys(behaviorSummary).length ? behaviorSummary : report.delivery_feedback;
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-5xl space-y-6">
-      <section className="ou-sheet p-7 md:p-10">
-        <div className="grid gap-8 md:grid-cols-[220px_1fr] md:items-center">
-          <div className="text-center"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-muted)]">CONTENT SCORE</p><p className="mt-2 text-8xl font-semibold tracking-[-0.09em]">{report.content_score}</p><p className="mt-2 text-xs text-[var(--foreground-muted)]">{session.target_position} · {session.questions.length} 题</p></div>
-          <div><Chip size="sm" variant="flat" className="bg-[var(--status-sage)] font-semibold text-[var(--primary-green)]">面试完成</Chip><h1 className="mt-4 text-3xl font-semibold tracking-[-0.045em]">本场模拟面试报告</h1><p className="mt-3 text-sm leading-7 text-[var(--foreground-soft)]">{report.summary}</p><Button onPress={onRestart} className="mt-6 bg-[var(--foreground)] font-semibold text-white" startContent={<RotateCcw size={15} />}>再练一场</Button></div>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="iv-page-wide space-y-6">
+      <section className="iv-card">
+        <div className="grid gap-6 md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-10">
+          <div>
+            <p className="iv-eyebrow">内容分</p>
+            <p className="iv-score mt-1">{report.content_score}</p>
+            <p className="iv-meta mt-2">{session.target_position} · {session.questions.length} 题</p>
+          </div>
+          <div className="min-w-0">
+            <Pill tone="green">面试完成</Pill>
+            <h1 className="iv-title mt-3">本场模拟面试报告</h1>
+            <p className="iv-lede">{report.summary}</p>
+            <button type="button" onClick={onRestart} className="iv-primary mt-6">再练一场 <ArrowRight size={16} aria-hidden="true" /></button>
+          </div>
         </div>
       </section>
 
-      {report.role_intelligence_debrief && <RoleInterviewDebrief debrief={report.role_intelligence_debrief} />}
+      {report.role_intelligence_debrief && <Reveal delay={0.05}><RoleInterviewDebrief debrief={report.role_intelligence_debrief} /></Reveal>}
 
-      {!!dimensions.length && <section className="ou-sheet p-6"><h2 className="text-sm font-semibold">能力维度</h2><div className="mt-5 grid gap-4 sm:grid-cols-2">{dimensions.map(([key, value]) => <div key={key}><div className="mb-2 flex justify-between text-xs"><span className="text-[var(--foreground-soft)]">{DIMENSION_LABEL[key] || key}</span><span className="font-semibold">{value}</span></div><Progress aria-label={DIMENSION_LABEL[key] || key} value={value} size="sm" classNames={{ indicator: "bg-[var(--foreground)]", track: "bg-[var(--surface-hover)]" }} /></div>)}</div></section>}
+      <Reveal delay={0.08}>
+        <section className="iv-card">
+          <div className="iv-cols">
+            <ReportList title="表现亮点" items={report.highlights} icon={<Sparkles size={16} aria-hidden="true" />} />
+            <ReportList title="优先改进" items={report.areas_for_improvement} icon={<Target size={16} aria-hidden="true" />} />
+            <ReportList title="下一步练习" items={report.recommendations} icon={<BrainCircuit size={16} aria-hidden="true" />} />
+          </div>
+        </section>
+      </Reveal>
 
-      <p className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-4 text-xs leading-6 text-[var(--ou-text-secondary)]">{report.boundary}</p>
-
-      <DeliveryFeedback summary={delivery} />
-
-      <div className="grid gap-5 md:grid-cols-3">
-        <ReportList title="表现亮点" items={report.highlights} icon={<Sparkles size={16} />} />
-        <ReportList title="优先改进" items={report.areas_for_improvement} icon={<Target size={16} />} />
-        <ReportList title="下一步练习" items={report.recommendations} icon={<BrainCircuit size={16} />} />
-      </div>
+      <Reveal delay={0.12} className="space-y-3">
+        {!!dimensions.length && (
+          <Disclosure title="能力维度" summary={dimensions.map(([key, value]) => `${DIMENSION_LABEL[key] || key} ${value}`).slice(0, 2).join(" · ")}>
+            <div className="iv-dims pt-1">
+              {dimensions.map(([key, value]) => (
+                <div key={key}>
+                  <div className="mb-1.5 flex justify-between text-[length:var(--ou-type-sm)]"><span>{DIMENSION_LABEL[key] || key}</span><span className="font-semibold tabular-nums text-[var(--ou-text-primary)]">{value}</span></div>
+                  <div className="iv-bar" role="progressbar" aria-label={DIMENSION_LABEL[key] || key} aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${value}%` }} /></div>
+                </div>
+              ))}
+            </div>
+          </Disclosure>
+        )}
+        <DeliveryFeedback summary={delivery} questions={session.questions.map((q) => q.question)} />
+        <p className="iv-quote px-1">{report.boundary}</p>
+      </Reveal>
     </motion.div>
   );
 }
 
 function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewReport["role_intelligence_debrief"]> }) {
   return (
-    <section className="ou-sheet p-6" data-testid="role-interview-debrief">
+    <section className="iv-card" data-testid="role-interview-debrief">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <Pill tone="gray">教练复盘</Pill>
-          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">为什么问这些题</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--foreground-soft)]">以下复盘把实际回答与岗位 Delta、Career Evidence Gap 放在一起；它是本场学习观察，不会自动改写正式 Profile。</p>
+          <h2 className="iv-h2 mt-3">为什么问这些题</h2>
+          <p className="iv-muted mt-1 max-w-2xl">实际回答与岗位 Delta、Career Evidence Gap 放在一起看；这是本场学习观察，不会自动改写正式 Profile。</p>
         </div>
-        <div className="text-right text-xs font-semibold text-[var(--foreground-muted)]">{dataModeLabel(debrief.source.data_mode)}<br />样本 {String(debrief.source.valid_sample_count ?? "—")}</div>
+        <p className="iv-meta text-right">{dataModeLabel(debrief.source.data_mode)} · 样本 {String(debrief.source.valid_sample_count ?? "—")}</p>
       </div>
-      <div className="mt-5 space-y-3">
+      <div className="mt-5 space-y-2">
         {debrief.focuses.map((focus) => (
-          <details key={focus.capability} className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)]">
-            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4">
-              <span className="flex items-center gap-3"><span className="text-sm font-semibold text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 档案证据覆盖缺口 {focus.evidence_gap}</span></span>
-              <span className="text-xs font-semibold text-[var(--primary-red)]">训练权重 {focus.priority_percent}%</span>
-            </summary>
-            <div className="mx-2 mb-2 rounded-[var(--ou-radius-1)] ou-capsule-card px-4 pb-4 pt-3">
-              <p className="text-xs leading-5 text-[var(--foreground-soft)]">{focus.why_this_focus}</p>
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-[var(--foreground-muted)]"><span>市场频率 {Math.round(focus.market_frequency * 100)}%</span><span>表现 {focus.performance.average_content_score ?? "—"}</span><span>{focus.performance.status === "supported" ? "当前回答有可用证据" : "需要更多事实/机制"}</span></div>
-              {focus.responses.map((response) => (
-                <div key={`${focus.capability}-${response.question_index}`} className="mt-3 rounded-[var(--ou-radius-1)] bg-[var(--ou-bg-control)] px-3 py-2">
-                  <p className="text-[length:var(--ou-type-xs)] font-semibold text-[var(--ou-text-secondary)]">第 {response.question_index + 1} 题 · {QUESTION_MODE_LABEL[response.mode] || response.mode}</p>
-                  <p className="mt-1 text-xs font-semibold text-[var(--foreground)]">{response.question}</p>
-                  <p className="mt-2 text-xs leading-5 text-[var(--foreground-soft)]">评价引用（实际回答）：“{response.transcript_excerpt || response.answer_excerpt}”</p>
-                  {response.answer_evidence.length > 0 && <p className="mt-1 text-[11px] text-[var(--foreground-muted)]">回答中的可核对证据：{response.answer_evidence.join("；")}</p>}
-                  {response.why_asked && <p className="mt-1 text-[11px] leading-5 text-[var(--foreground-muted)]">提问依据：{response.why_asked}</p>}
-                </div>
-              ))}
-              {focus.observed_answer_gaps.length > 0 && <p className="mt-3 text-xs font-semibold leading-5 text-[var(--primary-red)]">回答缺口：{focus.observed_answer_gaps.join("；")}</p>}
-              {focus.candidate_evidence_not_utilized.length > 0 && <p className="mt-2 text-xs font-semibold leading-5 text-[var(--foreground-muted)]">已有 Evidence 尚未在回答中被有效利用：{focus.candidate_evidence_not_utilized.map((item) => item.title || item.profile_section_id).join("、")}</p>}
-              <p className="mt-3 text-[length:var(--ou-type-xs)] font-semibold text-[var(--ou-text-primary)]">下一轮：{focus.next_practice}</p>
-            </div>
-          </details>
+          <Disclosure key={focus.capability} tone="paper" title={focus.capability} summary={`训练权重 ${focus.priority_percent}%`}>
+            <p>{focus.why_this_focus}</p>
+            <p className="iv-quote mt-2">岗位特殊度 {focus.role_distinctiveness} · 证据缺口 {focus.evidence_gap} · 市场频率 {Math.round(focus.market_frequency * 100)}% · 表现 {focus.performance.average_content_score ?? "—"} · {focus.performance.status === "supported" ? "当前回答有可用证据" : "需要更多事实 / 机制"}</p>
+            {focus.responses.map((response) => (
+              <div key={`${focus.capability}-${response.question_index}`} className="ou-capsule-card mt-3 rounded-[var(--ou-radius-1)] px-3 py-2">
+                <p className="iv-meta">第 {response.question_index + 1} 题 · {QUESTION_MODE_LABEL[response.mode] || response.mode}</p>
+                <p className="mt-1 font-semibold text-[var(--ou-text-primary)]">{response.question}</p>
+                <p className="mt-2">评价引用（实际回答）：“{response.transcript_excerpt || response.answer_excerpt}”</p>
+                {response.answer_evidence.length > 0 && <p className="iv-quote mt-1">回答中的可核对证据：{response.answer_evidence.join("；")}</p>}
+                {response.why_asked && <p className="iv-quote mt-1">提问依据：{response.why_asked}</p>}
+              </div>
+            ))}
+            {focus.observed_answer_gaps.length > 0 && <p className="mt-3 font-medium text-[var(--ou-tone-red-text)]">回答缺口：{focus.observed_answer_gaps.join("；")}</p>}
+            {focus.candidate_evidence_not_utilized.length > 0 && <p className="mt-2">已有 Evidence 尚未在回答中被有效利用：{focus.candidate_evidence_not_utilized.map((item) => item.title || item.profile_section_id).join("、")}</p>}
+            <p className="mt-3 font-semibold text-[var(--ou-text-primary)]">下一轮：{focus.next_practice}</p>
+          </Disclosure>
         ))}
       </div>
-      <p className="mt-4 text-[length:var(--ou-type-xs)] leading-5 text-[var(--ou-text-tertiary)]">{debrief.boundary}</p>
+      <p className="iv-quote mt-4">{debrief.boundary}</p>
     </section>
   );
 }
@@ -664,39 +723,41 @@ function DeliveryFeedback({ summary, questions }: { summary: Record<string, unkn
   const questionEntries = Object.entries(perQuestion).sort(
     (a, b) => Number(a[0]) - Number(b[0])
   );
+  const total = items.reduce((sum, [, count]) => sum + count, 0);
   return (
-    <section className="ou-sheet p-6">
-      <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold">可观察表达事件</h2><Chip size="sm" variant="flat">不评分</Chip></div>
-      {items.length ? <div className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-3">{items.map(([key, count]) => <div key={key} className="rounded-lg bg-[var(--ou-bg-control)] p-3"><p className="text-xs text-[var(--ou-text-secondary)]">{labels[key] || key}</p><p className="mt-1 text-lg font-semibold">{count} 次</p></div>)}</div> : <p className="mt-4 text-xs text-[var(--ou-text-secondary)]">本场没有已同步的派生事件。</p>}
+    <Disclosure title="镜头前的表达事件" summary={items.length ? `${total} 次 · 不评分` : "不评分"}>
+      {items.length ? (
+        <div className="grid grid-cols-2 gap-2 pt-1 sm:grid-cols-3">
+          {items.map(([key, count]) => <div key={key} className="ou-capsule-card rounded-[var(--ou-radius-1)] p-3"><p className="iv-meta">{labels[key] || key}</p><p className="mt-1 text-[length:var(--ou-type-section)] font-semibold text-[var(--ou-text-primary)]">{count} 次</p></div>)}
+        </div>
+      ) : <p>本场没有已同步的派生事件。</p>}
       {questionEntries.length > 0 && (
-        <div className="mt-5 space-y-2">
-          <h3 className="text-xs font-semibold text-[var(--foreground-soft)]">按题分解</h3>
+        <div className="mt-4 space-y-2">
+          <p className="iv-label">按题分解</p>
           {questionEntries.map(([index, bucket]) => {
             const questionCounts = Object.entries(bucket.event_counts ?? {});
             if (!questionCounts.length) return null;
             return (
-              <div key={index} className="rounded-[var(--ou-radius-card)] bg-[var(--ou-bg-control)] p-3">
-                <p className="text-xs font-medium text-[var(--foreground-soft)]">
-                  第 {Number(index) + 1} 题
-                  {questions?.[Number(index)] ? ` · ${questions[Number(index)].slice(0, 40)}` : ""}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {questionCounts.map(([key, count]) => (
-                    <span key={key} className="rounded bg-[var(--ou-bg-control)] px-2 py-1 text-[length:var(--ou-type-xs)] text-[var(--ou-text-secondary)]">
-                      {labels[key] || key} × {count}
-                    </span>
-                  ))}
+              <div key={index}>
+                <p className="truncate text-[var(--ou-text-primary)]">第 {Number(index) + 1} 题{questions?.[Number(index)] ? ` · ${questions[Number(index)]}` : ""}</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {questionCounts.map(([key, count]) => <Pill key={key} tone="gray">{labels[key] || key} × {count}</Pill>)}
                 </div>
               </div>
             );
           })}
         </div>
       )}
-      <p className="mt-4 text-[11px] leading-5 text-[var(--foreground-muted)]">这里只统计事件类型、次数、区间、置信度和检测器版本；不保存视频帧，也不推断性格、情绪或录用概率。</p>
-    </section>
+      <p className="iv-quote mt-4">只统计事件类型、次数、区间、置信度和检测器版本；不保存视频帧，也不推断性格、情绪或录用概率。</p>
+    </Disclosure>
   );
 }
 
 function ReportList({ title, items, icon }: { title: string; items: string[]; icon: ReactNode }) {
-  return <section className="ou-sheet p-5"><div className="flex items-center gap-2 text-sm font-semibold">{icon}{title}</div>{items.length ? <ul className="mt-4 space-y-3">{items.map((item) => <li key={item} className="text-xs leading-6 text-[var(--foreground-soft)]">{item}</li>)}</ul> : <p className="mt-4 text-xs text-[var(--ou-text-secondary)]">本场暂无记录</p>}</section>;
+  return (
+    <div className="min-w-0">
+      <p className="flex items-center gap-2 iv-h3">{icon}{title}</p>
+      {items.length ? <ul className="mt-3 space-y-2">{items.map((item) => <li key={item} className="iv-muted">{item}</li>)}</ul> : <p className="iv-meta mt-3">本场暂无记录</p>}
+    </div>
+  );
 }

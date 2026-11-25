@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Spinner } from "@heroui/react";
+import { Spinner } from "@heroui/react";
 import { Camera, CameraOff, ShieldCheck } from "lucide-react";
 import type { FaceLandmarkerResult, GestureRecognizerResult } from "@mediapipe/tasks-vision";
 import SkeletonOverlay from "../../pose/components/SkeletonOverlay";
@@ -514,75 +514,67 @@ export default function InterviewStage({ interviewId, questionIndex, onBehaviorS
   const busy = cameraState === "requesting" || cameraState === "loading";
   const color = score === null ? "green" : scoreColor(score);
 
+  const veil = cameraState === "idle" || cameraState === "error" || busy;
+
   return (
-    <section className="overflow-hidden rounded-2xl border border-[var(--border-strong)] bg-white shadow-[0_14px_45px_var(--shadow-soft)]">
-      <div className="grid lg:grid-cols-2">
-        <div
-          className="relative overflow-hidden bg-[#171715]"
-          style={{ aspectRatio: `${videoSize.width} / ${videoSize.height}` }}
-        >
-          <div className="absolute inset-0" style={{ transform: "scaleX(-1)" }}>
-            <video ref={videoRef} playsInline muted className="h-full w-full object-contain" />
-            <SkeletonOverlay landmarks={landmarks} width={videoSize.width} height={videoSize.height} scoreColor={color} />
-          </div>
-
-          <div className="absolute inset-x-0 top-0 flex items-start justify-between bg-gradient-to-b from-black/60 to-transparent p-4 text-white">
-            <div>
-              <span className="flex items-center gap-2 text-xs font-medium">
-                <span className={`h-2 w-2 rounded-full ${cameraState === "live" ? "bg-emerald-400" : "bg-white/50"}`} />
-                本地视觉分析
-              </span>
-              {cameraState === "live" && (faceSignal || gestureSignal) && (
-                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
-                  {faceSignal && <span className="rounded-full bg-black/40 px-2 py-1 backdrop-blur-sm">{faceSignal}</span>}
-                  {gestureSignal && <span className="rounded-full bg-black/40 px-2 py-1 backdrop-blur-sm">{gestureSignal}</span>}
-                </div>
-              )}
-            </div>
-            {(cameraState === "calibrating" || cameraState === "live") && <button onClick={stopCamera} className="rounded-full bg-black/35 p-2 transition hover:bg-black/55" aria-label="关闭摄像头"><CameraOff size={15} /></button>}
-          </div>
-
-          {(cameraState === "idle" || cameraState === "error" || busy) && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/55 px-8 text-center text-white">
-              {busy ? (
-                <>
-                  <Spinner color="white" size="sm" />
-                  <p className="mt-3 text-sm font-medium">{cameraState === "requesting" ? "正在请求摄像头权限" : "正在加载姿态、表情和手势模型"}</p>
-                </>
-              ) : (
-                <>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10"><Camera size={21} /></div>
-                  <p className="mt-4 text-sm font-semibold">开启镜头，获得实时表达反馈</p>
-                  <p className="mt-1 max-w-xs text-xs leading-relaxed text-white/60">只提取身体、面部和手部特征，不录制、不上传视频。</p>
-                  {error && <p role="alert" className="mt-3 text-xs text-[#ffc5b5]">{error}</p>}
-                  <Button onPress={startCamera} className="mt-5 bg-white font-semibold text-[var(--foreground)]" size="sm" startContent={<Camera size={15} />}>
-                    {cameraState === "error" ? "重新开启" : "开启镜头"}
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-
-          {cameraState === "calibrating" && (
-            <div className="absolute inset-x-4 bottom-4 rounded-xl bg-black/55 p-3 text-white backdrop-blur-sm">
-              <div className="flex items-center justify-between text-xs">
-                <span>保持自然坐姿，正在校准</span>
-                <span>{Math.round((calibrationProgress / CALIBRATION_FRAMES) * 100)}%</span>
-              </div>
-              <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/20">
-                <div className="h-full rounded-full bg-white transition-[width]" style={{ width: `${(calibrationProgress / CALIBRATION_FRAMES) * 100}%` }} />
-              </div>
-            </div>
-          )}
+    <section aria-label="镜头与 AI 面试官">
+      <div className="iv-stage-wrap">
+      <div className="iv-stage" style={{ aspectRatio: `${videoSize.width} / ${videoSize.height}` }}>
+        <div className="absolute inset-0" style={{ transform: "scaleX(-1)" }}>
+          <video ref={videoRef} playsInline muted className="h-full w-full object-contain" />
+          <SkeletonOverlay landmarks={landmarks} width={videoSize.width} height={videoSize.height} scoreColor={color} />
         </div>
 
-        <ReactionAvatar reaction={reaction} score={score} />
+        {!veil && (
+          <div className="iv-stage-top">
+            <div className="flex min-w-0 flex-wrap gap-1.5">
+              <span className="iv-stage-glass"><span className="iv-stage-dot" data-live={cameraState === "live" ? "" : undefined} />本地视觉分析</span>
+              {cameraState === "live" && faceSignal && <span className="iv-stage-glass">{faceSignal}</span>}
+              {cameraState === "live" && gestureSignal && <span className="iv-stage-glass">{gestureSignal}</span>}
+            </div>
+            <button type="button" onClick={stopCamera} className="iv-stage-icon shrink-0" aria-label="关闭摄像头"><CameraOff size={16} /></button>
+          </div>
+        )}
+
+        {veil && (
+          <div className="iv-stage-veil">
+            {busy ? (
+              <>
+                <Spinner color="white" size="sm" />
+                <p className="mt-3 text-[length:var(--ou-type-body)] font-medium">{cameraState === "requesting" ? "正在请求摄像头权限" : "正在加载姿态、表情和手势模型"}</p>
+              </>
+            ) : (
+              <>
+                <span className="iv-stage-icon"><Camera size={20} aria-hidden="true" /></span>
+                <p className="mt-4 text-[length:var(--ou-type-section)] font-semibold">开启镜头，获得实时表达反馈</p>
+                <p className="iv-stage-soft mt-1 max-w-xs text-[length:var(--ou-type-sm)] leading-relaxed">不录制、不上传，画面只在本机分析。</p>
+                {error && <p role="alert" className="mt-3 text-[length:var(--ou-type-sm)] text-[var(--ou-tone-red-bg)]">{error}</p>}
+                <button type="button" onClick={startCamera} className="iv-stage-cta mt-5"><Camera size={16} aria-hidden="true" />{cameraState === "error" ? "重新开启" : "开启镜头"}</button>
+              </>
+            )}
+          </div>
+        )}
+
+        {cameraState === "calibrating" && (
+          <div className="iv-stage-bar" role="status">
+            <div className="flex items-center justify-between gap-2">
+              <span>保持自然坐姿，正在校准</span>
+              <span className="tabular-nums">{Math.round((calibrationProgress / CALIBRATION_FRAMES) * 100)}%</span>
+            </div>
+            <div className="iv-stage-meter"><i style={{ width: `${(calibrationProgress / CALIBRATION_FRAMES) * 100}%` }} /></div>
+          </div>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] bg-white px-4 py-3 text-[11px] text-[var(--foreground-muted)]">
-        <span className="flex items-center gap-1.5"><ShieldCheck size={14} /> 摄像头画面始终留在本机，只同步派生事件</span>
-        <span>{eventSyncError || "姿态校准 · 52 维面部动作 · 7 类可观察手势 · 连续状态平滑"}</span>
+      <div className="iv-stage-pip">
+        <ReactionAvatar reaction={reaction} score={score} />
       </div>
+      </div>
+
+      <p className="iv-meta mt-3 flex items-center gap-1.5" title="姿态校准 · 52 维面部动作 · 7 类可观察手势 · 连续状态平滑">
+        <ShieldCheck size={14} aria-hidden="true" className="shrink-0" />
+        <span className={eventSyncError ? "text-[var(--ou-tone-red-text)]" : undefined}>{eventSyncError || "画面始终留在本机，只同步派生事件"}</span>
+      </p>
     </section>
   );
 }

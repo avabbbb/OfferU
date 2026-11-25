@@ -10,9 +10,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mic, Plus, Square, Trash2, Upload, X } from "lucide-react";
+import { ArrowRight, Mic, Plus, Square, Trash2, Upload, X } from "lucide-react";
+import { motion } from "framer-motion";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DatePicker } from "@/components/ui";
+import { Disclosure, Reveal, SPRING, Segmented } from "../kit";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
   createReview,
@@ -51,7 +53,7 @@ function formatDay(day: string | null) {
 }
 
 /** 随内容长高的输入框，看起来像文档里的一段字。 */
-function Field({ value, onChange, placeholder, className = "", label }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string; label: string }) {
+function Field({ value, onChange, placeholder, className = "", label, size, autoFocus }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string; label: string; size?: "lead"; autoFocus?: boolean }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
     const node = ref.current;
@@ -67,45 +69,58 @@ function Field({ value, onChange, placeholder, className = "", label }: { value:
       value={value}
       placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}
-      className={`block w-full resize-none overflow-hidden bg-transparent leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] ${className}`}
+      autoFocus={autoFocus}
+      data-size={size}
+      className={`iv-field-doc ${className}`}
     />
   );
 }
 
+const DETAIL_FIELDS: Array<{ key: "answer" | "reflection" | "reaction"; label: string; placeholder: string }> = [
+  { key: "answer", label: "我怎么答的", placeholder: "当时说了哪些要点" },
+  { key: "reflection", label: "卡在哪", placeholder: "哪里没答好，下次怎么说" },
+  { key: "reaction", label: "面试官反应", placeholder: "追问、打断、点头……" },
+];
+
 function QuestionBlock({ index, item, onChange, onRemove, practiceHref }: { index: number; item: ReviewQuestion; onChange: (next: ReviewQuestion) => void; onRemove: () => void; practiceHref: string | null }) {
   const set = (key: keyof ReviewQuestion) => (value: string) => onChange({ ...item, [key]: value });
-  const row = (label: string, key: keyof ReviewQuestion, placeholder: string) => (
-    <div className="grid grid-cols-[96px_1fr] gap-3 py-1">
-      <span className="pt-[3px] text-[12.5px] text-[var(--foreground-muted)]">{label}</span>
-      <Field label={label} value={item[key]} onChange={set(key)} placeholder={placeholder} className="text-[14px]" />
-    </div>
-  );
+  // 空着的细节先收起来，点「+ 卡在哪」再展开那一格。
+  const [opened, setOpened] = useState<Set<string>>(new Set());
+  const shown = DETAIL_FIELDS.filter((field) => item[field.key].trim() || opened.has(field.key));
+  const hidden = DETAIL_FIELDS.filter((field) => !shown.includes(field));
   return (
-    <li className="group border-t border-[var(--ou-line-separator)] py-4 first:border-t-0" data-testid="review-question">
+    <motion.li layout="position" transition={SPRING} className="iv-q" data-testid="review-question">
       <div className="flex items-start gap-3">
-        <span className="w-5 shrink-0 pt-[2px] text-[13px] tabular-nums text-[var(--foreground-faint)]">{index + 1}</span>
-        <div className="min-w-0 flex-1">
-          <Field label={`第 ${index + 1} 题`} value={item.question} onChange={set("question")} placeholder="面试官问了什么" className="text-[15px] font-medium" />
-          <div className="mt-2">
-            {row("我怎么答的", "answer", "当时说了哪些要点")}
-            {row("卡在哪", "reflection", "哪里没答好，下次怎么说")}
-            {row("面试官反应", "reaction", "追问、打断、点头……")}
-          </div>
+        <span className="iv-q-num mt-0.5">{index + 1}</span>
+        <div className="min-w-0 flex-1 pt-0.5">
+          <Field label={`第 ${index + 1} 题`} value={item.question} onChange={set("question")} placeholder="面试官问了什么" size="lead" />
         </div>
-        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-          {practiceHref && item.question.trim() && (
-            <Link href={practiceHref} className="rounded-md px-2 py-1 text-[length:var(--ou-type-pill)] text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]">练这题</Link>
-          )}
-          <button type="button" onClick={onRemove} aria-label={`删除第 ${index + 1} 题`} className="grid h-7 w-7 place-items-center rounded-md text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]"><X size={14} /></button>
-        </div>
+        <button type="button" onClick={onRemove} aria-label={`删除第 ${index + 1} 题`} className="iv-icon-btn -my-2 -mr-2"><X size={15} /></button>
       </div>
-    </li>
+      {shown.length > 0 && (
+        <div className="iv-q-fields">
+          {shown.map((field) => (
+            <div key={field.key} className="iv-q-field">
+              <span className="iv-label pt-[0.1rem]">{field.label}</span>
+              <Field label={field.label} value={item[field.key]} onChange={set(field.key)} placeholder={field.placeholder} autoFocus={opened.has(field.key) && !item[field.key]} />
+            </div>
+          ))}
+        </div>
+      )}
+      {(hidden.length > 0 || (practiceHref && item.question.trim())) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-1">
+          {hidden.map((field) => (
+            <button key={field.key} type="button" className="iv-quiet" onClick={() => setOpened((prev) => new Set(prev).add(field.key))}><Plus size={14} aria-hidden="true" /> {field.label}</button>
+          ))}
+          {practiceHref && item.question.trim() && <Link href={practiceHref} className="iv-quiet ml-auto">练这题 <ArrowRight size={14} aria-hidden="true" /></Link>}
+        </div>
+      )}
+    </motion.li>
   );
 }
 
 /** 录音 / 上传录音 / 粘贴文字 → 原文 → 拆成题。 */
 function TranscriptPanel({ transcript, onTranscript, onQuestions }: { transcript: string; onTranscript: (text: string) => void; onQuestions: (items: ReviewQuestion[]) => void }) {
-  const [open, setOpen] = useState(Boolean(transcript));
   const [busy, setBusy] = useState<"" | "transcribe" | "extract">("");
   const [error, setError] = useState("");
   const [seconds, setSeconds] = useState(0);
@@ -121,7 +136,7 @@ function TranscriptPanel({ transcript, onTranscript, onQuestions }: { transcript
   useEffect(() => () => recorderRef.current?.stream.getTracks().forEach((t) => t.stop()), []);
 
   const transcribe = async (blob: Blob, name: string) => {
-    setBusy("transcribe"); setError(""); setOpen(true);
+    setBusy("transcribe"); setError("");
     try {
       const text = await transcribeAudio(blob, name);
       onTranscript(transcript ? `${transcript}\n\n${text}` : text);
@@ -149,7 +164,6 @@ function TranscriptPanel({ transcript, onTranscript, onQuestions }: { transcript
       setSeconds(0);
       recorder.start();
       setRecording(true);
-      setOpen(true);
     } catch {
       setError("没有拿到麦克风权限。可以改为上传录音文件。");
     }
@@ -168,42 +182,35 @@ function TranscriptPanel({ transcript, onTranscript, onQuestions }: { transcript
     }
   };
 
-  const quiet = "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[length:var(--ou-type-sm)] text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)] disabled:opacity-40";
   return (
-    <section className="ou-sheet px-4 py-3" data-testid="review-transcript">
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="mr-2 text-[13px] font-medium text-[var(--foreground)]">从录音整理</span>
+    <Disclosure title="从录音或笔记整理" summary={recording ? `录音中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}` : transcript ? "已有原文" : "录音 · 上传 · 粘贴"} defaultOpen={Boolean(transcript)} icon={<Mic size={15} aria-hidden="true" />} testId="review-transcript">
+      <div className="flex flex-wrap items-center gap-1 -ml-3">
         {recording ? (
-          <button type="button" className={quiet} onClick={() => recorderRef.current?.stop()}>
-            <Square size={13} className="fill-current" /> 停止并转写 · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+          <button type="button" className="iv-quiet" onClick={() => recorderRef.current?.stop()}>
+            <Square size={13} className="fill-current" aria-hidden="true" /> 停止并转写 · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
           </button>
         ) : (
-          <button type="button" className={quiet} onClick={startRecording} disabled={Boolean(busy)}><Mic size={14} /> 录音</button>
+          <button type="button" className="iv-quiet" onClick={startRecording} disabled={Boolean(busy)}><Mic size={15} aria-hidden="true" /> 录音</button>
         )}
-        <button type="button" className={quiet} onClick={() => fileRef.current?.click()} disabled={Boolean(busy) || recording}><Upload size={14} /> 上传录音</button>
-        {!open && <button type="button" className={quiet} onClick={() => setOpen(true)}>粘贴文字</button>}
+        <button type="button" className="iv-quiet" onClick={() => fileRef.current?.click()} disabled={Boolean(busy) || recording}><Upload size={15} aria-hidden="true" /> 上传录音</button>
         <input ref={fileRef} type="file" accept="audio/*,.m4a,.mp3,.wav,.webm" hidden onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void transcribe(file, file.name); }} />
-        {busy === "transcribe" && <span className="text-[12.5px] text-[var(--foreground-muted)]">正在转写…</span>}
+        {busy === "transcribe" && <span className="iv-meta">正在转写…</span>}
       </div>
-      {open && (
-        <div className="mt-3 border-t border-[var(--ou-line-separator)] pt-3">
-          <textarea
-            aria-label="面试原文"
-            value={transcript}
-            onChange={(event) => onTranscript(event.target.value)}
-            placeholder="把录音转写或面试笔记贴在这里，例如飞书妙记、通义听悟导出的文字。"
-            className="h-40 w-full resize-y bg-transparent text-[13.5px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)]"
-          />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[12px] text-[var(--foreground-faint)]">录音转完文字就删除，只保留原文。</p>
-            <button type="button" onClick={extract} disabled={!transcript.trim() || Boolean(busy)} className="ou-button ou-button-secondary ou-button-sm disabled:opacity-40" data-testid="review-extract">
-              {busy === "extract" ? "正在拆题…" : "拆成题目"}
-            </button>
-          </div>
-        </div>
-      )}
-      {error && <p className="mt-2 text-[12.5px] text-[var(--danger,#b42318)]">{error}</p>}
-    </section>
+      <textarea
+        aria-label="面试原文"
+        value={transcript}
+        onChange={(event) => onTranscript(event.target.value)}
+        placeholder="或者把录音转写、面试笔记贴在这里，例如飞书妙记、通义听悟导出的文字。"
+        className="iv-textarea mt-2 h-40 text-[length:var(--ou-type-body)]"
+      />
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="iv-meta">录音转完文字就删除，只保留原文。</p>
+        <button type="button" onClick={extract} disabled={!transcript.trim() || Boolean(busy)} className="iv-secondary" data-testid="review-extract">
+          {busy === "extract" ? "正在拆题…" : "拆成题目"}
+        </button>
+      </div>
+      {error && <p className="iv-alert mt-3">{error}</p>}
+    </Disclosure>
   );
 }
 
@@ -221,14 +228,16 @@ function RejectPrompt({ review, onDone }: { review: InterviewReview; onDone: () 
       setState(""); setError(safeClientErrorMessage(cause, "没能更新投递"));
     }
   };
-  if (state === "done") return <p className="mt-3 text-[13px] text-[var(--foreground-muted)]" data-testid="review-reject-done">投递已标成未通过。</p>;
+  if (state === "done") return <p className="iv-muted mt-4" data-testid="review-reject-done">投递已标成未通过。</p>;
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]" data-testid="review-reject-prompt">
-      <span className="text-[var(--foreground)]">要把投递也标成未通过吗？</span>
-      <button type="button" onClick={confirm} disabled={state === "busy"} className="ou-button ou-button-secondary ou-button-sm disabled:opacity-40">标成未通过</button>
-      <button type="button" onClick={onDone} className="rounded-md px-2.5 py-1 text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)]">不用</button>
-      {error && <span className="text-[var(--danger,#b42318)]">{error}</span>}
-    </div>
+    <Reveal>
+      <div className="iv-card-flat mt-4 flex flex-wrap items-center gap-2" data-testid="review-reject-prompt">
+        <span className="mr-auto text-[length:var(--ou-type-body)] text-[var(--ou-text-primary)]">要把投递也标成未通过吗？</span>
+        <button type="button" onClick={onDone} className="iv-quiet">不用</button>
+        <button type="button" onClick={confirm} disabled={state === "busy"} className="iv-secondary">标成未通过</button>
+        {error && <span className="w-full text-[length:var(--ou-type-sm)] text-[var(--ou-tone-red-text)]">{error}</span>}
+      </div>
+    </Reveal>
   );
 }
 
@@ -244,30 +253,43 @@ function Editor({ review, onChange, onDelete }: { review: InterviewReview; onCha
     return picked.length ? `/interview/ai?review=${review.id}&q=${picked.slice(0, 10).join(",")}` : null;
   };
   const allPractice = practice();
-  const meta = "bg-transparent text-[13.5px] text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)]";
+  const practiceCount = Math.min(10, review.questions.filter((q) => q.question.trim()).length);
 
   return (
-    <article className="min-w-0 flex-1" data-testid="review-editor">
-      <div className="flex items-start justify-between gap-4">
-        <input aria-label="公司" value={review.company} onChange={(e) => set("company", e.target.value)} placeholder="公司" style={{ fontSize: 22 }} className="min-w-0 flex-1 bg-transparent text-[22px] font-semibold tracking-tight text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)]" />
-        <div className="flex shrink-0 items-center gap-1">
-          {allPractice && <Link href={allPractice} className="ou-button ou-button-secondary ou-button-sm" data-testid="review-practice-all">模拟练习这 {Math.min(10, review.questions.filter((q) => q.question.trim()).length)} 题</Link>}
-          <button type="button" onClick={onDelete} aria-label="删除这场复盘" title="删除这场复盘" className="grid h-8 w-8 place-items-center rounded-md text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]"><Trash2 size={15} /></button>
-        </div>
+    <article className="min-w-0" data-testid="review-editor">
+      <div className="flex items-start gap-2">
+        <input aria-label="公司" value={review.company} onChange={(e) => set("company", e.target.value)} placeholder="公司" className="iv-title-input flex-1" />
+        <button type="button" onClick={onDelete} aria-label="删除这场复盘" title="删除这场复盘" className="iv-icon-btn -mr-2"><Trash2 size={16} /></button>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--foreground-muted)]">
-        <input aria-label="岗位" value={review.role} onChange={(e) => set("role", e.target.value)} placeholder="岗位" className={`${meta} w-44`} />
-        <input aria-label="轮次" value={review.round_label} onChange={(e) => set("round_label", e.target.value)} placeholder="一面 / 二面 / HR 面" list="review-rounds" className={`${meta} w-32`} />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input aria-label="岗位" value={review.role} onChange={(e) => set("role", e.target.value)} placeholder="岗位" className="iv-meta-input w-[min(16rem,100%)]" />
+        <input aria-label="轮次" value={review.round_label} onChange={(e) => set("round_label", e.target.value)} placeholder="一面 / 二面 / HR 面" list="review-rounds" className="iv-meta-input w-36" />
         <datalist id="review-rounds">{["一面", "二面", "三面", "HR 面", "终面", "笔试"].map((r) => <option key={r} value={r} />)}</datalist>
-        <DatePicker size="sm" aria-label="面试日期" placeholder="面试日期" value={review.interviewed_on ?? ""} onChange={(v) => set("interviewed_on", v || null)} className="w-44" />
-        <div role="radiogroup" aria-label="结果" className="inline-flex rounded-lg bg-[var(--ou-bg-control)] p-0.5">
-          {OUTCOMES.map((o) => (
-            <button key={o.id} type="button" role="radio" aria-checked={review.outcome === o.id} onClick={() => set("outcome", o.id)} className={`rounded-md px-2.5 py-1 text-[length:var(--ou-type-pill)] ${review.outcome === o.id ? "bg-[var(--ou-bg-surface)] font-medium text-[var(--ou-text-primary)]" : "text-[var(--ou-text-secondary)]"}`}>{o.label}</button>
-          ))}
-        </div>
+        <div className="w-44 shrink-0"><DatePicker size="sm" aria-label="面试日期" placeholder="面试日期" value={review.interviewed_on ?? ""} onChange={(v) => set("interviewed_on", v || null)} /></div>
+        <Segmented inline label="结果" value={review.outcome} options={OUTCOMES.map((o) => ({ value: o.id, label: o.label }))} onChange={(value) => set("outcome", value)} />
       </div>
 
       {askReject && <RejectPrompt review={review} onDone={() => setAskReject(false)} />}
+
+      {allPractice && (
+        <div className="iv-card-flat mt-6 flex flex-wrap items-center justify-between gap-3">
+          <p className="iv-muted min-w-0">把这场被问到的 {practiceCount} 道题拿去模拟练一遍。</p>
+          <Link href={allPractice} className="iv-primary" data-testid="review-practice-all">模拟练习这 {practiceCount} 题 <ArrowRight size={16} aria-hidden="true" /></Link>
+        </div>
+      )}
+
+      <div className="mt-8 flex items-baseline justify-between gap-3">
+        <h2 className="iv-h3">被问到的题</h2>
+        <span className="iv-meta">{review.questions.length} 道</span>
+      </div>
+      <ol className="mt-3">
+        {review.questions.map((item, index) => (
+          <QuestionBlock key={index} index={index} item={item} onChange={(next) => setQuestion(index, next)} onRemove={() => set("questions", review.questions.filter((_, i) => i !== index))} practiceHref={practice([index])} />
+        ))}
+      </ol>
+      <button type="button" onClick={() => set("questions", [...review.questions, emptyQuestion()])} className="iv-quiet mt-2 -ml-3" data-testid="review-add-question">
+        <Plus size={15} aria-hidden="true" /> 添加一道题
+      </button>
 
       <div className="mt-6">
         <TranscriptPanel
@@ -277,19 +299,11 @@ function Editor({ review, onChange, onDelete }: { review: InterviewReview; onCha
         />
       </div>
 
-      <h2 className="mt-8 text-[13px] font-medium text-[var(--foreground-muted)]">被问到的题</h2>
-      <ol className="mt-1">
-        {review.questions.map((item, index) => (
-          <QuestionBlock key={index} index={index} item={item} onChange={(next) => setQuestion(index, next)} onRemove={() => set("questions", review.questions.filter((_, i) => i !== index))} practiceHref={practice([index])} />
-        ))}
-      </ol>
-      <button type="button" onClick={() => set("questions", [...review.questions, emptyQuestion()])} className="mt-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[length:var(--ou-type-sm)] text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]" data-testid="review-add-question">
-        <Plus size={14} /> 添加一道题
-      </button>
-
-      <h2 className="mt-8 text-[13px] font-medium text-[var(--foreground-muted)]">整体感受</h2>
-      <Field label="整体感受" value={review.summary} onChange={(v) => set("summary", v)} placeholder="这一轮整体怎么样，下次最想改的一件事" className="mt-2 text-[14px]" />
-      <SaveToMemory review={review} />
+      <section className="iv-card mt-8">
+        <h2 className="iv-h3">整体感受</h2>
+        <Field label="整体感受" value={review.summary} onChange={(v) => set("summary", v)} placeholder="这一轮整体怎么样，下次最想改的一件事" className="mt-2" />
+        <SaveToMemory review={review} />
+      </section>
     </article>
   );
 }
@@ -325,12 +339,11 @@ function SaveToMemory({ review }: { review: InterviewReview }) {
     }
   };
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-3 text-[13px]" data-testid="review-save-memory">
-      <button type="button" onClick={save} disabled={!items.length || state === "busy"}
-        className="ou-button ou-button-secondary ou-button-sm disabled:opacity-40">
+    <div className="mt-4 flex flex-wrap items-center gap-3" data-testid="review-save-memory">
+      <button type="button" onClick={save} disabled={!items.length || state === "busy"} className="iv-secondary">
         {state === "busy" ? "正在存…" : items.length ? "存进档案（" + items.length + " 条）" : "都存过了"}
       </button>
-      {notice && <span role="status" className="text-[var(--foreground-muted)]">{notice}</span>}
+      {notice && <span role="status" className="iv-muted">{notice}</span>}
     </div>
   );
 }
@@ -345,11 +358,11 @@ function stuckQuestions(reviews: InterviewReview[]): Stuck[] {
 
 function StuckItem({ stuck }: { stuck: Stuck }) {
   return (
-    <li className="py-2.5">
-      <Link href={`/interview/review?id=${stuck.review.id}`} className="block rounded-md hover:bg-[var(--ou-bg-control)] -mx-2 px-2 py-1">
-        <span className="block text-[14px] text-[var(--foreground)]">{stuck.item.question}</span>
-        <span className="mt-1 block text-[13px] text-[var(--foreground-muted)]">{stuck.item.reflection}</span>
-        <span className="mt-1 block text-[12px] text-[var(--foreground-faint)]">{reviewTitle(stuck.review)}{stuck.review.interviewed_on ? ` · ${formatDay(stuck.review.interviewed_on)}` : ""}</span>
+    <li>
+      <Link href={`/interview/review?id=${stuck.review.id}`} className="-mx-3 block rounded-[var(--ou-radius-control)] px-3 py-3 hover:bg-[var(--ou-bg-hover)]">
+        <span className="block text-[length:var(--ou-type-body)] font-medium text-[var(--ou-text-primary)]">{stuck.item.question}</span>
+        <span className="iv-muted mt-1 block">{stuck.item.reflection}</span>
+        <span className="iv-meta mt-1 block">{reviewTitle(stuck.review)}{stuck.review.interviewed_on ? ` · ${formatDay(stuck.review.interviewed_on)}` : ""}</span>
       </Link>
     </li>
   );
@@ -380,47 +393,53 @@ function WeakSpots({ reviews }: { reviews: InterviewReview[] }) {
   };
 
   return (
-    <article className="min-w-0 flex-1" data-testid="review-weak-spots">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-[22px] font-semibold tracking-tight text-[var(--foreground)]">反复卡住的题</h2>
-          <p className="mt-1.5 text-[13.5px] text-[var(--foreground-muted)]">
-            {stuck.length ? `${sessions} 场复盘里写了「卡在哪」的 ${stuck.length} 道题。按考察点归类后，能看出哪些地方不止一次出问题。` : "复盘里写了「卡在哪」的题会汇总到这里。"}
-          </p>
+    <article className="min-w-0" data-testid="review-weak-spots">
+      <div className="iv-head">
+        <div className="min-w-0">
+          <h2 className="iv-title">反复卡住的题</h2>
+          <p className="iv-lede">{stuck.length ? `${sessions} 场复盘里写了「卡在哪」的 ${stuck.length} 道题。` : "复盘里写了「卡在哪」的题会汇总到这里。"}</p>
         </div>
         {stuck.length > 0 && (
-          <button type="button" onClick={group} disabled={busy} className="shrink-0 ou-button ou-button-secondary ou-button-sm disabled:opacity-50" data-testid="weak-group">
+          <button type="button" onClick={group} disabled={busy} className={topics ? "iv-secondary" : "iv-primary"} data-testid="weak-group">
             {busy ? "正在归类…" : topics ? "重新归类" : "按考察点归类"}
           </button>
         )}
       </div>
-      {error && <p className="mt-3 text-[12.5px] text-[var(--danger,#b42318)]">{error}</p>}
-      {topics && result?.stale && stuck.length > 0 && <p className="mt-3 text-[13px] text-[var(--foreground)]" data-testid="weak-stale">归类之后复盘有改动，可以重新归类。</p>}
+      {error && <p className="iv-alert mt-4">{error}</p>}
+      {topics && result?.stale && stuck.length > 0 && <p className="iv-muted mt-4" data-testid="weak-stale">归类之后复盘有改动，可以重新归类。</p>}
 
       {topics ? (
-        <div className="mt-6 space-y-8">
-          {topics.map((topic) => {
+        <div className="mt-6 space-y-4">
+          {topics.map((topic, index) => {
             const items = topic.refs.map((ref) => byRef.get(ref)).filter((s): s is Stuck => Boolean(s));
             if (!items.length) return null;
             const times = new Set(items.map((s) => s.review.id)).size;
             const refs = items.slice(0, 10).map((s) => s.ref).join(",");
             return (
-              <section key={topic.title + refs} data-testid="weak-topic">
-                <div className="flex items-baseline justify-between gap-4">
-                  <h3 className="text-[15px] font-semibold text-[var(--foreground)]">
-                    {topic.title}
-                    <span className="ml-2 text-[12.5px] font-normal text-[var(--foreground-muted)]">{times > 1 ? `${times} 场都卡过` : "卡过 1 次"}</span>
-                  </h3>
-                  <Link href={`/interview/ai?from=${refs}&topic=${encodeURIComponent(topic.title)}`} className="shrink-0 text-[13px] font-medium text-[var(--foreground)] underline-offset-4 hover:underline" data-testid="weak-practice">专练这组</Link>
-                </div>
-                {topic.advice && <p className="mt-1 text-[13.5px] text-[var(--foreground)]">{topic.advice}</p>}
-                <ul className="mt-1 divide-y divide-[var(--ou-line-separator)]">{items.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
-              </section>
+              <Reveal key={topic.title + refs} delay={Math.min(index, 8) * 0.03}>
+                <section className="iv-card" data-testid="weak-topic">
+                  <div className="iv-row">
+                    <div className="min-w-0">
+                      <h3 className="iv-h3">{topic.title}</h3>
+                      <p className="iv-meta mt-0.5">{times > 1 ? `${times} 场都卡过` : "卡过 1 次"} · {items.length} 道题</p>
+                    </div>
+                    <Link href={`/interview/ai?from=${refs}&topic=${encodeURIComponent(topic.title)}`} className="iv-secondary" data-testid="weak-practice">专练这组 <ArrowRight size={15} aria-hidden="true" /></Link>
+                  </div>
+                  {topic.advice && <p className="mt-3 text-[length:var(--ou-type-body)] text-[var(--ou-text-primary)]">{topic.advice}</p>}
+                  <div className="mt-3">
+                    <Disclosure title="看看是哪几道" summary={`${items.length} 道`}>
+                      <ul className="divide-y divide-[var(--ou-line-separator)]">{items.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
+                    </Disclosure>
+                  </div>
+                </section>
+              </Reveal>
             );
           })}
         </div>
-      ) : (
-        <ul className="mt-4 divide-y divide-[var(--ou-line-separator)]">{stuck.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
+      ) : stuck.length > 0 && (
+        <section className="iv-card mt-6">
+          <ul className="divide-y divide-[var(--ou-line-separator)]">{stuck.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
+        </section>
       )}
     </article>
   );
@@ -479,56 +498,55 @@ export default function InterviewReviewPage() {
   };
 
   let body: ReactNode;
-  if (!reviews) body = <p className="py-16 text-center text-[13px] text-[var(--foreground-muted)]">{error || "正在读取…"}</p>;
+  if (!reviews) body = <p className="iv-muted py-16 text-center">{error || "正在读取…"}</p>;
   else if (!current) {
     body = (
-      <div className="grid min-h-[40vh] place-items-center text-center" data-testid="review-empty">
-        <div>
-          <p className="text-[15px] font-medium text-[var(--foreground)]">还没有复盘</p>
-          <p className="mt-2 text-[13.5px] text-[var(--foreground-muted)]">面完趁还记得，把被问到的题记下来。可以手写，也可以录音。</p>
-          <button type="button" onClick={create} className="mt-5 rounded-md bg-[var(--foreground)] px-3.5 py-2 text-[13px] font-medium text-[var(--surface)]">新建复盘</button>
-        </div>
+      <div className="iv-card iv-empty mx-auto max-w-lg" data-testid="review-empty">
+        <p className="iv-h2">还没有复盘</p>
+        <p className="iv-muted">面完趁还记得，把被问到的题记下来。可以手写，也可以录音。</p>
+        <button type="button" onClick={create} className="iv-primary mt-3"><Plus size={16} aria-hidden="true" /> 新建复盘</button>
       </div>
     );
   } else {
+    const stuckCount = stuckQuestions(reviews).length;
     body = (
-      <div className="flex gap-10">
-        <aside className="w-56 shrink-0" aria-label="复盘列表">
-          <button type="button" onClick={create} className="mb-2 inline-flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[length:var(--ou-type-sm)] text-[var(--ou-text-secondary)] hover:bg-[var(--ou-bg-control)] hover:text-[var(--ou-text-primary)]" data-testid="review-new">
-            <Plus size={14} /> 新建复盘
-          </button>
-          <button type="button" onClick={() => router.push("/interview/review?view=weak")} aria-current={weakView ? "page" : undefined} className={`mb-2 flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[length:var(--ou-type-body)] font-medium text-[var(--ou-text-primary)] ${weakView ? "bg-[var(--ou-bg-control)]" : "hover:bg-[var(--ou-bg-control)]"}`} data-testid="review-weak-link">
-            反复卡住的题
-            <span className="text-[12px] font-normal text-[var(--foreground-muted)]">{stuckQuestions(reviews).length || ""}</span>
-          </button>
-          <ul className="space-y-0.5 border-t border-[var(--ou-line-separator)] pt-2">
+      <div className="iv-review">
+        <nav aria-label="复盘列表" className="min-w-0">
+          <div className="iv-review-nav">
+            <button type="button" onClick={create} className="iv-review-nav-item iv-review-new text-[length:var(--ou-type-sm)] font-medium text-[var(--ou-text-secondary)]" data-testid="review-new">
+              <Plus size={15} aria-hidden="true" /> 新建复盘
+            </button>
+            <button type="button" onClick={() => router.push("/interview/review?view=weak")} aria-current={weakView ? "page" : undefined} className="iv-review-nav-item" data-testid="review-weak-link">
+              {weakView && <motion.span layoutId="iv-review-hl" className="iv-highlight" transition={SPRING} aria-hidden="true" />}
+              <span className="flex items-center justify-between gap-3 text-[length:var(--ou-type-body)] font-semibold">反复卡住的题<span className="iv-meta font-normal tabular-nums">{stuckCount || ""}</span></span>
+            </button>
+            <span className="iv-review-sep" aria-hidden="true" />
             {reviews.map((review) => {
               const active = !weakView && review.id === current.id;
               const outcome = OUTCOMES.find((o) => o.id === review.outcome)?.label;
               return (
-                <li key={review.id}>
-                  <button type="button" onClick={() => select(review.id)} aria-current={active ? "page" : undefined} className={`w-full rounded-md px-2.5 py-2 text-left ${active ? "bg-[var(--ou-bg-control)]" : "hover:bg-[var(--ou-bg-control)]"}`}>
-                    <span className="block truncate text-[13.5px] font-medium text-[var(--foreground)]">{reviewTitle(review)}</span>
-                    <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">{[formatDay(review.interviewed_on), outcome].filter(Boolean).join(" · ")}</span>
-                  </button>
-                </li>
+                <button key={review.id} type="button" onClick={() => select(review.id)} aria-current={active ? "page" : undefined} className="iv-review-nav-item">
+                  {active && <motion.span layoutId="iv-review-hl" className="iv-highlight" transition={SPRING} aria-hidden="true" />}
+                  <span className="block truncate text-[length:var(--ou-type-body)] font-medium">{reviewTitle(review)}</span>
+                  <span className="iv-meta mt-0.5 block truncate">{[formatDay(review.interviewed_on), outcome].filter(Boolean).join(" · ")}</span>
+                </button>
               );
             })}
-          </ul>
-        </aside>
+          </div>
+        </nav>
         {weakView ? <WeakSpots reviews={reviews} /> : <Editor key={current.id} review={current} onChange={update} onDelete={() => remove(current)} />}
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="iv-page-wide space-y-6">
       <PageHeader
         title="复盘"
-        description="每场真实面试一页：被问到什么、怎么答的、卡在哪。答不好的题可以直接拿去模拟练。"
-        actions={saveState && <span className="text-[12.5px] text-[var(--foreground-faint)]" data-testid="review-save-state">{saveState === "saving" ? "正在保存…" : "已保存"}</span>}
+        description="每场真实面试一页：被问到什么、怎么答的、卡在哪。"
+        actions={saveState && <span className="iv-meta" role="status" data-testid="review-save-state">{saveState === "saving" ? "正在保存…" : "已保存"}</span>}
       />
-      {error && reviews && <p className="text-[12.5px] text-[var(--danger,#b42318)]">{error}</p>}
+      {error && reviews && <p className="iv-alert">{error}</p>}
       {body}
     </div>
   );
