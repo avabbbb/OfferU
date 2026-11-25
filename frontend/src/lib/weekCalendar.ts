@@ -67,12 +67,12 @@ export function layoutDay(events: Event[]): Stack[] {
   return stacks;
 }
 
-/** 事项类型 → 色相：截止红、笔试黄、面试橙、待办蓝；做完的一律灰。 */
-export const KIND_TONE: Record<EventKind, "blue" | "red" | "yellow" | "orange"> = {
-  todo: "blue", deadline: "red", test: "yellow", interview: "orange",
+/** 事项类型 → 色相：截止红、笔试黄、面试橙、待办灰；做完的也是灰，另加删除线。 */
+export const KIND_TONE: Record<EventKind, "gray" | "red" | "yellow" | "orange"> = {
+  todo: "gray", deadline: "red", test: "yellow", interview: "orange",
 };
 export function eventTone(event: Event) {
-  return event.done ? "gray" : KIND_TONE[event.kind ?? "todo"] ?? "blue";
+  return event.done ? "gray" : KIND_TONE[event.kind ?? "todo"] ?? "gray";
 }
 
 /** 拖到某天某个位置：吸附到 15 分钟。 */

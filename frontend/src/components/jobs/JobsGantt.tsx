@@ -18,7 +18,7 @@ import { ghost } from "./ViewPanels";
 // 低饱和填充色（和状态胶囊同一套色），圆角色块、不加左边框，照 Notion 时间线。
 // 甘特条与事件点用色卡 v2 的状态色：条 = 浅底，点 = 圆点级。
 const BAR: Record<string, string> = Object.fromEntries(
-  ["gray", "blue", "yellow", "orange", "green", "red"].map((tone) => [tone, `var(--ou-tone-${tone}-bg)`]),
+  ["gray", "brown", "yellow", "orange", "green", "red"].map((tone) => [tone, `var(--ou-tone-${tone}-bg)`]),
 );
 const DOT: Record<string, string> = {
   deadline: "var(--ou-tone-red-dot)", test: "var(--ou-tone-yellow-dot)", interview: "var(--ou-tone-orange-dot)", todo: "var(--ou-tone-gray-dot)",

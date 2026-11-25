@@ -28,7 +28,7 @@ describe("分组依据", () => {
     const cols = boardColumns(JOBS, "status");
     expect(cols.map((c) => c.value)).toEqual(["saved", "applied", "test", "interview", "offer", "rejected", "closed"]);
     expect(cols[1].jobs.map((j) => j.id)).toEqual([1, 3]);
-    expect(cols[1]).toMatchObject({ key: "status=applied", label: "已投递", tone: "blue" });
+    expect(cols[1]).toMatchObject({ key: "status=applied", label: "已投递", tone: "brown" });
     expect(cols.some((c) => c.value === null)).toBe(false);
   });
 

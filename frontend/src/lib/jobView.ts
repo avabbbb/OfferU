@@ -22,8 +22,8 @@ export const FIELD_KEYS = Object.keys(FIELDS) as FieldKey[];
 export const PRIMARY: FieldKey = "company";
 export const STATUS_ORDER = Object.keys(JOB_STATUS) as JobStatus[];
 /** 状态胶囊配色，表格 / 看板 / 甘特共用。 */
-export const STATUS_TONE: Record<JobStatus, "gray" | "blue" | "yellow" | "orange" | "green" | "red"> = {
-  saved: "gray", applied: "blue", test: "yellow", interview: "orange", offer: "green", rejected: "red", closed: "gray",
+export const STATUS_TONE: Record<JobStatus, "gray" | "brown" | "yellow" | "orange" | "green" | "red"> = {
+  saved: "gray", applied: "brown", test: "yellow", interview: "orange", offer: "green", rejected: "red", closed: "gray",
 };
 // 状态下拉的分组（照 Notion：待办 / 进行中 / 已完成）。
 export const STATUS_GROUPS: Array<[string, JobStatus[]]> = [
