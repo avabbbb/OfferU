@@ -92,7 +92,7 @@ export async function fetchPage(fetcher: HttpFetch | undefined, url: string): Pr
 
 export type SearchResult = { title: string; url: string; snippet: string; engine: string };
 
-/** A search backend. `search` returns [] for "nothing found"; `available` false means nothing is configured. */
+/** A search backend. `search` returns [] for "nothing found" and throws CoreError when every provider failed; `available` false means nothing is configured. */
 export interface SearchClient {
   readonly available: boolean;
   search(query: string, limit: number): Promise<SearchResult[]>;
@@ -143,14 +143,32 @@ function cleanResult(title: unknown, url: unknown, snippet: unknown, engine: str
   };
 }
 
+/** A provider answered with an HTTP error (bad key, quota, outage). */
+class ProviderHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+  }
+}
+
+function providerFailure(engine: string, cause: unknown): string {
+  if (cause instanceof ProviderHttpError) {
+    const why = cause.status === 401 || cause.status === 403 ? "key 无效或已过期" : cause.status === 429 ? "额度用完或请求太频繁" : "服务出错";
+    return `${engine} HTTP ${cause.status}（${why}）`;
+  }
+  const aborted = cause instanceof Error && cause.name === "AbortError";
+  return `${engine} ${aborted ? "超过 20 秒没响应" : `请求失败：${cause instanceof Error ? cause.message : String(cause)}`}`;
+}
+
 /**
  * Bocha / Tavily / Serper fallback chain (Python services/web_search.web_search):
- * first non-empty result wins, provider errors fall through. ddgs (a Python-only
- * optional package) is not ported.
+ * first non-empty result wins and a failing provider falls through to the next.
+ * When every provider fails, the failures are thrown (CoreError "not_configured"
+ * when all of them rejected the key, else "upstream"), so a dead key or used-up
+ * quota never looks like "no results".
  */
 export function createSearchClient(keys: SearchKeys, fetcher: HttpFetch): SearchClient {
   const provider = keys.provider ?? "auto";
-  type Runner = (query: string, limit: number) => Promise<SearchResult[]>;
+  type Runner = { engine: string; run: (query: string, limit: number) => Promise<SearchResult[]> };
   const post = async (url: string, body: unknown, headers: Record<string, string> = {}): Promise<any> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
@@ -162,7 +180,7 @@ export function createSearchClient(keys: SearchKeys, fetcher: HttpFetch): Search
         redirect: "manual",
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new ProviderHttpError(response.status);
       return await response.json();
     } finally {
       clearTimeout(timer);
@@ -170,25 +188,25 @@ export function createSearchClient(keys: SearchKeys, fetcher: HttpFetch): Search
   };
   const chain: Runner[] = [];
   if ((provider === "auto" || provider === "bocha") && keys.bochaApiKey) {
-    chain.push(async (query, limit) => {
+    chain.push({ engine: "bocha", run: async (query, limit) => {
       const payload = await post("https://api.bochaai.com/v1/web-search", { query, count: limit, summary: true }, { Authorization: `Bearer ${keys.bochaApiKey}` });
       const items: any[] = payload?.data?.webPages?.value ?? [];
       return items.slice(0, limit).map((item) => cleanResult(item.name, item.url, item.summary || item.snippet, "bocha")).filter((r): r is SearchResult => r !== null);
-    });
+    } });
   }
   if ((provider === "auto" || provider === "tavily") && keys.tavilyApiKey) {
-    chain.push(async (query, limit) => {
+    chain.push({ engine: "tavily", run: async (query, limit) => {
       const payload = await post("https://api.tavily.com/search", { api_key: keys.tavilyApiKey, query, max_results: limit });
       const items: any[] = payload?.results ?? [];
       return items.slice(0, limit).map((item) => cleanResult(item.title, item.url, item.content, "tavily")).filter((r): r is SearchResult => r !== null);
-    });
+    } });
   }
   if ((provider === "auto" || provider === "serper") && keys.serperApiKey) {
-    chain.push(async (query, limit) => {
+    chain.push({ engine: "serper", run: async (query, limit) => {
       const payload = await post("https://google.serper.dev/search", { q: query, num: limit }, { "X-API-KEY": keys.serperApiKey! });
       const items: any[] = payload?.organic ?? [];
       return items.slice(0, limit).map((item) => cleanResult(item.title, item.link, item.snippet, "serper")).filter((r): r is SearchResult => r !== null);
-    });
+    } });
   }
   return {
     available: chain.length > 0,
@@ -196,22 +214,28 @@ export function createSearchClient(keys: SearchKeys, fetcher: HttpFetch): Search
       const clean = query.trim();
       if (!clean) throw new CoreError("query 不能为空");
       const safe = Math.max(1, Math.min(Math.trunc(limit), 20));
-      for (const run of chain) {
+      const failures: unknown[] = [];
+      const reasons: string[] = [];
+      for (const { engine, run } of chain) {
         try {
           const results = await run(clean, safe);
           if (results.length) return results;
-        } catch {
-          // next provider
+        } catch (cause) {
+          failures.push(cause);
+          reasons.push(providerFailure(engine, cause));
         }
       }
-      return [];
+      if (failures.length < chain.length) return [];
+      const badKeys = failures.every((cause) => cause instanceof ProviderHttpError && (cause.status === 401 || cause.status === 403));
+      throw new CoreError(`搜索服务都没成功：${reasons.join("；")}。${badKeys ? "检查搜索服务的 key 是否正确。" : "稍后再试一次。"}`, badKeys ? "not_configured" : "upstream");
     },
   };
 }
 
-export const NO_SEARCH = "没配搜索服务：在设置里填 Bocha / Tavily / Serper 的 key（或装 ddgs）后才能搜网页";
+/** No search key: the companion and CLI read BOCHA_API_KEY / TAVILY_API_KEY / SERPER_API_KEY; the web version has no search. */
+export const NO_SEARCH = "没配搜索服务，搜不了网页。本机 OfferU 和 CLI：设置环境变量 BOCHA_API_KEY、TAVILY_API_KEY 或 SERPER_API_KEY（本机服务要重启）；网页版暂时不能联网搜索。";
 
 export async function webSearch(search: SearchClient | null | undefined, query: string, limit = 8): Promise<{ query: string; items: SearchResult[] }> {
-  if (!search?.available) throw new CoreError(NO_SEARCH, "unsupported");
+  if (!search?.available) throw new CoreError(NO_SEARCH, "not_configured");
   return { query, items: await search.search(query, limit) };
 }

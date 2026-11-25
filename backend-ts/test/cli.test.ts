@@ -93,6 +93,20 @@ describe("CLI", () => {
     expect(JSON.parse(second.out)).toMatchObject({ count: 1 });
   }, 60_000);
 
+  it("`offeru tool` failures carry a stable code next to the Chinese error", async () => {
+    const dir = dataDir();
+    const noSearch = { BOCHA_API_KEY: "", TAVILY_API_KEY: "", SERPER_API_KEY: "" };
+    const [unconfigured, broken] = await Promise.all([
+      cli(dir, ["tool", "web_search", JSON.stringify({ query: "飞书 招聘" })], noSearch),
+      cli(dir, ["tool", "list", "{nope"]),
+    ]);
+    expect(unconfigured.code).toBe(1);
+    expect(JSON.parse(unconfigured.out)).toMatchObject({ code: "not_configured", error: expect.stringContaining("BOCHA_API_KEY") });
+    expect(JSON.parse(unconfigured.out).error).not.toContain("ddgs");
+    expect(broken.code).toBe(1);
+    expect(JSON.parse(broken.out)).toMatchObject({ code: "invalid", error: expect.stringContaining("参数不是合法 JSON") });
+  }, 60_000);
+
   it("`offeru sync` reports status and fails with {error, code} before it is set up", async () => {
     const dir = dataDir();
     const [status, now, bad, unknown] = await Promise.all([

@@ -135,7 +135,7 @@ export class NodeAgentBoard implements AgentBoardService {
    */
   skillContent(id = ""): string {
     const source = readFileSync(SOURCE_SKILL, "utf8");
-    if (!source.includes("<offeru>")) throw new CoreError("OfferU Skill is missing its command placeholder; reinstall OfferU.");
+    if (!source.includes("<offeru>")) throw new CoreError("OfferU Skill 缺少命令占位符，请重新安装 OfferU。");
     const actor = id ? ` --actor ${/^[\w.-]+$/.test(id) ? id : JSON.stringify(id)}` : "";
     return source.split("<offeru>").join(`${this.toolCommand()}${actor}`);
   }

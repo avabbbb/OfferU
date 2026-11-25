@@ -16,7 +16,7 @@ version: 2026-11-24
 - `<offeru> tool <名字> [<名字>…] --help`：完整说明和参数 schema。参数不确定时先查，只查要用的。
 - `<offeru> recipe <id>`：常用流程（调研、证据对照、改简历、面试准备）该按什么顺序调哪些工具。
 - `<offeru> tool overview`、`<offeru> tool get '{"type":"job","id":3}'`：调用。参数含中文或在 PowerShell 里，先写成 UTF-8 的 JSON 文件，再 `<offeru> tool save @args.json`（或 `-` 走标准输入）。
-- 输出是 JSON，可以接 `jq` 或写文件；失败时打印 `{"error": …}` 并以 1 退出，按提示改参数。命令不通看文末。
+- 输出是 JSON，可以接 `jq` 或写文件；失败时打印 `{"error": …, "code": …}` 并以 1 退出。code 是固定的英文错误类型（参数不对、找不到、有冲突、只能用户本人做、这个环境做不了、缺配置、外部服务出错），按它决定改参数、先查 id、照实告诉用户还是稍后重试一次。命令不通看文末。
 - 会调模型的工具（evaluate_jobs、tailor_resume、split_resume、apply_answer 等）用工作台「设置 → 模型」里存的模型。没配模型时不报错，而是返回 `{"handoff": {how, pending}}`：你就是模型。按每条 pending 的 messages 自己作答（json=true 只回严格 JSON），把 `{"<id>": "<回答>"}` 累积进 answers.json，同样的命令加 `--answers @answers.json` 再跑，直到返回正常结果（可能要两三轮）。不要自己找 key。
 
 ## 数据在网页版时：同步
@@ -37,10 +37,10 @@ profile 档案；memory 职业记忆（一条一件事）；job 岗位；event �
 
 1. 开场 overview。查经历和用户说过的话用 search；list 列表，get 看全文；save、delete 写删；改错用 changes + undo；记忆前后对不上用 reconcile_memory（只读，用户在档案页采纳）。
 2. 旧简历：find_files → read_file → split_resume。
-3. 用户贴链接、JD 或「公司 岗位」：add_job。抓不到（要登录、在图片里）就让用户贴正文或用插件存，不存空壳。add_job 会自动打标签（招聘类型、城市、方向、公司属性），用户要加或去标签就 save 改 tags。
+3. 用户贴链接、JD 或「公司 岗位」：add_job；贴的是文字又知道出处，把出处链接传 source_url（只记录不抓取）。抓不到（要登录、在图片里）就让用户贴正文或用插件存，不存空壳。add_job 会自动打标签（招聘类型、城市、方向、公司属性），用户要加或去标签就 save 改 tags。
 4. 存完马上 evaluate_jobs：分数、三句理由、打招呼语。打招呼语里每个事实都要在档案里找得到。
 5. 改简历：tailor_resume。asks 逐句问用户；用户确认的回答 save 成 memory（带原话和日期），再 review_only=true 改一次。导出 export_resume_pdf。
-6. 网申 apply_answer；邮件 draft_email；邮箱回执 email_sync。
+6. 网申 apply_answer；邮件 draft_email。邮箱同步还没实现：用户贴来回执或邀约邮件时，按内容 save 岗位状态和事项。
 
 ## 面试准备（每步存 doc，挂到岗位）
 

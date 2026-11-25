@@ -18,7 +18,7 @@ import { callTool, toolDeps } from "../src/tools";
 const here = dirname(fileURLToPath(import.meta.url));
 const PYTHON_TOOL_ORDER = [
   "overview", "search", "list", "get", "save", "delete", "undo", "changes", "read_file", "find_files", "web_search",
-  "export_resume_pdf", "fetch_page", "email_sync", "tailor_resume", "split_resume", "add_job", "evaluate_jobs",
+  "export_resume_pdf", "fetch_page", "tailor_resume", "split_resume", "add_job", "evaluate_jobs",
   "apply_answer", "draft_email", "reconcile_memory",
 ];
 
@@ -282,7 +282,7 @@ describe("evaluate_jobs / enrich_jobs tools", () => {
 });
 
 describe("CLI surface", () => {
-  it("`offeru-ts tool` lists tools, runs as agent by default and prints {error} on failure", async () => {
+  it("`offeru-ts tool` lists tools, runs as agent by default and prints {error, code} on failure", async () => {
     const run = (args: string[], env: Record<string, string> = {}) => new Promise<{ code: number; out: string }>((done) => {
       execFile(process.execPath, ["--import", "tsx", join(here, "../src/cli.ts"), ...args], {
         cwd: join(here, ".."), env: { ...process.env, OFFERU_DATA_DIR: tmp, OFFERU_DB_PATH: join(tmp, "offeru.db"), ...env },
@@ -314,7 +314,7 @@ describe("CLI surface", () => {
     expect(JSON.parse(unknown.out).error.code).toBe("not_found");
     expect(JSON.parse(recipe.out)).toMatchObject({ id: "resume.tailor", steps: expect.arrayContaining([expect.stringContaining("tailor_resume")]) });
     expect(JSON.parse(saved.out).record).toMatchObject({ source: "agent", confirmed: false });
-    expect(failed).toEqual({ code: 1, out: "{\"error\":\"job #9 不存在\"}\n" });
+    expect(failed).toEqual({ code: 1, out: "{\"error\":\"job #9 不存在\",\"code\":\"not_found\"}\n" });
     // --actor (before or after the command) is who the change log credits, as the MCP client name was.
     expect((await run(["--actor", "Claude Code", "tool", "save", "{\"type\":\"memory\",\"data\":{\"title\":\"Go\"}}"])).code).toBe(0);
     const log = JSON.parse((await run(["tool", "changes", "{}"])).out) as { items: Array<{ actor: string }> };

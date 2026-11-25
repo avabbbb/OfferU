@@ -28,9 +28,8 @@ export function isSandboxMode(value: unknown): value is SandboxMode {
   return value === "read_only" || value === "workspace_write";
 }
 
-/** 这次调用在只读模式下能不能做。email_sync 只有 action=status 是读。 */
-export function isReadOnlyCall(name: string, args: Record<string, unknown> = {}): boolean {
-  if (name === "email_sync") return String(args.action ?? "status") === "status";
+/** 这次调用在只读模式下能不能做。 */
+export function isReadOnlyCall(name: string): boolean {
   return READ_ONLY_TOOLS.has(name);
 }
 
@@ -58,13 +57,10 @@ export function applySandbox(tools: AgentTool[], mode: SandboxMode): AgentTool[]
   if (mode !== "read_only") return tools;
   return tools.map((tool) => {
     if (READ_ONLY_TOOLS.has(tool.name)) return tool;
-    const original = tool.execute.bind(tool);
     return {
       ...tool,
-      description: `【只读模式下不可用，除非只是查看】${tool.description}`,
-      async execute(args, context) {
-        const input = args && typeof args === "object" ? args : {};
-        if (isReadOnlyCall(tool.name, input)) return original(args, context);
+      description: `【只读模式下不可用】${tool.description}`,
+      async execute() {
         return failureResult(readOnlyFailure(tool.name));
       },
     };

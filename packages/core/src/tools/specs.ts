@@ -393,7 +393,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
   {
     "name": "web_search",
-    "description": "搜公开网页，返回标题、链接、摘要；要正文再用 fetch_page。没配搜索服务会报错，照实告诉用户。做岗位调研时官网、招聘官网、权威媒体优先，记下每个来源的链接和日期，按系统提示里的调研结构存成 research 文档。",
+    "description": "搜公开网页，返回标题、链接、摘要；要正文再用 fetch_page。没配搜索服务（code=not_configured）或搜索服务出错（key 失效、额度用完、服务挂了）都会报错，不会假装没有结果，照实告诉用户。做岗位调研时官网、招聘官网、权威媒体优先，记下每个来源的链接和日期，按系统提示里的调研结构存成 research 文档。",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -451,40 +451,6 @@ export const TOOL_SPECS: ToolSpec[] = [
         "url"
       ],
       "title": "FetchIn",
-      "type": "object"
-    }
-  },
-  {
-    "name": "email_sync",
-    "description": "邮箱同步。status：已连的邮箱、最近几次同步、今天邮箱写了几条改动；sync：立刻拉一次新邮件，识别投递回执、笔试、面试、offer、拒信，直接改岗位状态（只前进）并把笔试面试时间写成事项，返回写了哪些改动（都能撤销）。连邮箱和断开在设置页。",
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "default": "status",
-          "description": "status 看已连邮箱和最近同步；sync 立刻拉一次新邮件并回写",
-          "enum": [
-            "status",
-            "sync"
-          ],
-          "title": "Action",
-          "type": "string"
-        },
-        "account": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "只看 / 只同步这个账号（account_id），不传就是全部",
-          "title": "Account"
-        }
-      },
-      "title": "EmailSyncIn",
       "type": "object"
     }
   },
@@ -570,7 +536,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
   {
     "name": "add_job",
-    "description": "用户贴来岗位链接或 JD 文本时用：抓链接正文、拆出公司 / 岗位 / 城市 / JD，截止日期另存成 deadline 事项，返回岗位和 change_ids（可撤销）。页面要登录或靠 JS 渲染时报错不存，让用户用插件「存为岗位」或贴 JD。会调模型。存完接着用 evaluate_jobs 评估这个岗位。",
+    "description": "用户贴来岗位链接或 JD 文本时用（贴的是文字、又知道出处时把出处链接传 source_url）：抓链接正文、拆出公司 / 岗位 / 城市 / JD，截止日期另存成 deadline 事项，返回岗位和 change_ids（可撤销）。页面要登录或靠 JS 渲染时报错不存，让用户用插件「存为岗位」或贴 JD。会调模型。存完接着用 evaluate_jobs 评估这个岗位。",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -578,6 +544,19 @@ export const TOOL_SPECS: ToolSpec[] = [
           "description": "岗位详情页链接、整段 JD 文本，或只写「公司 岗位」（会联网找官方岗位页）",
           "title": "Text",
           "type": "string"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "贴 JD 文字时，这段文字原本所在的页面链接（如小红书笔记、BOSS 岗位页）：只记成岗位的 url，不抓取、不联网找；text 本身是链接时不用传",
+          "title": "Source Url"
         }
       },
       "required": [

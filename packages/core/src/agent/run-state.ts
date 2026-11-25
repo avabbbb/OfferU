@@ -206,7 +206,7 @@ export class AgentRunState {
     run_id?: string;
   }): Promise<AgentRun> {
     const runId = String(input.run_id || "").trim() || newRunId();
-    if (!RUN_ID.test(runId)) throw new CoreError("Invalid Agent Run id", "invalid");
+    if (!RUN_ID.test(runId)) throw new CoreError("Agent Run id 格式不对", "invalid");
     return this.store.transaction(async () => {
       if (await this.store.getRun(runId)) throw new CoreError(`Agent Run ${runId} 已存在`, "conflict");
       const now = this.now();
@@ -253,7 +253,7 @@ export class AgentRunState {
   async saveRun(run: AgentRun, event?: { type: string; payload?: Json }): Promise<AgentRun> {
     return this.store.transaction(async () => {
       const previous = await this.store.getRun(run.id);
-      if (!previous) throw new CoreError(`Agent Run ${run.id} does not exist`, "not_found");
+      if (!previous) throw new CoreError(`Agent Run ${run.id} 不存在。`, "not_found");
       const next = this.cleanRun({ ...run, event_sequence: previous.event_sequence, created_at: previous.created_at, updated_at: this.now() });
       if (event?.type) await this.writeEvent(next, event.type, event.payload || {});
       if (next.status !== previous.status && TERMINAL_STATUSES.has(next.status)) {
@@ -268,7 +268,7 @@ export class AgentRunState {
   async appendEvent(runId: string, type: string, payload: Json = {}): Promise<AgentRunEvent> {
     return this.store.transaction(async () => {
       const run = await this.store.getRun(runId);
-      if (!run) throw new CoreError(`Agent Run ${runId} does not exist`, "not_found");
+      if (!run) throw new CoreError(`Agent Run ${runId} 不存在。`, "not_found");
       const event = await this.writeEvent(run, type, payload);
       await this.store.putRun(run);
       return event;
@@ -344,8 +344,8 @@ export class AgentRunState {
     const signature = await canonicalJsonDigest({ question, options });
     return this.store.transaction(async () => {
       const run = await this.store.getRun(runId);
-      if (!run) throw new CoreError(`Agent Run ${runId} does not exist`, "not_found");
-      if (TERMINAL_STATUSES.has(run.status)) throw new CoreError(`Agent Run ${runId} is terminal (${run.status})`, "conflict");
+      if (!run) throw new CoreError(`Agent Run ${runId} 不存在。`, "not_found");
+      if (TERMINAL_STATUSES.has(run.status)) throw new CoreError(`Agent Run ${runId} 已结束（status=${run.status}），不能再提问`, "conflict");
       const pending = (await this.store.listInputRequests(runId)).filter((item) => item.status === "pending");
       for (const item of pending) {
         if (await canonicalJsonDigest({ question: item.question, options: item.options }) === signature) return item;
@@ -577,7 +577,7 @@ export class AgentConversations {
    */
   async branch(id: string, upto: number, options: { content?: string; role?: string } = {}): Promise<Conversation & { message_count: number; branched_from: string }> {
     const source = await this.get(id);
-    if (!source) throw new CoreError("Conversation not found", "not_found");
+    if (!source) throw new CoreError("找不到这个对话", "not_found");
     const messages = source.messages;
     let end = Math.trunc(Number(upto));
     if (!Number.isFinite(end) || end < 1) throw new CoreError("upto 必须是 ≥ 1 的消息条数", "invalid");
@@ -631,7 +631,7 @@ export class MemoryAgentRunStore implements AgentRunStore {
   }
   async putEvent(event: AgentRunEvent) {
     const list = this.events.get(event.run_id) ?? [];
-    if (list.some((item) => item.sequence === event.sequence)) throw new CoreError(`duplicate event sequence ${event.sequence}`, "conflict");
+    if (list.some((item) => item.sequence === event.sequence)) throw new CoreError(`事件序号 ${event.sequence} 重复`, "conflict");
     list.push(this.clone(event));
     this.events.set(event.run_id, list);
   }

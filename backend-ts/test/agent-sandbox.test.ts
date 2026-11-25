@@ -1,4 +1,4 @@
-// 沙箱模式（packages/core agent/sandbox.ts）的单元契约：白名单、email_sync 的读 / 写、模式解析。
+// 沙箱模式（packages/core agent/sandbox.ts）的单元契约：白名单、模式解析。
 import { describe, expect, it } from "vitest";
 import { applySandbox, isReadOnlyCall, readOnlyFailure, resolveSandbox, type AgentTool } from "@offeru/core";
 
@@ -13,25 +13,21 @@ describe("sandbox", () => {
     expect(resolveSandbox("bogus", undefined)).toBe("workspace_write");
   });
 
-  it("whitelists reads; unknown tools count as writes; email_sync status is a read", () => {
+  it("whitelists reads; unknown tools count as writes", () => {
     expect(isReadOnlyCall("search")).toBe(true);
     expect(isReadOnlyCall("save")).toBe(false);
     expect(isReadOnlyCall("some_new_tool")).toBe(false);
-    expect(isReadOnlyCall("email_sync", { action: "status" })).toBe(true);
-    expect(isReadOnlyCall("email_sync", { action: "sync" })).toBe(false);
   });
 
   it("read_only wraps write tools; workspace_write leaves tools untouched", async () => {
-    const tools = [tool("search"), tool("save"), tool("email_sync")];
+    const tools = [tool("search"), tool("save")];
     expect(applySandbox(tools, "workspace_write")).toBe(tools);
-    const [search, save, email] = applySandbox(tools, "read_only");
+    const [search, save] = applySandbox(tools, "read_only");
     expect(search).toBe(tools[0]);
     expect((await search.execute({}, { callId: "1" })).text).toBe('"search ran"');
     const blocked = await save.execute({ type: "memory" }, { callId: "2" });
     expect(blocked.isError).toBe(true);
     expect(JSON.parse(blocked.text)).toEqual(readOnlyFailure("save"));
     expect(save.description).toMatch(/^【只读模式下不可用/);
-    expect((await email.execute({ action: "status" }, { callId: "3" })).text).toBe('"email_sync ran"');
-    expect((await email.execute({ action: "sync" }, { callId: "4" })).isError).toBe(true);
   });
 });

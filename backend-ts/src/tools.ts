@@ -15,7 +15,7 @@ import {
 /**
  * What a runtime gives the shared tools. HTTP (/api/tools) and the CLI all
  * build one and dispatch through @offeru/core callCoreTool, so the three surfaces
- * list and run exactly the same 21 tools as Python app/core/tools.py.
+ * list and run exactly the same tools (TOOL_NAMES).
  *
  * - llm / search are read per call (the user may change their key at any time).
  * - companion: Node-only handlers (read_file, find_files); absent on the Worker,

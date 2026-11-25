@@ -52,7 +52,7 @@ export const TS_TOOL_SPECS: ExtraToolSpec[] = [
   },
 ];
 
-/** Python's 21 tools, then the TS-only ones: what HTTP /api/tools and the CLI list. */
+/** The ported tools (TOOL_SPECS), then the TS-only ones: what HTTP /api/tools and the CLI list. */
 export const ALL_TOOL_SPECS: ToolSpec[] = [...TOOL_SPECS, ...TS_TOOL_SPECS.map(({ agent: _agent, ...spec }) => spec)];
 /** What agents (built-in Agent, external Agents via the CLI) see. */
 export const AGENT_TOOL_SPECS: ToolSpec[] = [...TOOL_SPECS, ...TS_TOOL_SPECS.filter((spec) => spec.agent).map(({ agent: _agent, ...spec }) => spec)];
@@ -100,7 +100,7 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
   web_search: (a, d) => webSearch(d.search, String(a.query), num(a.limit) ?? 8),
   fetch_page: (a, d) => fetchPage(d.fetch, String(a.url)),
   split_resume: (a, d) => splitResume(d, a.text as string | null | undefined, a.path as string | null | undefined),
-  add_job: (a, d) => addJob(d, String(a.text)),
+  add_job: (a, d) => addJob(d, String(a.text), a.source_url as string | null | undefined),
   evaluate_jobs: (a, d) => evaluateJobs(d.store, d.llm, a, {
     signal: d.signal,
     enrich: (bare) => enrichChanges(d, bare),
@@ -119,7 +119,6 @@ export const CORE_HANDLERS: Record<string, ToolHandler> = {
 const OWNER: Record<string, string> = {
   read_file: "本机伴侣（读本机文件）",
   find_files: "本机伴侣（读本机文件）",
-  email_sync: "邮箱模块",
 };
 
 export const TOOL_NAMES = ALL_TOOL_SPECS.map((spec) => spec.name);

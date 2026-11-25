@@ -106,9 +106,11 @@ export interface CoreStore {
 
 /**
  * Machine-readable error kinds. Transports map these to status codes
- * (HTTP 400/404/409/403) instead of pattern-matching the Chinese message.
+ * (HTTP 400/404/409/403/501/502) instead of pattern-matching the Chinese message.
+ * not_configured: the user has to set something up first (e.g. a search key);
+ * upstream: an outside service (search provider) answered with an error.
  */
-export type CoreErrorCode = "invalid" | "not_found" | "conflict" | "forbidden" | "unsupported";
+export type CoreErrorCode = "invalid" | "not_found" | "conflict" | "forbidden" | "unsupported" | "not_configured" | "upstream";
 
 export class CoreError extends Error {
   readonly code: CoreErrorCode;

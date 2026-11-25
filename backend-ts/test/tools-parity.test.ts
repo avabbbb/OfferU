@@ -21,6 +21,7 @@ import {
   reconcileScan,
   saveRecord,
   splitName,
+  type SearchKeys,
 } from "@offeru/core";
 
 import { createApp } from "../src/app";
@@ -133,13 +134,38 @@ describe("network tools", () => {
     store = new SqliteCoreStore(":memory:");
     const response = await createApp({ store, runtime: "worker", storage: "none" }).request("/api/tools/web_search", { method: "POST", body: JSON.stringify({ query: "飞书" }) });
     expect(response.status).toBe(501);
-    expect(((await response.json()) as { detail: string }).detail).toContain("没配搜索服务");
+    const body = (await response.json()) as { detail: string; code: string };
+    expect(body).toMatchObject({ code: "not_configured", detail: expect.stringContaining("没配搜索服务") });
+    expect(body.detail).not.toMatch(/ddgs|在设置里填/);
     const search = createSearchClient({ tavilyApiKey: "k" }, (async () => new Response(JSON.stringify({
       results: [{ title: "飞书招聘", url: "https://jobs.feishu.cn/1", content: "数据分析" }, { title: "内网", url: "http://10.0.0.1/", content: "x" }],
     }))) as unknown as typeof fetch);
     expect(await callTool("web_search", { query: "飞书", limit: 3 }, { store, search: () => search })).toEqual({
       query: "飞书", items: [{ title: "飞书招聘", url: "https://jobs.feishu.cn/1", snippet: "数据分析", engine: "tavily" }],
     });
+  });
+
+  it("web_search: provider failures are errors, not an empty result", async () => {
+    store = new SqliteCoreStore(":memory:");
+    const answering = (status: number, body: unknown = {}) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+    const search = (keys: SearchKeys, fetcher: typeof fetch) => () => createSearchClient(keys, fetcher);
+    await expect(callTool("web_search", { query: "飞书" }, { store, search: search({ tavilyApiKey: "bad", serperApiKey: "bad" }, answering(401)) }))
+      .rejects.toMatchObject({ code: "not_configured", message: expect.stringContaining("tavily HTTP 401（key 无效或已过期）") });
+    await expect(callTool("web_search", { query: "飞书" }, { store, search: search({ tavilyApiKey: "k" }, answering(429)) }))
+      .rejects.toMatchObject({ code: "upstream", message: expect.stringContaining("额度用完") });
+    // One provider answered with nothing, the other failed: "no results" is true, so it is not an error.
+    const mixed = (async (url: string) => url.includes("tavily") ? new Response(JSON.stringify({ results: [] })) : new Response("{}", { status: 500 })) as unknown as typeof fetch;
+    expect(await callTool("web_search", { query: "飞书" }, { store, search: search({ tavilyApiKey: "k", serperApiKey: "k" }, mixed) })).toEqual({ query: "飞书", items: [] });
+  });
+
+  it("add_job with source_url: pasted JD keeps where it came from, no fetch, dedup by that link", async () => {
+    store = new SqliteCoreStore(":memory:");
+    const text = "字节跳动 · 产品实习生（AI方向）\n负责需求分析";
+    const first = await callTool("add_job", { text, source_url: "https://www.xiaohongshu.com/explore/abc" }, { store }) as Record<string, any>;
+    expect(first.record).toMatchObject({ url: "https://www.xiaohongshu.com/explore/abc", source: "www.xiaohongshu.com", title: "产品实习生（AI方向）" });
+    const again = await callTool("add_job", { text: "字节跳动 产品实习生", source_url: "https://www.xiaohongshu.com/explore/abc" }, { store }) as Record<string, any>;
+    expect(again).toMatchObject({ existed: true, record: { id: first.record.id } });
+    await expect(callTool("add_job", { text, source_url: "ftp://x.cn/a" }, { store })).rejects.toThrow("source_url 只支持 http/https 链接");
   });
 
   it("add_job from a link: fetched, cleaned, guessed without a model, deadline event, dedup by URL", async () => {

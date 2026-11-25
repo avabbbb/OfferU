@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { AppDeps } from "../src/app";
 import { createAppServer } from "../src/server";
 import { SqliteCoreStore } from "../src/store";
 
@@ -17,9 +18,9 @@ afterEach(async () => {
   server = null;
 });
 
-async function start(): Promise<{ base: string; store: SqliteCoreStore }> {
+async function start(overrides: Partial<AppDeps> = {}): Promise<{ base: string; store: SqliteCoreStore }> {
   const nextStore = new SqliteCoreStore(":memory:");
-  const nextServer = createAppServer(nextStore);
+  const nextServer = createAppServer(nextStore, overrides);
   const listening = Promise.withResolvers<void>();
   nextServer.listen(0, "127.0.0.1", () => listening.resolve());
   await listening.promise;
@@ -69,15 +70,16 @@ describe("TS backend HTTP", () => {
   });
 
   it("maps core error codes to HTTP status", async () => {
-    const { base } = await start();
+    const { base } = await start({ search: () => null });
     const missing = await fetch(`${base}/api/tools/get`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "job", id: 404 }),
     });
     expect(missing.status).toBe(404);
-    const unsupported = await fetch(`${base}/api/tools/email_sync`, { method: "POST", body: "{}" });
-    expect(unsupported.status).toBe(501);
+    const unconfigured = await fetch(`${base}/api/tools/web_search`, { method: "POST", body: JSON.stringify({ query: "飞书" }) });
+    expect(unconfigured.status).toBe(501);
+    expect(await unconfigured.json()).toMatchObject({ code: "not_configured" });
     const broken = await fetch(`${base}/api/tools/list`, { method: "POST", body: "{nope" });
     expect(broken.status).toBe(400);
   });

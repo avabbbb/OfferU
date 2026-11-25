@@ -78,7 +78,7 @@ export class SqliteAgentRunStore implements AgentRunStore {
       this.db.prepare("INSERT INTO agent_run_events(event_id, run_id, sequence, type, timestamp, payload) VALUES (?,?,?,?,?,?)")
         .run(event.event_id, event.run_id, event.sequence, event.type, event.timestamp, JSON.stringify(event.payload ?? {}));
     } catch (cause) {
-      if (String((cause as Error)?.message || "").includes("UNIQUE")) throw new CoreError(`duplicate event sequence ${event.sequence}`, "conflict");
+      if (String((cause as Error)?.message || "").includes("UNIQUE")) throw new CoreError(`事件序号 ${event.sequence} 重复`, "conflict");
       throw cause;
     }
   }

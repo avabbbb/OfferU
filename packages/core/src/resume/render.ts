@@ -33,7 +33,7 @@ export function memoryFileStore(seed: Record<string, Uint8Array> = {}): FileStor
     },
     async write(name, bytes) {
       const key = safe(name);
-      if (!key || key === "." || key === "..") throw new Error("bad file name");
+      if (!key || key === "." || key === "..") throw new Error("文件名不合法");
       files.set(key, bytes);
     },
   };

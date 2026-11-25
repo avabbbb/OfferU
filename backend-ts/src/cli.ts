@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { NodeAgentBoard } from "./routes/companion/agent-board";
 import { dbPath } from "./paths";
 import { startHttpServer } from "./server";
-import { AGENT_TOOL_SPECS, ALL_TOOL_SPECS, CAPABILITIES, TOOL_GROUPS, TOOL_INSTRUCTIONS, toolBrief, toolManual } from "@offeru/core";
+import { AGENT_TOOL_SPECS, ALL_TOOL_SPECS, CAPABILITIES, isCoreError, TOOL_GROUPS, TOOL_INSTRUCTIONS, toolBrief, toolManual } from "@offeru/core";
 
 import { nodeConfigRuntime, nodeToolRuntime } from "./node-runtime";
 import { CompanionSync } from "./sync";
@@ -22,7 +22,9 @@ usage:
   offeru-ts tool                         tools, grouped, one line each
   offeru-ts tool --json                  the same list as JSON
   offeru-ts tool <name> [<name>…] --help full description and input schema
-  offeru-ts tool <name> [json|@file|-]   run a tool; prints JSON, {"error"} + exit 1 on failure
+  offeru-ts tool <name> [json|@file|-]   run a tool; prints JSON, {"error", "code"} + exit 1 on failure
+                                         code: invalid | not_found | conflict | forbidden | unsupported |
+                                         not_configured (e.g. no search key) | upstream (search provider failed) | internal
       [--answers @answers.json]          no model configured: model calls come back as {"handoff"} for the calling
                                          Agent to answer; rerun with its answers until the tool finishes
   offeru-ts recipe [<id>]                common flows (which tools, in what order, rules)
@@ -212,8 +214,11 @@ async function main(): Promise<number> {
         process.stdout.write(JSON.stringify(result, null, pretty ? 2 : 0) + "\n");
         return 0;
       } catch (cause) {
-        // Python: {"error": "..."} on stdout, exit 1; shown to the agent as-is.
-        process.stdout.write(JSON.stringify({ error: cause instanceof Error ? cause.message : String(cause) }) + "\n");
+        // {"error", "code"} on stdout, exit 1. code is CoreError.code (invalid / not_found / conflict / forbidden /
+        // unsupported / not_configured / upstream); bad JSON args are invalid; anything else is internal.
+        const code = isCoreError(cause) ? cause.code : cause instanceof SyntaxError ? "invalid" : "internal";
+        const message = cause instanceof SyntaxError ? `参数不是合法 JSON：${cause.message}` : cause instanceof Error ? cause.message : String(cause);
+        process.stdout.write(JSON.stringify({ error: message, code }) + "\n");
         return 1;
       }
     }

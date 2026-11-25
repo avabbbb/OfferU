@@ -242,7 +242,7 @@ export class AgentHost {
   async admit(resumeRunId = ""): Promise<AdmissionTicket> {
     const limit = await this.readLimit();
     if (resumeRunId && (this.active.has(resumeRunId) || this.resuming.has(resumeRunId))) {
-      throw new CoreError("A model turn is already running", "conflict");
+      throw new CoreError("这个对话已经有一轮在运行，等它结束再继续", "conflict");
     }
     if (this.active.size + this.admitting.size >= limit) {
       throw new CoreError(`已达到最大并发数 ${limit}，请等待其他任务完成或在设置中调高。`, "conflict");
@@ -386,7 +386,7 @@ export class AgentHost {
       }
       const allowed = input.continuation ? ["completed", "interrupted", "failed"] : ["interrupted"];
       if (!allowed.includes(existing.status)) throw new CoreError(`Agent Run ${input.resumeRunId} 不能恢复（status=${existing.status}）。`, "conflict");
-      if (this.active.has(existing.id)) throw new CoreError("A model turn is already running", "conflict");
+      if (this.active.has(existing.id)) throw new CoreError("这个对话已经有一轮在运行，等它结束再继续", "conflict");
       goal = goal || String(existing.goal || "").trim();
       const stored = await state.store.getSession(existing.id);
       if (!stored) throw new CoreError("Run 没有可恢复的 Agent Session，不能确定性恢复。", "conflict");

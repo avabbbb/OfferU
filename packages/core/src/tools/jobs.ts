@@ -44,8 +44,7 @@ async function findOfficialPosting(deps: ToolDeps, name: string): Promise<[strin
     }
   }
   if (!deps.search?.available) {
-    throw new CoreError(`只有「${name}」要联网找官方岗位页，但没配搜索服务：在设置里填 Bocha / Tavily / Serper 的 key`
-      + "（或装 ddgs）。也可以直接贴岗位链接或 JD", "unsupported");
+    throw new CoreError(`只有「${name}」要联网找官方岗位页。${NO_SEARCH}也可以直接贴岗位链接或 JD`, "not_configured");
   }
   const blocked = [...RESTRICTED_DOMAINS, ...PASTE_ONLY_DOMAINS];
   const tokens = name.split(/[\s·|/,，、]+/).filter(Boolean);
@@ -54,12 +53,8 @@ async function findOfficialPosting(deps: ToolDeps, name: string): Promise<[strin
   const skipped: string[] = [];
   const ranked: Array<[number, string]> = [];
   for (const query of [`${name} 招聘 官网`, `${name} 岗位详情 投递`]) {
-    let results: SearchResult[] = [];
-    try {
-      results = await deps.search.search(query, 8);
-    } catch {
-      results = [];
-    }
+    // 搜索服务报错（key 失效、额度用完）直接报出来，不当成「没找到」。
+    const results: SearchResult[] = await deps.search.search(query, 8);
     for (const result of results) {
       const url = String(result.url ?? "").trim();
       const host = hostOf(url);
@@ -94,14 +89,18 @@ async function findOfficialPosting(deps: ToolDeps, name: string): Promise<[strin
   throw new CoreError(`联网没找到「${name}」能直接读到正文的官方岗位页${where}，没存。${other}把官网岗位链接或 JD 文字贴进来`);
 }
 
-/** 贴链接、JD 或只写「公司 岗位」建岗位。 */
-export async function addJob(deps: ToolDeps, rawText: string): Promise<Json> {
+/**
+ * 贴链接、JD 或只写「公司 岗位」建岗位。sourceUrl 是贴来的 JD 文字原本所在的页面：
+ * 只记成 job.url（来源和按链接去重都靠它），不抓取、不联网找。
+ */
+export async function addJob(deps: ToolDeps, rawText: string, sourceUrl?: string | null): Promise<Json> {
   const { store, ctx } = deps;
   const text = rawText.trim();
   if (!text) throw new CoreError("要给岗位链接或 JD 文本");
+  if (sourceUrl && !/^https?:\/\/\S+$/.test(sourceUrl)) throw new CoreError("source_url 只支持 http/https 链接");
   let url: string | null = /^https?:\/\/\S+$/.test(text) ? text : null;
   let page: Page | null = null;
-  if (!url && isJobName(text)) [url, page] = await findOfficialPosting(deps, text);
+  if (!url && !sourceUrl && isJobName(text)) [url, page] = await findOfficialPosting(deps, text);
   let source = text;
   let guardInfo: GuardCounts | null;
   let warn: string | null;
@@ -117,6 +116,7 @@ export async function addJob(deps: ToolDeps, rawText: string): Promise<Json> {
     guardInfo = guardCounts(findings);
     warn = guardWarning(findings);
   }
+  url = url ?? sourceUrl ?? null;
   const known = await knownTags(store);
   const fields: Json = deps.llm ? await extractIntake(deps.llm, source, known) : guessIntake(source);
   const posting = (fields.posting ?? {}) as Json;

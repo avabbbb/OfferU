@@ -51,7 +51,7 @@ describe("tool catalog", () => {
       expect([...TOOL_BRIEFS[name]].length, name).toBeLessThanOrEqual(260);
       expect(TOOL_GROUPS.filter((group) => group.tools.includes(name)), name).toHaveLength(1);
     }
-    // read_file / find_files / tailor_resume / export_resume_pdf / email_sync are registry tools too
+    // read_file / find_files / tailor_resume / export_resume_pdf are registry tools too
     const toolish = /\b(overview|search|list|get|save|delete|undo|changes|[a-z]+_[a-z_]+)\(/g;
     for (const capability of CAPABILITIES) {
       for (const step of capability.steps) {

@@ -23,6 +23,7 @@ export type ToolErrorCode =
   | "forbidden"
   | "read_only"
   | "unsupported"
+  | "not_configured"
   | "unknown_tool"
   | "upstream_unavailable"
   | "aborted"
@@ -48,6 +49,7 @@ const DEFAULT_ACTION: Record<ToolErrorCode, string> = {
   forbidden: "这一步只能由用户本人做：告诉用户在哪里操作，不要换个方式绕过。",
   read_only: "只读模式下不能写入：用读类工具给出结果，告诉用户要写入请把沙箱切到「可写」。",
   unsupported: "这个运行环境做不了这一步：照实告诉用户，给出可行的替代做法。",
+  not_configured: "要用户先配置好才能用：照实告诉用户缺什么、在哪里配置，并给出不靠这一步的替代做法。",
   unknown_tool: "用 tool_manual() 看可用工具。",
   upstream_unavailable: "外部服务暂时不可用：稍后重试一次；仍失败就照实告诉用户，已做的改动不要重复做。",
   aborted: "用户已中止这次运行，不要继续调用工具。",
@@ -72,6 +74,7 @@ export function classifyToolError(cause: unknown, tool = ""): ToolFailure {
   if (cause instanceof Error && cause.name === "AbortError") return toolFailure("aborted", message || "已中止", { tool });
   if (isCoreError(cause)) {
     if (cause.code === "invalid" && /^参数 /.test(message)) return toolFailure("invalid_args", message, { tool });
+    if (cause.code === "upstream") return toolFailure("upstream_unavailable", message, { tool });
     return toolFailure(cause.code, message, { tool });
   }
   if (UPSTREAM.test(message)) return toolFailure("upstream_unavailable", message, { tool });

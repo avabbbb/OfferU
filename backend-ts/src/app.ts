@@ -77,6 +77,8 @@ export const STATUS_OF: Record<CoreErrorCode, number> = {
   conflict: 409,
   forbidden: 403,
   unsupported: 501,
+  not_configured: 501,
+  upstream: 502,
 };
 
 const MAX_BODY = 2 * 1024 * 1024;
