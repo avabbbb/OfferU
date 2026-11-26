@@ -7,7 +7,8 @@ export type SyncErrorCode =
   | "network"     // fetch failed (offline, DNS, CORS)
   | "http"        // other unexpected status
   | "locked"      // another device holds the sync lock
-  | "conflict";   // refs/latest kept moving; gave up after retries
+  | "conflict"    // refs/latest kept moving; gave up after retries
+  | "expired";    // a pairing link past its expiry
 
 export class SyncError extends Error {
   readonly code: SyncErrorCode;

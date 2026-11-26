@@ -21,7 +21,7 @@ backend-ts/src/routes/    运行时无关的路由模块，每个领域一个文
 backend-ts/src/routes/companion/
                           只在 Node 伴侣上有的适配器和路由（磁盘文件、Playwright、poppler、BOSS CLI、Agent 看板、配置文件、邮箱 IMAP/SMTP）
 backend-ts/src/server.ts  Node 伴侣入口（@hono/node-server，127.0.0.1:8767），组装 SQLite + companion 适配器
-backend-ts/src/cli.ts     offeru-ts CLI（doctor / tool / recipe / serve / start），外置 Agent 唯一入口
+backend-ts/src/cli.ts     offeru-ts CLI（doctor / tool / recipe / sync status|now|configure|pair / serve / start），外置 Agent 唯一入口
 backend-ts/src/worker.ts  Cloudflare Worker 入口：静态资源 + 无状态模型转发，不碰数据
 backend-ts/wrangler.toml  Worker 配置（assets 指向 frontend/dist）
 frontend/src/lib/local/   网页版的页面内后端：把 backend-ts 的 createApp 跑在浏览器里（IndexedDB 适配器）
@@ -65,6 +65,7 @@ frontend/src/lib/demo/    展示站 demo 的 BrowserDemoStore（网页版复用�
 | BOSS 扫码登录 | ❌ 501 | ❌ | ✅ 需本机自装 boss CLI | 安装包不再附带 boss 可执行文件 |
 | Agent 看板（外置 Agent） | ❌ 501 | ❌ | ✅ | |
 | 外置 Agent 命令行（`offeru tool`） | ❌ | ❌ | ✅ | MCP 已于 2026-11-24 移除 |
+| S3 / R2 加密同步（`/api/sync/*`） | ✅ 页面内引擎，设置存 IndexedDB；打开 / 切回页面时自动同步一次 | ❌ | ✅ `<data>/sync.json`（0600） | 网页版连外置 Agent 的唯一办法：Agent 在本机 `offeru sync configure` + `offeru sync pair` 发链接，用户在 `#/sync/pair` 输入口令。存储桶要允许网页版来源的 CORS。见 [sync.md](./sync.md) |
 | 邮箱 IMAP / SMTP（`mail` 工具、`/api/mail/*`） | ❌ 501 | ❌ 501 | ✅ 授权码存 `<data>/offeru-mail.json`（0600） | 读收件箱、存草稿箱、发信；发信只由用户在界面点「确认发送」，Agent 调用只回 needs_confirmation。没连邮箱时邀约邮件照样贴给 Agent |
 | 邮箱 via 浏览器插件（只填写写信页） | ✅ 装了插件：Gmail / QQ / 163 网页 | ❌ | — | 不用邮件 API / OAuth / 授权码：插件在用户已登录的邮箱网页里填收件人、标题、正文并附上用户选的简历 PDF，发送由用户在邮箱里点；读信只读用户点「交给 OfferU」的那一封，交给内置 Agent。选择器可能随邮箱改版失效，退回复制。见 DESIGN §10.2 |
 

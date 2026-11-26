@@ -43,13 +43,16 @@ function summaryText(rows: AgentBoardRow[]): string {
     + " · 需处理 " + count((row) => row.skill_status === "OUTDATED" || row.skill_status === "ERROR");
 }
 
-/** The single self-routing prompt: paste it into any Agent and it picks setup or reconnect. */
-export function AgentConnectPrompt() {
+/**
+ * The single self-routing prompt: paste it into any Agent and it picks setup or reconnect.
+ * The web build passes its own prompt (sync + `offeru sync pair`), since a local `offeru start` never sees the browser's data.
+ */
+export function AgentConnectPrompt({ prompt = OFFERU_AGENT_CONNECT_PROMPT, description = "粘贴到 Claude Code、Codex、WorkBuddy 等任意 Agent。它会自己判断是首次安装还是重新连接。" }: { prompt?: string; description?: string } = {}) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const copy = async () => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
-      await navigator.clipboard.writeText(OFFERU_AGENT_CONNECT_PROMPT);
+      await navigator.clipboard.writeText(prompt);
       setCopyState("copied");
     } catch {
       setCopyState("failed");
@@ -57,14 +60,14 @@ export function AgentConnectPrompt() {
   };
   return <div className="space-y-2 rounded-xl border border-[var(--border)] p-4" data-testid="agent-connect-prompt">
     <p className="text-sm font-semibold">一键复制接入提示词</p>
-    <p className="text-xs leading-relaxed text-[var(--foreground-muted)]">粘贴到 Claude Code、Codex、WorkBuddy 等任意 Agent。它会自己判断是首次安装还是重新连接。</p>
+    <p className="text-xs leading-relaxed text-[var(--foreground-muted)]">{description}</p>
     <Button size="sm" onPress={() => void copy()} startContent={copyState === "copied" ? <Check size={14} /> : <Copy size={14} />}>
       {copyState === "copied" ? "已复制，去 Agent 里粘贴" : "复制提示词"}
     </Button>
     {copyState === "failed" && <p role="alert" className="text-xs text-amber-800">自动复制失败，请展开下方原文手动复制。</p>}
     <details>
       <summary className="cursor-pointer text-[11px] text-[var(--foreground-muted)]">查看提示词原文</summary>
-      <textarea readOnly aria-label="OfferU 接入提示词" value={OFFERU_AGENT_CONNECT_PROMPT} rows={10} onFocus={(event) => event.currentTarget.select()}
+      <textarea readOnly aria-label="OfferU 接入提示词" value={prompt} rows={10} onFocus={(event) => event.currentTarget.select()}
         className="mt-2 w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--foreground)]" />
     </details>
   </div>;

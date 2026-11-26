@@ -19,13 +19,15 @@ version: 2026-11-26
 - 输出是 JSON，可以接 `jq` 或写文件；失败时打印 `{"error": …, "code": …}` 并以 1 退出。code 是固定的英文错误类型（参数不对、找不到、有冲突、只能用户本人做、这个环境做不了、缺配置、外部服务出错），按它决定改参数、先查 id、照实告诉用户还是稍后重试一次。命令不通看文末。
 - 会调模型的工具（evaluate_jobs、tailor_resume、split_resume、apply_answer 等）用工作台「设置 → 模型」里存的模型。没配模型时不报错，而是返回 `{"handoff": {how, pending}}`：你就是模型。按每条 pending 的 messages 自己作答（json=true 只回严格 JSON），把 `{"<id>": "<回答>"}` 累积进 answers.json，同样的命令加 `--answers @answers.json` 再跑，直到返回正常结果（可能要两三轮）。不要自己找 key。
 
-## 数据在网页版时：同步
+## 连接网页版数据
 
-网页版（浏览器里）的数据不在本机命令行能读的库里。用户在网页版设置里开了 S3 / R2 端到端加密同步后，命令行用同一个桶和口令接上：
+用户用的是网页版（https://offeru.avabbbb.com，数据在用户浏览器里）时，本机命令行看不到那份数据；`<offeru> start` 起的是另一份空数据，不要拿它当数据源。桥是用户自己的 S3 / R2 存储桶上的端到端加密同步。用户只需要做登录 / 两步验证和输入口令，其余由你做：
 
-- `<offeru> sync`：看同步状态（是否设置、待推送条数、上次结果）。
-- `<offeru> sync configure @sync.json`：`{endpoint, bucket, region, accessKeyId, secretAccessKey, prefix, pathStyle, passphrase}`，由用户自己填文件，不要在对话里要密钥和口令。
-- `<offeru> sync now`：先拉再推。开工前跑一次拿到最新数据，改完再跑一次推回去，网页版同步后就能看到。
+1. 存储桶：没有就自己操作浏览器在 Cloudflare 建 R2 存储桶和只限这个桶的「Object Read & Write」令牌，并加 CORS（来源填网页版地址，方法 GET / PUT / HEAD / DELETE，暴露 ETag，请求头见仓库 docs/sync.md）。只在登录、验证码、两步验证时请用户动手。
+2. 生成至少 20 位的随机同步口令，只告诉用户一次，请他记好（丢了数据就解不开）。`<offeru> sync configure --endpoint <Endpoint> --bucket <桶> --region auto --access-key-id <ID> --path-style`，Secret 和口令放环境变量 `OFFERU_SYNC_SECRET_ACCESS_KEY`、`OFFERU_SYNC_PASSPHRASE`（或标准输入传 JSON：`<offeru> sync configure -`），不要写进命令行参数或文件。用户已经在网页版设置里开了同步时，用同一个桶、前缀和口令。
+3. `<offeru> sync pair`（网页版不在默认地址时加 `--web-origin <地址>`）：把输出的链接原样发给用户，30 分钟有效，过期重跑。用户打开链接、输入口令，网页版就连上并先同步一次。
+4. 用户说连好后：`<offeru> sync now`，再 `<offeru> tool overview` 确认读到的是网页版的数据。
+5. 之后开工前先 `<offeru> sync now`，每次改动数据之后再跑一次 `<offeru> sync now`，网页版打开或切回页面时就能看到。`<offeru> sync` 看状态（是否设置、待推送条数、上次结果）。
 
 `<offeru>` 是装好的 `offeru` 命令；从源码运行时是 `npm --prefix <仓库>/backend-ts run --silent cli --`。
 

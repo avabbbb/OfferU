@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { MemoryS3, openPairing } from "@offeru/sync";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dirs: string[] = [];
@@ -23,14 +24,35 @@ function dataDir(): string {
   return dir;
 }
 
-function cli(dir: string, args: string[], env: Record<string, string> = {}) {
-  return new Promise<{ code: number; out: string }>((done) => {
+/** MemoryS3 behind a real HTTP port, so the CLI process can reach it as an S3 endpoint. */
+function s3Server(s3: MemoryS3): Promise<string> {
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", async () => {
+      const headers = Object.fromEntries(Object.entries(req.headers).map(([key, value]) => [key, String(value)]));
+      const response = await s3.fetch(`http://${req.headers.host}${req.url}`, {
+        method: req.method,
+        headers,
+        body: chunks.length ? new Uint8Array(Buffer.concat(chunks)) : undefined,
+      });
+      res.writeHead(response.status, Object.fromEntries(response.headers));
+      res.end(Buffer.from(await response.arrayBuffer()));
+    });
+  });
+  servers.push(server);
+  return new Promise((done) => server.listen(0, "127.0.0.1", () => done(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
+}
+
+function cli(dir: string, args: string[], env: Record<string, string> = {}, stdin?: string) {
+  return new Promise<{ code: number; out: string; err: string }>((done) => {
     // No OFFERU_LLM_* from the developer's shell: the model must come from the saved settings.
     const base = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("OFFERU_LLM_")));
-    execFile(process.execPath, ["--import", "tsx", join(here, "../src/cli.ts"), ...args], {
+    const child = execFile(process.execPath, ["--import", "tsx", join(here, "../src/cli.ts"), ...args], {
       cwd: join(here, ".."),
       env: { ...base, OFFERU_DATA_DIR: dir, OFFERU_DB_PATH: join(dir, "offeru.db"), ...env },
-    }, (error, stdout) => done({ code: error ? Number(error.code) : 0, out: stdout }));
+    }, (error, stdout, stderr) => done({ code: error ? Number(error.code) : 0, out: stdout, err: stderr }));
+    if (stdin !== undefined) child.stdin?.end(stdin);
   });
 }
 
@@ -123,6 +145,55 @@ describe("CLI", () => {
     expect(JSON.parse(bad.out).error).toContain("至少 8 个字符");
     expect(unknown.code).toBe(2);
   }, 60_000);
+
+  it("`offeru sync pair`: configure by flags + env, then a link the web opens only with the passphrase", async () => {
+    const dir = dataDir();
+    const before = await cli(dir, ["sync", "pair", "--json"]);
+    expect(before.code).toBe(1);
+    expect(JSON.parse(before.out)).toMatchObject({ code: "not_configured", hint: expect.stringContaining("offeru sync configure") });
+
+    const s3 = new MemoryS3();
+    const endpoint = await s3Server(s3);
+    const passphrase = "agent-generated long passphrase 7Q";
+    const configured = await cli(dir, [
+      "sync", "configure", "--endpoint", endpoint, "--bucket", s3.bucket, "--region", "auto", "--access-key-id", s3.accessKeyId, "--path-style",
+    ], { OFFERU_SYNC_SECRET_ACCESS_KEY: "the-secret-key", OFFERU_SYNC_PASSPHRASE: passphrase });
+    expect(configured.code, configured.out).toBe(0);
+    expect(configured.out).not.toContain("the-secret-key");
+    expect(configured.out).not.toContain(passphrase);
+    expect(JSON.parse(configured.out)).toMatchObject({ configured: true, config: { bucket: s3.bucket, prefix: "offeru", pathStyle: true } });
+    expect(s3.keys("offeru/")).toContain("offeru/offeru-sync.json");
+
+    const [json, plain] = await Promise.all([
+      cli(dir, ["sync", "pair", "--json", "--web-origin", "http://localhost:7410"]),
+      cli(dir, ["sync", "pair"]),
+    ]);
+    expect(json.code).toBe(0);
+    const link = JSON.parse(json.out) as { url: string; expires_at: string };
+    expect(link.url).toMatch(/^http:\/\/localhost:7410\/#\/sync\/pair\?c=[A-Za-z0-9_-]+$/);
+    expect(link.url).not.toContain("the-secret-key");
+    const minutes = (Date.parse(link.expires_at) - Date.now()) / 60_000;
+    expect(minutes).toBeGreaterThan(25);
+    expect(minutes).toBeLessThanOrEqual(30);
+    expect(plain.out.trim()).toMatch(/^https:\/\/offeru\.avabbbb\.com\/#\/sync\/pair\?c=/);
+    expect(plain.err).toContain("同步口令");
+
+    const code = new URL(link.url).hash.split("?c=")[1];
+    await expect(openPairing(code, passphrase)).resolves.toMatchObject({
+      v: 1, endpoint, bucket: s3.bucket, region: "auto", prefix: "offeru", pathStyle: true, accessKeyId: s3.accessKeyId, secretAccessKey: "the-secret-key",
+    });
+    await expect(openPairing(code, "not the passphrase")).rejects.toMatchObject({ code: "passphrase" });
+    await expect(openPairing(code, passphrase, { now: new Date(Date.parse(link.expires_at) + 1) })).rejects.toMatchObject({ code: "expired" });
+
+    const bad = await cli(dir, ["sync", "pair", "--web-origin", "offeru.avabbbb.com/x"]);
+    expect(bad.code).toBe(1);
+    expect(JSON.parse(bad.out)).toMatchObject({ code: "invalid" });
+
+    // JSON on stdin is the other secret-safe path; the passphrase must match the bucket.
+    const stdin = await cli(dir, ["sync", "configure", "-"], {}, JSON.stringify({ endpoint, bucket: s3.bucket, region: "auto", accessKeyId: s3.accessKeyId, secretAccessKey: "the-secret-key", passphrase: "a different passphrase" }));
+    expect(stdin.code).toBe(1);
+    expect(JSON.parse(stdin.out)).toMatchObject({ code: "sync_passphrase" });
+  }, 90_000);
 
   it("a pasted invite email maps to job status + event with link through `offeru tool`", async () => {
     const dir = dataDir();

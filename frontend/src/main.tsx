@@ -12,6 +12,7 @@ import { installStaleChunkReload } from "@/lib/chunkReload";
 installStaleChunkReload();
 
 const PairPage = lazy(() => import("@/vite/PairPage"));
+const SyncPairPage = lazy(() => import("@/vite/SyncPairPage"));
 
 // Web build (VITE_OFFERU_MODE=local-web): serve /api/* from the in-page backend before anything fetches.
 if (import.meta.env.VITE_OFFERU_MODE === "local-web") {
@@ -30,6 +31,8 @@ createRoot(root).render(
   <HashRouter>
     <Routes>
       <Route path="/pair/:code" element={<Suspense fallback={null}><PairPage /></Suspense>} />
+      {/* `offeru sync pair` link: one passphrase field, outside the workbench shell. */}
+      <Route path="/sync/pair" element={<Suspense fallback={null}><SyncPairPage /></Suspense>} />
       <Route path="*" element={
         <Providers>
           <WorkbenchShell>
