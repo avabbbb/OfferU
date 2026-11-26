@@ -33,8 +33,9 @@ usage:
   offeru-ts sync configure [json|@file|-] {endpoint, bucket, region, accessKeyId, secretAccessKey, prefix, pathStyle, passphrase} | {"clear":true}
   offeru-ts serve
   offeru-ts doctor
-  offeru-ts start [--no-browser]
+  offeru-ts start [--web] [--no-browser]
       serve the built workbench (frontend/dist) and the API on 127.0.0.1:8766, open #/pair/<code>.
+      --web connects the hosted web app (https://offeru.avabbbb.com) directly to this local API.
 global: --data-dir <dir> (else $OFFERU_DATA_DIR)
         --actor <name> (else $OFFERU_ACTOR, else "agent"): who the change log and the Agent board credit
         --pretty
@@ -225,17 +226,24 @@ async function main(): Promise<number> {
 
     if (command === "start") {
       // Python `offeru start` (lite): workbench + API on one origin, :8766, one-time pair link.
+      // With --web: expose the local API on :8766 and open https://offeru.avabbbb.com/#/pair/<code>
+      // so the hosted web app talks straight to this companion without needing frontend/dist or S3/R2.
       process.env.OFFERU_RUNTIME_MODE ||= "lite";
+      const webMode = args.includes("--web");
       const noBrowser = args.includes("--no-browser");
       const webDir = process.env.OFFERU_WEB_DIR || [resolve(here, "web"), resolve(here, "../../frontend/dist")].find((dir) => existsSync(join(dir, "index.html")));
-      if (!webDir) throw new Error("没找到工作台页面（frontend/dist）。先 npm --prefix frontend run build，或设置 OFFERU_WEB_DIR");
+      if (!webDir && !webMode) throw new Error("没找到工作台页面（frontend/dist）。先 npm --prefix frontend run build，加 --web 直连网页版，或设置 OFFERU_WEB_DIR");
       const port = Number(process.env.OFFERU_PORT || 8766);
-      const server = startHttpServer(store, port, { webDir });
+      const server = startHttpServer(store, port, { webDir: webDir ?? null });
       const info = (server as unknown as { offeruRuntime?: { mintPairCode?: () => string } }).offeruRuntime;
-      const code = info?.mintPairCode?.();
-      const url = `http://127.0.0.1:${port}/${code ? `#/pair/${code}` : ""}`;
-      process.stdout.write(`OfferU: ${url}\n`);
-      if (!noBrowser) openBrowser(url);
+      const localCode = webDir ? info?.mintPairCode?.() : undefined;
+      const webCode = info?.mintPairCode?.();
+      const localUrl = `http://127.0.0.1:${port}/${localCode ? `#/pair/${localCode}` : ""}`;
+      const webOrigin = (process.env.OFFERU_WEB_URL || "https://offeru.avabbbb.com").replace(/\/+$/, "");
+      const webUrl = `${webOrigin}/${webCode ? `#/pair/${webCode}` : ""}`;
+      if (webDir) process.stdout.write(`OfferU: ${localUrl}\n`);
+      process.stdout.write(`Web: ${webUrl}\n`);
+      if (!noBrowser) openBrowser(webMode ? webUrl : localUrl);
       await new Promise<void>((done) => {
         const close = () => server.close(() => done());
         process.on("SIGINT", close);

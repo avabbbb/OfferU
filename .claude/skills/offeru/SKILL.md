@@ -19,9 +19,10 @@ version: 2026-11-24
 - 输出是 JSON，可以接 `jq` 或写文件；失败时打印 `{"error": …, "code": …}` 并以 1 退出。code 是固定的英文错误类型（参数不对、找不到、有冲突、只能用户本人做、这个环境做不了、缺配置、外部服务出错），按它决定改参数、先查 id、照实告诉用户还是稍后重试一次。命令不通看文末。
 - 会调模型的工具（evaluate_jobs、tailor_resume、split_resume、apply_answer 等）用工作台「设置 → 模型」里存的模型。没配模型时不报错，而是返回 `{"handoff": {how, pending}}`：你就是模型。按每条 pending 的 messages 自己作答（json=true 只回严格 JSON），把 `{"<id>": "<回答>"}` 累积进 answers.json，同样的命令加 `--answers @answers.json` 再跑，直到返回正常结果（可能要两三轮）。不要自己找 key。
 
-## 数据在网页版时：同步
+## 网页版直连与同步
 
-网页版（浏览器里）的数据不在本机命令行能读的库里。用户在网页版设置里开了 S3 / R2 端到端加密同步后，命令行用同一个桶和口令接上：
+- **本机直连网页版（推荐，无需 S3 / R2）**：运行 `<offeru> start --web` 会在本机 127.0.0.1:8766 启动伴侣并自动打开 `https://offeru.avabbbb.com/#/pair/<配对码>`；配对后网页版与命令行直接共享同一份本机数据库，改动实时同步，本机 Agent 看板也会在网页版里生效。
+- **跨设备同步（可选）**：需要在多台电脑间同步时，在工作台设置里开启 S3 / R2 端到端加密同步，命令行用同一个桶和口令接上：
 
 - `<offeru> sync`：看同步状态（是否设置、待推送条数、上次结果）。
 - `<offeru> sync configure @sync.json`：`{endpoint, bucket, region, accessKeyId, secretAccessKey, prefix, pathStyle, passphrase}`，由用户自己填文件，不要在对话里要密钥和口令。

@@ -14,9 +14,15 @@ installStaleChunkReload();
 const PairPage = lazy(() => import("@/vite/PairPage"));
 
 // Web build (VITE_OFFERU_MODE=local-web): serve /api/* from the in-page backend before anything fetches.
+// If the user previously paired this browser with their local OfferU companion, restore that bridge before
+// first render (0 ms when unpaired; fast loopback check when paired) so CLI changes show up immediately.
 if (import.meta.env.VITE_OFFERU_MODE === "local-web") {
-  const { installLocalBackend } = await import("@/lib/local/backend");
+  const [{ installLocalBackend }, { restoreLocalBridge }] = await Promise.all([
+    import("@/lib/local/backend"),
+    import("@/lib/bridge"),
+  ]);
   installLocalBackend();
+  await restoreLocalBridge();
 }
 
 const root = document.getElementById("root");

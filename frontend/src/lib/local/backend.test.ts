@@ -7,7 +7,8 @@ vi.mock("@/lib/demo/keyVault", () => ({
   decryptSecret: async (secret?: { data: string }) => (secret?.data ? atob(secret.data) : ""),
 }));
 
-import { createLlmFetch, createLocalBackend, isLocalApiRequest } from "./backend";
+import { createLlmFetch, createLocalBackend, forwardToLocalBridge, isLocalApiRequest } from "./backend";
+import { connectLocalBridge, disconnectLocalBridge } from "@/lib/bridge";
 
 const KEY = "sk-abcdefghijklmnop1234";
 const json = async (res: Response) => res.json() as Promise<Record<string, any>>;
@@ -51,6 +52,30 @@ describe("in-page backend", () => {
     expect(isLocalApiRequest(new URL("http://localhost/api/health"), "http://localhost")).toBe(true);
     expect(isLocalApiRequest(new URL("http://localhost/llm-proxy"), "http://localhost")).toBe(false);
     expect(isLocalApiRequest(new URL("https://api.deepseek.com/api/x"), "http://localhost")).toBe(false);
+  });
+
+  it("forwards /api/* to the paired local companion with X-OfferU-Pairing", async () => {
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as never;
+    try {
+      await connectLocalBridge("pair-token-abcdefghijklmnopqrstuvwxyz", { persist: false });
+      const original = vi.fn(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+      await forwardToLocalBridge(
+        original as never,
+        new URL("https://offeru.avabbbb.com/api/tools/list?x=1"),
+        "/api/tools/list?x=1",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      );
+      expect(original).toHaveBeenCalledTimes(1);
+      const [target, init] = original.mock.calls[0] as unknown as [string, RequestInit];
+      expect(target).toBe("http://127.0.0.1:8766/api/tools/list?x=1");
+      const headers = new Headers(init.headers);
+      expect(headers.get("x-offeru-pairing")).toBe("pair-token-abcdefghijklmnopqrstuvwxyz");
+      expect(headers.get("content-type")).toBe("application/json");
+    } finally {
+      disconnectLocalBridge();
+      globalThis.fetch = prevFetch;
+    }
   });
 });
 

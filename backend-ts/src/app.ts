@@ -160,7 +160,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         Object.assign(headers, {
           "Access-Control-Allow-Origin": origin!,
           "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, X-OfferU-Actor, X-OfferU-Pairing",
+          "Access-Control-Allow-Headers": "Content-Type, X-OfferU-Actor, X-OfferU-Pairing, Authorization",
           "Access-Control-Max-Age": "600",
           "Access-Control-Allow-Private-Network": "true",
         });
@@ -174,10 +174,11 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     }
   });
 
-  // Showcase pages may only reach the local backend with the pairing token.
+  // Web / showcase pages may only reach the local backend with the pairing token.
+  // /api/health is read-only probe; /api/ui/pair trades a one-time high-entropy code minted by `offeru start`.
   app.use("/api/*", async (c, next) => {
     const origin = c.req.header("origin");
-    if (isBridgeOrigin(origin) && c.req.path !== "/api/health") {
+    if (isBridgeOrigin(origin) && c.req.path !== "/api/health" && c.req.path !== "/api/ui/pair") {
       const supplied = c.req.header("x-offeru-pairing") || "";
       if (!deps.pairingToken || !supplied || supplied !== deps.pairingToken()) {
         return c.json({ detail: "请求被拒绝：本机 OfferU 未配对或配对 token 已变化", code: "forbidden" }, 403);

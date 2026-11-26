@@ -4,7 +4,7 @@ import "@/styles/settings.css";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, Dialog, Field, Input, Pill, Select as UiSelect, Switch } from "@/components/ui";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ModelPicker } from "@/components/settings/ModelPicker";
 import { FreshResetPanel } from "@/components/settings/FreshResetPanel";
@@ -43,6 +43,7 @@ import { resolveApiBase } from "@/lib/apiBase";
 import { downloadUserDataExport } from "@/lib/dataExport";
 import { StoragePersistenceCard } from "@/components/settings/StoragePersistenceCard";
 import { LOCAL_WEB } from "@/lib/local/mode";
+import { getBridgeState, subscribeBridge } from "@/lib/bridge";
 import { useLlmTransportMode } from "@/lib/local/llmTransport";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
@@ -955,9 +956,12 @@ export default function SettingsPage() {
   }, [active, wide]);
   const syncSummary = useSyncSummary();
   const agentState = useAgentConnection();
+  const bridgeState = useSyncExternalStore(subscribeBridge, getBridgeState, getBridgeState);
   const agentStatus = agentState.connection?.connection_verified && agentState.connection.status === "ready"
     ? agentState.connection.name + " · 已验证"
-    : "未连接";
+    : LOCAL_WEB && bridgeState.active
+      ? "已连接本机"
+      : "未连接";
   const llmTransport = useLlmTransportMode(LOCAL_WEB);
   const modelStatus = config?.active_llm_summary?.model
     ? [config.active_llm_summary.service_name, config.active_llm_summary.model].filter(Boolean).join(" · ")

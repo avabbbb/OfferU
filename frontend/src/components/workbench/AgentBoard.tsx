@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@heroui/react";
 import { AlertCircle, Check, Copy, Eye, EyeOff, Loader2, Pencil, Plus, RefreshCw, Terminal, Trash2 } from "lucide-react";
 import { agentBoardApi, type AgentBoardRow, type AgentBoardSnapshot, type CustomAgentInput } from "@/lib/api";
 import { OFFERU_AGENT_CONNECT_PROMPT } from "@/lib/agentConnectionPrompt";
 import { connectionTime } from "@/lib/agentConnection";
+import { getBridgeState, subscribeBridge } from "@/lib/bridge";
+import { LOCAL_WEB } from "@/lib/local/mode";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const SKILL_TEXT: Record<string, string> = { INSTALLED: "Skill 已安装", OUTDATED: "需更新", NOT_INSTALLED: "未安装", ERROR: "异常", NOT_SUPPORTED: "不支持" };
@@ -98,6 +100,8 @@ function AgentForm({ initial, editing, busy, onCancel, onSave }: {
 
 /** Board of built-in and user-added Agents: live connection, opening a conversation and Skill install. */
 export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnapshot) => void } = {}) {
+  const bridge = useSyncExternalStore(subscribeBridge, getBridgeState, getBridgeState);
+  const needsLocalBridge = LOCAL_WEB && !bridge.active;
   const [board, setBoard] = useState<AgentBoardSnapshot | null>(null);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
@@ -108,14 +112,19 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const load = useCallback(async () => {
+    if (needsLocalBridge) {
+      setBoard(null);
+      setError("");
+      return;
+    }
     try {
       const snapshot = await agentBoardApi.list();
       setBoard(snapshot);
       onChangeRef.current?.(snapshot);
       setError("");
     } catch (cause) { setError(safeClientErrorMessage(cause, "读取 Agent 看板失败，请重试。")); }
-  }, []);
-  useEffect(() => { void load(); }, [load]);
+  }, [needsLocalBridge]);
+  useEffect(() => { void load(); }, [load, bridge.active]);
 
   const run = async (id: string, action: () => Promise<unknown>, after?: () => void) => {
     setBusyId(id); setError(""); setErrorId("");
@@ -135,6 +144,15 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
 
   const rows = board?.agents.filter((row) => showHidden || !row.hidden) || [];
   const hiddenCount = board?.agents.filter((row) => row.hidden).length || 0;
+
+  if (needsLocalBridge) {
+    return <div className="space-y-2" data-testid="agent-board">
+      <p className="text-sm font-semibold">Agent 看板</p>
+      <p role="status" className="text-xs leading-relaxed text-[var(--ou-text-secondary)]">
+        在上方点「连接本机 OfferU」（或终端运行 <code>offeru start --web</code>）配对后，这里会显示本机 Agent 的在线状态和 Skill 安装情况。
+      </p>
+    </div>;
+  }
 
   return <div className="space-y-3" data-testid="agent-board">
     <div className="flex flex-wrap items-center justify-between gap-2">

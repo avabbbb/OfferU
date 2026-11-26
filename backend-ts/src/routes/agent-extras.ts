@@ -184,13 +184,13 @@ export function registerAgentExtras(app: Hono<AppEnv>): void {
     return c.json(deps.runtimeInfo ? deps.runtimeInfo.identity() : browserIdentity(deps));
   });
 
-  // `offeru-ts start` opens #/pair/<code>: trade the one-time code for the workbench token.
+  // `offeru-ts start` opens #/pair/<code>: trade the one-time code for the workbench + bridge token.
   app.post("/api/ui/pair", async (c) => {
     const deps = c.get("deps");
     const body = await jsonBody(c) as { code?: unknown };
     if (typeof body?.code !== "string") throw new CoreError("code 要是字符串");
     const token = deps.runtimeInfo?.exchangePairCode?.(body.code) ?? null;
     if (!token) return c.json({ detail: "配对码无效或已过期，请重新运行 offeru start" }, 403);
-    return c.json({ token });
+    return c.json({ token, pairing_token: deps.pairingToken?.() ?? token });
   });
 }

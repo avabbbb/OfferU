@@ -22,6 +22,7 @@ import { ConfigRuntime } from "@offeru/backend/routes/config";
 import { staticSchoolLogos } from "@offeru/core";
 
 import { BrowserDemoStore } from "@/lib/demo/store";
+import { LOCAL_BRIDGE_BASE, bridgeActive, bridgeHeaders } from "@/lib/bridge";
 
 import { IndexedDbAgentRunStore } from "./agentRuns";
 import { requestPersistentStorage } from "./persist";
@@ -140,6 +141,33 @@ export function isLocalApiRequest(url: URL, origin: string): boolean {
   return url.origin === origin && url.pathname.startsWith("/api/");
 }
 
+/**
+ * Forward a same-origin /api/* request to the paired local OfferU companion (127.0.0.1:8766),
+ * attaching X-OfferU-Pairing so the hosted web UI and CLI operate on the same local offeru.db.
+ */
+export function forwardToLocalBridge(
+  original: Fetch,
+  url: URL,
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const target = `${LOCAL_BRIDGE_BASE}${url.pathname}${url.search}`;
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  if (init?.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+  for (const [key, value] of Object.entries(bridgeHeaders())) headers.set(key, value);
+  if (input instanceof Request) {
+    return original(new Request(target, {
+      method: init?.method ?? input.method,
+      headers,
+      body: init?.body ?? (input.method === "GET" || input.method === "HEAD" ? undefined : input.body),
+      signal: init?.signal ?? input.signal,
+      redirect: init?.redirect ?? input.redirect,
+      cache: init?.cache ?? input.cache,
+    }));
+  }
+  return original(target, { ...init, headers });
+}
+
 let installed: LocalBackend | null = null;
 
 export function installLocalBackend(): LocalBackend {
@@ -154,9 +182,15 @@ export function installLocalBackend(): LocalBackend {
     workerResponse: (response) => { if (isRelayQuotaResponse(response)) prompt.report("quota"); },
   });
   const origin = globalThis.location.origin;
+  // Already served directly from the local companion (127.0.0.1:8766): let same-origin /api/* hit it natively.
+  if (origin === LOCAL_BRIDGE_BASE) {
+    installed = backend;
+    return backend;
+  }
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input), globalThis.location.href);
     if (!isLocalApiRequest(url, origin)) return original(input, init);
+    if (bridgeActive()) return forwardToLocalBridge(original, url, input, init);
     if (input instanceof Request) return backend.fetch(init ? new Request(input, init) : input);
     return backend.fetch(new Request(url, init));
   }) as Fetch;

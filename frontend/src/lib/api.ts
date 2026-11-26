@@ -6,7 +6,7 @@
 // =============================================
 
 import { SHOWCASE, SHOWCASE_UNSUPPORTED, showcaseHandle } from "./showcase";
-import { bridgeActive, bridgeHeaders } from "./bridge";
+import { bridgeActive, bridgeAuthToken, bridgeHeaders } from "./bridge";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
 import { decideAgentActionInDesktop } from "./desktop-proposal-decision";
@@ -1441,7 +1441,7 @@ export const agentBoardApi = {
   /** Opening a terminal runs a program, so it carries the workbench approval capability like agent action confirm / reject. */
   launch: async (agentId: string): Promise<AgentLaunchResult> => {
     if (isTauri()) return invoke<AgentLaunchResult>("launch_agent", { agentId });
-    const token = liteToken();
+    const token = liteToken() || bridgeAuthToken();
     if (!token) throw new Error("请用 offeru start 打开的工作台打开对话");
     const res = await fetch(API_BASE + agentBoardPath(agentId, "/launch"), { method: "POST", headers: { Authorization: "Bearer " + token, ...bridgeHeaders() }, redirect: "error" });
     const payload = await res.json().catch(() => ({}));

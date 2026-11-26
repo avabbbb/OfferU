@@ -23,6 +23,13 @@
 | 2026-11-07 | Agent 提示词 / 模拟面试 | 面试官在用户作答后的回合里夹「这次补充的细节我没写进档案」「不会写进档案」（full-a10、a11、a13） | 出戏，像系统在说话而不是面试官 | 新增 C11d（3546021，开场预告除外）；v4 提示词禁止面试回合插档案说明 | → 已修（v4：full-a14–a19、s5-a7 C11d 全过） |
 | 2026-11-07 | export_resume_pdf / 评测 C8 | 导出附件名把岗位名「2026 届」的空格清洗成下划线（「林知远-数据分析师（2026_届校招）.pdf」），不合 JD「姓名-岗位」。旧 C8 只查草稿关键词，a14–a19、s6-a6 全判 pass，Judge R4 反复扣分 | 用户按附件名投递会不合要求；评测与 Judge 矛盾、通过率高估 | d0aa05a：safe_stem 只替换 Windows 非法字符、保留空格；c5cd469：C8 核对 data/exports 落盘且含原样岗位名，旧运行重评为 C8 fail。full-a20（d0aa05a）整轮 19/0/1，C8 pass，Judge R4=2 | → 已修（full-a20 确认） |
 | 2026-11-09 | tailor_resume | 以 #29 重跑阿里 #26 定制时，删掉用户在 ask 里确认要写的两条（项目牵头协作、企业家讲座）；把评估代理自评的综合分 5.8→6.4 写成用户成果（源头是助手写进记忆 #12 的） | 用户不再信任重写结果；改为直接文本替换 doc #29 | tailor 对记忆里已确认要点做保留校验并输出被删条目；记忆只写用户做的事，不写自评分 | → 已修（Evidence Ledger：tailor 输出 checks.ledger，标出被删的已确认要点 confirmed_dropped、自评分写成成果 self_score_as_achievement、无出处新数字 unconfirmed_claim；回归 evidence-ledger.test.ts、agent-bench.test.ts）。只提示不拦截；「记忆只写用户做的事」仍靠提示词 |
+| 2026-11-27 | CLI / paths.ts | `npm --prefix backend-ts run cli` 不显式传 `--data-dir` 时，cwd 切到 `backend-ts/`，默认路径拼成 `backend-ts/backend-ts/.data` | 首次按 SKILL.md 源码命令跑会落错数据库目录 | `paths.ts` 默认数据目录改为基于模块路径而非 cwd 解析 |
+| 2026-11-27 | CLI / Windows PowerShell | PowerShell 下直接运行 `npm` 触发执行策略报错，且 `npm.cmd` 会剥离行内 JSON 参数的双引号 | Agent 首次调用报错多绕 2 轮 | Windows 下 SKILL.md 与 `agent-board.ts` 改用 `npm.cmd`，并突出 PowerShell 统一走 `@args.json` |
+| 2026-11-27 | find_files | Windows 用户将 Downloads 迁移到非默认盘符时，按 `C:/Users/<user>/Downloads` 查不到简历 | 多绕 2 轮查注册表 User Shell Folders 才找到文件 | `find_files` 支持 Downloads / Desktop 等系统 Known Folders 解析 |
+| 2026-11-27 | read_file | Windows 本机未装 poppler（`pdftotext`）时读 PDF 简历直接返回 `unsupported` | 首次安装用户无法通过 OfferU 工具导入 PDF 简历，只能依赖外置 Agent 自带 PDF 能力绕过 | 增加纯 JS PDF 文本提取回退，降低对本机 poppler 的强依赖 |
+| 2026-11-27 | CLI 启动延迟 | 每次通过 `npm --prefix backend-ts run -s cli` 调工具冷启动耗时约 18–35s | 批量写入建档串行跑耗时较长 | 优先支持直调 `tsx` / bundled `cli.mjs` 或提供批量写入能力 |
+| 2026-11-27 | 网页版设置 / 接入提示词 | 网页版（`offeru.avabbbb.com/#/settings`）放了「一键复制接入提示词」，用户按提示词装完本机 CLI 后回到网页版仍显示「未连接」，误以为接入失败 | 用户困惑「没看到连接上」，不知应改打开 `127.0.0.1:8766` 或配 S3/R2 同步 | 网页版提示词明确区分「切到本机工作台 `127.0.0.1:8766`」和「网页版配 S3/R2 同步」，避免把本机接入状态当网页版状态 |
+| 2026-11-27 | Agent 看板 | 内置 Agent 列表不含 Antigravity，且未添加自定义 Agent 前，`--actor` 调用不会记入看板 | 即使装好全局 Skill 并跑通 CLI，本机看板里也看不到已连接状态 | 看板支持未知 `--actor` 自动回显最近调用，或将 Antigravity 纳入常见主机列表 |
 
 ## 用户偏好（人工信号）
 

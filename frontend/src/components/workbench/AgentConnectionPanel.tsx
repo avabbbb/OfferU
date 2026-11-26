@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
 import { AlertCircle, ArrowRight, Loader2, Plug, RefreshCw } from "lucide-react";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
 import { AgentBoard, AgentConnectPrompt } from "./AgentBoard";
+import { LocalBridgeCard } from "./LocalBridgeCard";
 import { agentRuntimeApi, type AgentConnectionsSnapshot } from "@/lib/api";
+import { getBridgeState, subscribeBridge } from "@/lib/bridge";
+import { LOCAL_WEB } from "@/lib/local/mode";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
 import { isLiteRuntime } from "@/lib/liteSession";
@@ -16,12 +19,21 @@ const FALLBACK_PROMPTED_KEY = "offeru.llmFallbackPrompted";
 
 export function AgentConnectionStatus({ compact = false }: { compact?: boolean }) {
   const state = useAgentConnection();
+  const bridge = useSyncExternalStore(subscribeBridge, getBridgeState, getBridgeState);
   const syncing = state.sync.status === "syncing";
   const connected = state.connection?.connection_verified && state.connection.status === "ready";
-  const label = state.sync.status === "failed" ? "OfferU 页面同步失败" : connected ? `${state.connection?.name} · 已验证连接` : "使用我的 Agent";
+  const label = state.sync.status === "failed"
+    ? "OfferU 页面同步失败"
+    : connected
+      ? `${state.connection?.name} · 已验证连接`
+      : LOCAL_WEB && bridge.active
+        ? "已连接本机 OfferU"
+        : "使用我的 Agent";
   const detail = state.sync.status === "failed"
     ? "点击查看同步问题和 Agent 接入"
-    : "连接你已有的 Agent，查看任务与审核结果";
+    : LOCAL_WEB && bridge.active
+      ? "CLI 与网页版共享本机 offeru.db"
+      : "连接你已有的 Agent，查看任务与审核结果";
 
   return (
     <button type="button" onClick={() => state.setOpen(true)} aria-label={`${label}，查看 Agent 接入`}
@@ -149,6 +161,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
       </div>
 
       {SHOWCASE ? <div role="status" className="space-y-2 p-6 text-sm leading-relaxed text-[var(--foreground-muted)]"><p>展示模式默认使用浏览器里的虚构数据，不会自动连接本机；右上角 OfferU 面板里的内置 Agent 用你自己填的 Key。</p><p>在页面顶部点「连接本机 OfferU」，配对后外置 Agent 通过本机 <code>offeru</code> 命令行读写同一份 <code>offeru.db</code>。</p></div> : <div className="space-y-5 p-5 sm:p-7">
+        {LOCAL_WEB && <LocalBridgeCard />}
         <AgentConnectPrompt />
         <AgentBoard />
         {desktop ? <div className="space-y-3">
