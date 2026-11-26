@@ -20,6 +20,7 @@ import { applySandbox, resolveSandbox, type SandboxMode } from "./sandbox";
 import {
   AgentConversations,
   AgentRunState,
+  TERMINAL_STATUSES,
   type AgentInputRequest,
   type AgentRun,
   type AgentRunEvent,
@@ -680,7 +681,7 @@ export class AgentHost {
   async markInterrupted(runId: string, reason = "client_disconnected"): Promise<void> {
     this.active.get(runId)?.controller.abort();
     const run = await this.deps.state.loadRun(runId);
-    if (!run || ["completed", "failed", "cancelled", "interrupted"].includes(run.status)) return;
+    if (!run || run.status === "interrupted" || TERMINAL_STATUSES.has(run.status)) return;
     await this.deps.state.saveRun({ ...run, status: "interrupted", recovery_cursor: { ...run.recovery_cursor, reason } });
   }
 
@@ -694,7 +695,7 @@ export class AgentHost {
     const state = this.deps.state;
     let run = await state.loadRun(runId);
     if (!run) throw new CoreError(`Agent Run ${runId} 不存在。`, "not_found");
-    if (["completed", "failed", "cancelled"].includes(run.status)) return { ok: true, run, warnings: ["Run 已经结束。"] };
+    if (TERMINAL_STATUSES.has(run.status)) return { ok: true, run, warnings: ["Run 已经结束。"] };
     // Persist cancelled first so the running turn's error path ends as "cancelled", not "failed".
     run = await state.saveRun({ ...run, status: "cancelled", failure_reason: "cancelled_by_user" });
     const active = this.active.get(runId);

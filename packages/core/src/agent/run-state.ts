@@ -10,8 +10,43 @@ import type { ChatMessage } from "../llm";
 
 
 export const RUN_SCHEMA_VERSION = "offeru.agent_runs.v2";
-export const ACTIVE_STATUSES = new Set(["created", "planning", "executing", "interrupted"]);
-export const TERMINAL_STATUSES = new Set(["completed", "cancelled", "failed"]);
+export const RUN_STATUSES = ["created", "planning", "executing", "interrupted", "completed", "failed", "cancelled"] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
+
+/**
+ * The only legal status changes. completed → executing is an answered Ask
+ * continuing the same run; failed → executing is resumeRun. cancelled is final:
+ * a3efc049 and 030ffa2a were a cancelled run later written as failed/completed.
+ */
+export const RUN_TRANSITIONS: Readonly<Record<RunStatus, readonly RunStatus[]>> = {
+  created: ["planning", "executing", "cancelled", "failed"],
+  planning: ["executing", "interrupted", "completed", "failed", "cancelled"],
+  executing: ["completed", "failed", "cancelled", "interrupted"],
+  interrupted: ["executing", "failed", "cancelled"],
+  completed: ["executing", "failed"],
+  failed: ["executing"],
+  cancelled: [],
+};
+
+export const ACTIVE_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(["created", "planning", "executing", "interrupted"]);
+export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(["completed", "cancelled", "failed"]);
+const TERMINAL_EVENT: Record<"completed" | "failed" | "cancelled", string> = { completed: "run.completed", failed: "run.failed", cancelled: "run.cancelled" };
+
+export const isRunStatus = (value: unknown): value is RunStatus => (RUN_STATUSES as readonly unknown[]).includes(value);
+export const isTerminalRunStatus = (status: RunStatus): status is "completed" | "failed" | "cancelled" => TERMINAL_STATUSES.has(status);
+
+export function canTransitionRun(from: RunStatus, to: RunStatus): boolean {
+  return from === to || RUN_TRANSITIONS[from].includes(to);
+}
+
+/** Rows written before statuses were typed may hold anything; only known statuses are enforced. */
+export function assertRunTransition(runId: string, from: unknown, to: RunStatus): void {
+  if (!isRunStatus(from) || canTransitionRun(from, to)) return;
+  throw new CoreError(
+    `Agent Run ${runId} 状态不能从 ${from} → ${to}（允许：${RUN_TRANSITIONS[from].join("、") || "无，已是终态"}）。先 loadRun 读最新状态再决定，不要用旧快照覆盖。`,
+    "conflict",
+  );
+}
 const RUN_ID = /^run_[a-f0-9]{16,32}$/;
 
 export interface AgentRun {
@@ -24,7 +59,7 @@ export interface AgentRun {
   skill_id: string;
   skill_version: string;
   skill_snapshot: Json;
-  status: string;
+  status: RunStatus;
   exit_criteria: string[];
   steps: Json[];
   llm_runtime: Json;
@@ -254,11 +289,11 @@ export class AgentRunState {
     return this.store.transaction(async () => {
       const previous = await this.store.getRun(run.id);
       if (!previous) throw new CoreError(`Agent Run ${run.id} 不存在。`, "not_found");
+      assertRunTransition(run.id, previous.status, run.status);
       const next = this.cleanRun({ ...run, event_sequence: previous.event_sequence, created_at: previous.created_at, updated_at: this.now() });
       if (event?.type) await this.writeEvent(next, event.type, event.payload || {});
-      if (next.status !== previous.status && TERMINAL_STATUSES.has(next.status)) {
-        const type = { completed: "run.completed", failed: "run.failed", cancelled: "run.cancelled" }[next.status as "completed"];
-        await this.writeEvent(next, type, { status: next.status, failure_reason: next.failure_reason });
+      if (next.status !== previous.status && isTerminalRunStatus(next.status)) {
+        await this.writeEvent(next, TERMINAL_EVENT[next.status], { status: next.status, failure_reason: next.failure_reason });
       }
       await this.store.putRun(next);
       return next;
@@ -294,6 +329,7 @@ export class AgentRunState {
         const current = await this.store.getRun(run.id);
         if (!current) return;
         const previousStatus = current.status;
+        assertRunTransition(current.id, previousStatus, "interrupted");
         current.recovery_cursor = { ...current.recovery_cursor, reason: "backend_or_worker_restart", previous_status: previousStatus, last_event_sequence: current.event_sequence, recovered_at: this.now() };
         current.status = "interrupted";
         current.failure_reason = "";
