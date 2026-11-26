@@ -7,6 +7,7 @@ import { ConfigRuntime } from "./routes/config";
 import { nodeConfigFile } from "./routes/companion/config-file";
 import { dataDir, dbPath } from "./paths";
 import { createLocalFiles } from "./routes/companion/files";
+import { nodeMail } from "./routes/companion/mail";
 import { exportResumePdf, filesDirFor, nodeFileStore, playwrightRenderer } from "./routes/companion/resume";
 import type { ToolRuntime } from "./tools";
 
@@ -34,8 +35,13 @@ export function nodeConfigRuntime(): ConfigRuntime {
   );
 }
 
-/** Everything the shared tools get on the Node companion: model, search, network, local files. */
-export function nodeToolRuntime(store: CoreStore, config?: ConfigRuntime): Required<Pick<ToolRuntime, "store" | "llm" | "search" | "fetch" | "companion">> & Pick<ToolRuntime, "files" | "measure" | "exportResumePdf"> {
+/** 设置 › 邮箱 account (address + 授权码 + servers), next to the database, owner-only. */
+export function mailAccountPath(): string {
+  return join(dirname(dbPath()), "offeru-mail.json");
+}
+
+/** Everything the shared tools get on the Node companion: model, search, network, local files, mailbox. */
+export function nodeToolRuntime(store: CoreStore, config?: ConfigRuntime): Required<Pick<ToolRuntime, "store" | "llm" | "search" | "fetch" | "companion">> & Pick<ToolRuntime, "files" | "measure" | "exportResumePdf" | "mail"> {
   const files = createLocalFiles(join(dataDir(), "files"));
   const uploads = nodeFileStore(filesDirFor(dbPath()));
   const renderer = playwrightRenderer();
@@ -48,5 +54,6 @@ export function nodeToolRuntime(store: CoreStore, config?: ConfigRuntime): Requi
     search: () => searchFromEnv(),
     fetch: (input, init) => globalThis.fetch(input, init),
     companion: { handlers: files.handlers, readFile: files.readFile },
+    mail: () => nodeMail(mailAccountPath()).client(),
   };
 }

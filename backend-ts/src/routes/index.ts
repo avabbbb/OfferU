@@ -11,6 +11,7 @@ import { registerConfig } from "./config";
 import { registerSync } from "./sync";
 import { registerInterviews } from "./interviews";
 import { registerAgentExtras } from "./agent-extras";
+import { registerMail } from "./mail";
 
 /**
  * Route modules, one per migrated domain. Each workstream owns its own module
@@ -37,4 +38,5 @@ export function registerRoutes(app: Hono<AppEnv>): void {
   registerSync(app);
   registerInterviews(app);
   registerAgentExtras(app);
+  registerMail(app);
 }

@@ -7,6 +7,7 @@ import {
   type CoreStore,
   type HttpFetch,
   type LlmClient,
+  type MailClient,
   type SearchClient,
   type ToolDeps,
   type ToolHandler,
@@ -36,6 +37,8 @@ export type ToolRuntime = {
   measure?: ToolDeps["measure"];
   /** Resume → PDF file (companion): export_resume_pdf and draft_email's attachment. */
   exportResumePdf?: ToolDeps["exportResumePdf"];
+  /** The connected mailbox (companion), read per call; absent = no mail on this runtime (web / Worker). */
+  mail?: () => MailClient | null;
 };
 
 /** GET /api/tools — same shape as Python: {name, description, input: JSON schema}. */
@@ -60,6 +63,7 @@ export function toolDeps(runtime: ToolRuntime, actor: string, signal?: AbortSign
     files: runtime.files ?? null,
     measure: runtime.measure ?? null,
     exportResumePdf: runtime.exportResumePdf,
+    mail: runtime.mail ? runtime.mail() : undefined,
     signal,
     callId,
   };

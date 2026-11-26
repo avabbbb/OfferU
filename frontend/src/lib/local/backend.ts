@@ -129,6 +129,8 @@ export function createLocalBackend(
     renderer: null,
     agentRuns: new IndexedDbAgentRunStore(),
     consent: indexedDbConsentStore(),
+    // 邮箱（IMAP / SMTP + 授权码）只在桌面伴侣：浏览器连不了邮件服务器，授权码也不进浏览器。/api/mail/* 回 501，mail 工具回 unsupported。
+    mail: null,
   };
   const app = createApp(deps);
   void ready.then(() => agentHost(deps).state.recoverInterrupted()).catch(() => undefined);

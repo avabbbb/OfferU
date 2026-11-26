@@ -9,6 +9,7 @@
 import type { AgentTool } from "./loop";
 import { failureResult } from "./tools";
 import type { ToolFailure } from "../tools/preflight";
+import { MAIL_READ_ACTIONS } from "../mail/tool";
 
 export type SandboxMode = "read_only" | "workspace_write";
 export const SANDBOX_MODES: readonly SandboxMode[] = ["read_only", "workspace_write"];
@@ -24,13 +25,16 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "request_user_input",
 ]);
 
+/** 带 action 的工具：只读模式只放行这些 action（mail 的 list / read）。 */
+export const READ_ONLY_ACTIONS: Readonly<Record<string, ReadonlySet<string>>> = { mail: MAIL_READ_ACTIONS };
+
 export function isSandboxMode(value: unknown): value is SandboxMode {
   return value === "read_only" || value === "workspace_write";
 }
 
 /** 这次调用在只读模式下能不能做。 */
-export function isReadOnlyCall(name: string): boolean {
-  return READ_ONLY_TOOLS.has(name);
+export function isReadOnlyCall(name: string, args: Record<string, unknown> = {}): boolean {
+  return READ_ONLY_TOOLS.has(name) || Boolean(READ_ONLY_ACTIONS[name]?.has(String(args.action)));
 }
 
 export function readOnlyFailure(name: string): ToolFailure {
@@ -57,6 +61,16 @@ export function applySandbox(tools: AgentTool[], mode: SandboxMode): AgentTool[]
   if (mode !== "read_only") return tools;
   return tools.map((tool) => {
     if (READ_ONLY_TOOLS.has(tool.name)) return tool;
+    const actions = READ_ONLY_ACTIONS[tool.name];
+    if (actions) {
+      return {
+        ...tool,
+        description: `【只读模式下只能 ${[...actions].join(" / ")}】${tool.description}`,
+        async execute(args, context) {
+          return isReadOnlyCall(tool.name, args) ? tool.execute(args, context) : failureResult(readOnlyFailure(`${tool.name}(action=${String(args.action)})`));
+        },
+      };
+    }
     return {
       ...tool,
       description: `【只读模式下不可用】${tool.description}`,

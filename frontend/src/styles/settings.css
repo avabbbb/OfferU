@@ -249,3 +249,11 @@
   .ou-settings-item:not(:has(> .ou-tile)) > .ou-settings-item-control:has(.ou-text-button, .ou-button, .ou-input) { grid-column: 1 / -1; }
   .ou-settings-topbar { margin-right: 3rem; }
 }
+
+/* 设置 › 邮箱：服务商 + 地址一行，授权码带显示开关，测试结果是两颗胶囊加原因。 */
+.ou-mail-secret { display: flex; align-items: center; gap: var(--ou-space-2); }
+.ou-mail-help { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--ou-space-1); margin-top: calc(var(--ou-space-2) * -1); }
+.ou-mail-servers { grid-column: auto; }
+.ou-mail-checks { display: flex; flex-direction: column; gap: var(--ou-space-2); font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
+.ou-mail-checks li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); min-width: 0; }
+.ou-mail-checks li > span:last-child:not(.ou-pill) { min-width: 0; overflow-wrap: anywhere; }

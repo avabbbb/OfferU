@@ -97,7 +97,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | add_job | 贴岗位链接或 JD：抓正文、拆公司 / 岗位 / 城市 / JD，截止日另存 deadline 事项；抓不到正文就报错不存 | ✓ |
 | evaluate_jobs | 评估岗位：每个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖），0–100 分和三句理由写回 job.score / reasons（每步一条 change）。一次最多评 limit 个（默认 3），返回 remaining，大于 0 就再调一次；网页走 `/api/jobs/evaluate` 的 SSE 看进度 | ✓ |
 | apply_answer | 官网网申问答：用 JD、该岗位的定制简历、档案和记忆回答问题，问答追加到岗位下的 apply_chat 文档（每问一条 change） | ✓ |
-| draft_email | 邮件投递草稿：从 JD / 备注拆投递邮箱和标题、附件要求，写标题正文、导简历 PDF，存为 email 文档；不发送，用户在邮件客户端确认后自己发。只有真导出了附件才写「简历见附件」；返回 job_id / resume_id / ready / missing（缺附件、标题占位段等），草稿文档也记 resume_id / missing | ✓ |
+| draft_email | 邮件投递草稿：从 JD / 备注拆投递邮箱和标题、附件要求，写标题正文、导简历 PDF，存为 email 文档；不发送：桌面版连了邮箱由 `mail` 存进草稿箱、用户点「确认发送」才发，否则用户在邮件客户端里自己发。只有真导出了附件才写「简历见附件」；返回 job_id / resume_id / ready / missing（缺附件、标题占位段等），草稿文档也记 resume_id / missing | ✓ |
 
 工具的说明文字就是 Agent 看到的全部文档。每个工具的说明写清字段和枚举，Skill 只讲「什么时候用哪个工具」，不超过 4KB。
 
@@ -156,12 +156,19 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 进度只看两样：进程是否还在、它写了哪些 change。完成后今天页的最近改动里出现「codex：……」。
 - 同时只跑一个后台任务。
 
-## 10. 邀约邮件
+## 10. 邮箱（桌面版）
 
-- 没有邮箱同步工具，也不读邮箱。`email_sync` 只在 Python 版存在过，已从工具表移除。
-- 用户把回执、笔试或面试邀约贴给 Agent（内置或外置 CLI）。Agent 用现有工具：`search` 找岗位；`save` 岗位，status 改成 test / interview，只前进不后退；`save` 一条 event（kind=test / interview / deadline，`at` 为时间，`url` 为测评或面试链接，`job_id` 指向岗位）。
-- event 的 `url` 只接受 http(s)，事项列表显示「打开链接」。改期邮件由 Agent 改已有事项，不自动合并。
-- 不做：发信、标已读、删信、保存原始邮件。
+- **只在桌面版**：伴侣用 IMAP（imapflow）读信、写草稿箱，用 SMTP（nodemailer）发信，适配器在 `backend-ts/src/routes/companion/mail.ts`，规则在 `packages/core/src/mail/`。网页版和 Worker 没有 `AppDeps.mail`：`/api/mail/*` 回 501 `unsupported`，`mail` 工具同样回 `unsupported`，设置页显示「仅桌面版」。
+- **账号**：设置 › 连接 › 邮箱。服务商预设 QQ（imap.qq.com:993 / smtp.qq.com:465）、网易 163（imap.163.com:993 / smtp.163.com:465）、Gmail（imap.gmail.com:993 / smtp.gmail.com:465，应用专用密码）、Outlook（outlook.office365.com:993 / smtp-mail.outlook.com:587 STARTTLS，微软要求 OAuth，多半连不上，界面标黄）和「其他邮箱」（自填服务器）。每个预设带官方「怎么获取授权码」链接。保存前先登录 IMAP 和 SMTP，两边都通才写进 `<data>/offeru-mail.json`（0600）；授权码不进 offeru.db、改动记录、工具输出、日志和浏览器，`/api/mail/status` 只回地址和服务器。断开即删文件。163 要求先发 IMAP ID 才能 SELECT，imapflow 在服务器声明 ID 能力时自动发（客户端名 OfferU）。
+- **`mail` 工具**（一个工具四个 action，HTTP / CLI / 内置 Agent 都能用）：
+  - `list`：收件箱最近 `days` 天（默认 7）或上次 `cursor`（UIDVALIDITY:UID）之后的邮件，返回 id、发件人、主题、时间、约 140 字摘要、是否已读；`query` 按发件人 / 主题 / 摘要筛（空格分开都要命中）。只读，用 PEEK，不改已读状态。
+  - `read`：一封邮件的发件人、收件人、主题、时间、正文（纯文本，HTML 邮件转文字，截到 6000 字，带 `truncated`）、正文里的 http(s) 链接（最多 30 条）和附件名。
+  - `draft`：把 email 文档（`draft_email` 写的，或直接给 to / subject / body，可挂 job_id、resume_id 导出 PDF、files 附本机文件）用 IMAP APPEND 存进 `\Drafts` 文件夹（带 `\Draft`），文档记 `draft: {folder, message_id}`；同一份再存会替换旧草稿。不用确认。
+  - `send`：发一份 email 文档。**只有 actor=「你」才真发**（工作台岗位详情的「确认发送」）；内置 Agent、外置 Agent（CLI 默认 actor=agent）调用只回 `{status: "needs_confirmation", sent: false, …}`，不发、不写。发出后文档记 `sent_at` / `message_id`，删掉草稿箱里那份（删不掉回 `draft_removed: false`），还在「想投」的岗位改成「已投递」（各一条改动，可撤销）。已发过的再发回 conflict。
+  - 只读沙箱放行 list / read（`READ_ONLY_ACTIONS`），draft / send 回 `read_only`。
+- **邀约邮件 → 看板**：Agent 用 `mail` list / read（没连邮箱就由用户贴进来），`search` 找岗位；`save` 岗位，status 改成 applied / test / interview，只前进不后退；`save` 一条 event（kind=test / interview / deadline，`at` 为时间，`url` 为测评或面试链接，`job_id` 指向岗位）。改期邮件由 Agent 改已有事项。流程 `mail.invites`。
+- **投递邮件**：岗位详情 › 投递助手 › 邮件投递。连了邮箱时「写投递邮件」= `draft_email` + `mail draft`，下面出确认卡（发件人、收件人、附件、可改的标题和正文、缺项），墨黑「确认发送」是唯一会发信的按钮；焦点卡的下一步变成「核对投递邮件」（文字按钮，只带路）。没连邮箱时照旧给草稿和「在邮件客户端打开」（mailto，附件自己拖）。Agent 存的草稿也会在这里出确认卡。
+- 不做：标已读、删信、移动邮件、自动定时同步、保存原始邮件、OAuth 登录、把发出的邮件追加到「已发送」（QQ / 163 / Gmail 由服务端按自己的设置保存 SMTP 发出的邮件）。
 
 ### 10.1 云同步（S3 / R2）
 

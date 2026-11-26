@@ -227,3 +227,9 @@
 /* 事项里的「添加」是表单提交，不是这一屏的主操作：换成白胶囊次按钮，保证一屏只有一个墨黑按钮。 */
 .jb-events-add .ou-button-primary { background: var(--ou-capsule-bg); color: var(--ou-text-primary); box-shadow: var(--ou-capsule-shadow); }
 .jb-events-add .ou-button-primary:hover:not(:disabled) { background: var(--ou-capsule-bg); box-shadow: var(--ou-elev-2); }
+
+/* 投递邮件确认卡（桌面版连了邮箱）：框内小块用浅底圆角，不加描边；墨黑「确认发送」靠右，是这一屏唯一的主按钮。 */
+.jb-mail-confirm { display: flex; flex-direction: column; gap: var(--ou-space-2); min-width: 0; padding: var(--ou-space-4); border-radius: var(--ou-radius-card); background: var(--ou-bg-control); }
+.jb-mail-confirm-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
+.jb-mail-confirm-actions { justify-content: flex-end; margin-left: 0; }
+.jb-mail-sent { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }

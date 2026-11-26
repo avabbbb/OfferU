@@ -7,7 +7,7 @@
 - **用户数据只在用户手里**：网页版存在浏览器 IndexedDB，桌面版存在本机伴侣的 SQLite。服务器（Cloudflare Worker）不存任何用户数据：不用 D1 / KV / Durable Objects / R2。
 - **core 管规则，adapter 管 IO**：校验、枚举、overview、撤销、简历渲染、Agent 循环都在 `packages/core`，纯 TypeScript，不 import React / DOM / `node:*`。存储、文件、网络、渲染器由各运行形态注入。
 - **同一个 HTTP 形状**：`backend-ts/src/app.ts` 的 `createApp(deps)` 是唯一的 Hono 应用，路径和 JSON 形状沿用原 Python 后端，前端不用分支。
-- **缺能力就 501**：某个运行形态没有的能力（本机文件、Playwright PDF、BOSS 登录……）路由回 `501 {code: "unsupported"}`，不假装成功。
+- **缺能力就 501**：某个运行形态没有的能力（本机文件、Playwright PDF、BOSS 登录、邮箱……）路由回 `501 {code: "unsupported"}`，不假装成功。
 - **同步是另一件事**：多设备同步用用户自带的 S3 / R2 存储桶，端到端加密、增量快照、按记录合并，引擎在 `packages/sync`，设计见 [sync.md](./sync.md)。
 
 ## 2. 代码在哪
@@ -19,7 +19,7 @@ packages/core/            纯规则：types / operations（records + changes + �
 backend-ts/src/app.ts     createApp(deps)：CORS、配对 token、/api/health、错误映射，挂 routes/
 backend-ts/src/routes/    运行时无关的路由模块，每个领域一个文件；只解析参数、调 core、回 JSON
 backend-ts/src/routes/companion/
-                          只在 Node 伴侣上有的适配器和路由（磁盘文件、Playwright、poppler、BOSS CLI、Agent 看板、配置文件）
+                          只在 Node 伴侣上有的适配器和路由（磁盘文件、Playwright、poppler、BOSS CLI、Agent 看板、配置文件、邮箱 IMAP/SMTP）
 backend-ts/src/server.ts  Node 伴侣入口（@hono/node-server，127.0.0.1:8767），组装 SQLite + companion 适配器
 backend-ts/src/cli.ts     offeru-ts CLI（doctor / tool / recipe / serve / start），外置 Agent 唯一入口
 backend-ts/src/worker.ts  Cloudflare Worker 入口：静态资源 + 无状态模型转发，不碰数据
@@ -65,7 +65,7 @@ frontend/src/lib/demo/    展示站 demo 的 BrowserDemoStore（网页版复用�
 | BOSS 扫码登录 | ❌ 501 | ❌ | ✅ 需本机自装 boss CLI | 安装包不再附带 boss 可执行文件 |
 | Agent 看板（外置 Agent） | ❌ 501 | ❌ | ✅ | |
 | 外置 Agent 命令行（`offeru tool`） | ❌ | ❌ | ✅ | MCP 已于 2026-11-24 移除 |
-| 邮箱同步（IMAP） | ❌ | ❌ | ❌ 未迁 | 邀约邮件改为贴给 Agent 处理 |
+| 邮箱 IMAP / SMTP（`mail` 工具、`/api/mail/*`） | ❌ 501 | ❌ 501 | ✅ 授权码存 `<data>/offeru-mail.json`（0600） | 读收件箱、存草稿箱、发信；发信只由用户在界面点「确认发送」，Agent 调用只回 needs_confirmation。没连邮箱时邀约邮件照样贴给 Agent |
 
 ## 5. 加工具 / 加路由
 
@@ -82,8 +82,9 @@ frontend/src/lib/demo/    展示站 demo 的 BrowserDemoStore（网页版复用�
 - CLI 失败时输出 `{"error", "code"}`，退出码非 0。常用 code：`not_found`、`invalid`、`not_configured`（501，缺密钥或缺模型配置，例如 web_search 没有 `BOCHA_API_KEY` / `TAVILY_API_KEY` / `SERPER_API_KEY`）、`upstream`（502，上游 429 / 5xx / 超时）。内置 Agent 侧 `upstream` 显示为 `upstream_unavailable`。
 - 没配模型时，CLI 不报错退出，而是把任务交还给调用它的外置 Agent（handoff），由那个 Agent 用自己的模型完成。
 - `add_job` 可带 `source_url`（只收 http/https），存进岗位的 `url`，不抓取、不触发联网搜索。
-- 事项（event）可带 `url`（只收 http/https），用于笔试测评或面试链接。邀约邮件由用户贴给 Agent，Agent 用 `search` + `save` 推进岗位状态并记事项；没有邮箱同步工具。
+- 事项（event）可带 `url`（只收 http/https），用于笔试测评或面试链接。邀约邮件：桌面版连了邮箱时 Agent 用 `mail`（list / read）读，没连就由用户贴给 Agent；然后用 `search` + `save` 推进岗位状态并记事项。
+- `mail` 是一个带 action 的工具：list / read 只读（只读沙箱放行），draft 写邮箱草稿箱和 email 文档，send 只有 actor=「你」（工作台的「确认发送」）才真发，其他调用者（内置 Agent、`offeru tool` 默认的 agent）拿到 `{status: "needs_confirmation"}`，什么都不发也不写。网页版和 Worker 回 `unsupported`，桌面版没连邮箱回 `not_configured`。
 
 ## 6. Python 后端（已删除）
 
-`backend/`（FastAPI）和只给它用的 `agent-runtime/`（外置 Claude 执行器）已删除，最后一版在 tag `python-backend-final`。157 条旧路由中 135 条由 TS 提供，其余 22 条（`/api/research/*`、`/api/bridge/proposals/*`、`/api/agent/runtime/skill`）按决定不迁，见 [route-coverage](./route-coverage.md)。没迁的能力：邮箱同步（IMAP）、系统钥匙串。MCP 已于 2026-11-24 移除，外置 Agent 只走 CLI。
+`backend/`（FastAPI）和只给它用的 `agent-runtime/`（外置 Claude 执行器）已删除，最后一版在 tag `python-backend-final`。157 条旧路由中 135 条由 TS 提供，其余 22 条（`/api/research/*`、`/api/bridge/proposals/*`、`/api/agent/runtime/skill`）按决定不迁，见 [route-coverage](./route-coverage.md)。没迁的能力：系统钥匙串。邮箱 2026-11 以 `mail` 工具重做（桌面版，IMAP/SMTP + 授权码），不是 Python 版的自动同步。MCP 已于 2026-11-24 移除，外置 Agent 只走 CLI。

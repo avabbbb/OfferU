@@ -13,9 +13,10 @@ import { AddEvent, EventRow } from "@/components/core/EventList";
 import { ResearchCard } from "@/components/core/ResearchCard";
 import { PageError, PageLoading } from "@/components/layout/PageState";
 import { DisclosurePanel } from "@/components/settings/SettingsLayout";
-import { Pill } from "@/components/ui";
+import { Button, Pill } from "@/components/ui";
 import { type Doc, type Event, JOB_STATUS, type Job, refreshAll, tool, useTool, when, write } from "@/lib/core";
 import { evaluateJobs } from "@/lib/evaluate";
+import { isMailUnsupported, mailApi } from "@/lib/mailClient";
 
 import { JobTag, StatusPicker } from "./JobPickers";
 import { STAGE_TONE } from "./stage";
@@ -99,47 +100,141 @@ function ApplyChat({ job }: { job: Job }) {
   );
 }
 
-type Draft = { to: string; cc: string[]; subject: string; body: string; attachment?: string | null; attach_error?: string | null; rules: string[] };
+type Draft = { doc_id: number; to: string; cc: string[]; subject: string; body: string; attachment?: string | null; attach_error?: string | null; rules: string[]; missing: string[] };
+/** 岗位下的 email 文档（draft_email 写的；mail draft 存进邮箱草稿箱后带 draft，确认发送后带 sent_at）。 */
+type EmailDoc = Doc & { to?: string; cc?: string[]; subject?: string; attachment?: string | null; files?: string[]; draft?: { folder: string; message_id: string } | null; sent_at?: string | null; updated_at?: string };
+type MailState = "unsupported" | "disconnected" | { address: string } | null;
 
-function EmailDraft({ job, autoStart }: { job: Job; autoStart?: number }) {
+/** 桌面版连了邮箱吗：网页版回 501 → unsupported。 */
+function useMailState(): MailState {
+  const [state, setState] = useState<MailState>(null);
+  useEffect(() => {
+    let cancelled = false;
+    mailApi.status()
+      .then((status) => { if (!cancelled) setState(status.account ? { address: status.account.address } : "disconnected"); })
+      .catch((cause) => { if (!cancelled) setState(isMailUnsupported(cause) ? "unsupported" : "disconnected"); });
+    return () => { cancelled = true; };
+  }, []);
+  return state;
+}
+
+const fileName = (path: string) => path.split(/[\\/]/).pop() || path;
+
+/** 邮箱草稿箱里那份草稿的确认卡：核对收件人、标题、正文、附件，墨黑「确认发送」是这里唯一会发信的地方。 */
+function MailConfirm({ doc, from, missing, onRewrite, busy }: { doc: EmailDoc; from: string; missing: string[]; onRewrite: () => void; busy: boolean }) {
+  const [subject, setSubject] = useState(doc.subject ?? "");
+  const [body, setBody] = useState(doc.body ?? "");
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => { setSubject(doc.subject ?? ""); setBody(doc.body ?? ""); }, [doc.id, doc.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
+  const keep = (field: "subject" | "body", value: string) => {
+    if (value !== (doc[field] ?? "")) void write("save", { type: "doc", id: doc.id, data: { [field]: value } });
+  };
+  const attachments = [doc.attachment, ...(doc.files ?? [])].filter((item): item is string => Boolean(item));
+  const send = async () => {
+    setSending(true); setErr("");
+    try {
+      await write("mail", { action: "send", doc_id: doc.id });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "没发出去，再试一次");
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <section className="jb-mail-confirm" aria-label="确认发送投递邮件" data-testid="mail-confirm">
+      <div className="jb-mail-confirm-head">
+        <Pill tone="yellow">待你确认</Pill>
+        <span>已存进邮箱的草稿箱，点「确认发送」才会发出</span>
+      </div>
+      <dl className="jb-kv">
+        <div><dt>发件人</dt><dd>{from}</dd></div>
+        <div><dt>收件人</dt><dd>{[doc.to, ...(doc.cc ?? [])].filter(Boolean).join("，")}</dd></div>
+        <div><dt>附件</dt><dd>{attachments.length ? attachments.map(fileName).join("，") : "没有附件"}</dd></div>
+      </dl>
+      <label className="jb-subhead" htmlFor={`mail-subject-${doc.id}`}>标题</label>
+      <input id={`mail-subject-${doc.id}`} className="jb-field" value={subject} onChange={(e) => setSubject(e.target.value)} onBlur={() => keep("subject", subject)} />
+      <label className="jb-subhead" htmlFor={`mail-body-${doc.id}`}>正文</label>
+      <textarea id={`mail-body-${doc.id}`} className="jb-textarea" rows={8} value={body} onChange={(e) => setBody(e.target.value)} onBlur={() => keep("body", body)} />
+      {missing.length > 0 && <ul className="jb-list">{missing.map((item) => <li key={item}>{item}</li>)}</ul>}
+      <p className="jb-hero-hint">这里改的标题和正文会照这里发出；发出后草稿箱里那份会删掉，岗位改成「已投递」。</p>
+      <div className="jb-actions jb-mail-confirm-actions">
+        <button type="button" className="jb-text" disabled={busy || sending} onClick={onRewrite}>重写草稿</button>
+        <Button variant="primary" disabled={sending || busy || !subject.trim()} onClick={() => void send()} data-testid="mail-send">
+          <Send size={14} aria-hidden="true" />{sending ? "正在发送…" : "确认发送"}
+        </Button>
+      </div>
+      {err && <p role="alert" className="jb-error">{err}</p>}
+    </section>
+  );
+}
+
+function EmailDraft({ job, doc: brief, autoStart }: { job: Job; doc?: EmailDoc; autoStart?: number }) {
+  const mail = useMailState();
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [doc, setDoc] = useState<EmailDoc | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const connected = typeof mail === "object" && mail !== null;
+  // 列表里的文档是摘要（正文截断）：确认卡要全文，文档一变就重读。
+  useEffect(() => {
+    if (!brief?.id || !connected) { setDoc(null); return; }
+    let cancelled = false;
+    tool<{ record: EmailDoc }>("get", { type: "doc", id: brief.id }).then(({ record }) => { if (!cancelled) setDoc(record); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [brief?.id, brief?.updated_at, connected]);
   const mailto = draft
     ? "mailto:" + draft.to + "?subject=" + encodeURIComponent(draft.subject) + "&body=" + encodeURIComponent(draft.body)
       + (draft.cc.length ? "&cc=" + encodeURIComponent(draft.cc.join(",")) : "")
     : "";
   const run = async () => {
     setBusy(true); setErr("");
-    try { setDraft(await write<Draft>("draft_email", { job_id: job.id })); }
-    catch (e) { setErr(e instanceof Error ? e.message : "草稿没写出来"); }
-    finally { setBusy(false); }
+    try {
+      const out = await write<Draft>("draft_email", { job_id: job.id });
+      setDraft(out);
+      // 连了邮箱：顺手存进邮箱草稿箱，下面出确认卡；没发出去之前什么都不会离开这台电脑以外的草稿箱。
+      if (connected) await write("mail", { action: "draft", doc_id: out.doc_id });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "草稿没写出来");
+    } finally {
+      setBusy(false);
+    }
   };
   // 焦点卡的「写投递邮件」：打开这一节并直接开写。
-  useEffect(() => { if (autoStart) void run(); }, [autoStart]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (autoStart && mail !== null) void run(); }, [autoStart, mail === null]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pending = connected && doc && doc.draft && !doc.sent_at ? doc : null;
+  const sent = brief?.sent_at ? brief : null;
   return (
     <div className="jb-block">
       <h4 className="jb-subhead">邮件投递</h4>
-      <div className="jb-actions">
-        <button type="button" disabled={busy} className="jb-text" onClick={() => void run()}>{busy ? "正在写…" : draft ? "重写草稿" : "写投递邮件"}</button>
-        {err && <span role="alert" className="jb-error">{err}</span>}
-      </div>
-      {draft && (
-        <div className="jb-block">
-          <dl className="jb-kv">
-            <div><dt>收件人</dt><dd>{[draft.to, ...draft.cc].join("，")}</dd></div>
-            <div><dt>标题</dt><dd>{draft.subject}</dd></div>
-          </dl>
-          {draft.rules.length > 0 && (
-            <ul className="jb-list">{draft.rules.map((rule) => <li key={rule}>JD 要求：{rule}</li>)}</ul>
-          )}
-          <div className="jb-paper">{draft.body}</div>
-          <p>{draft.attachment ? "附件：" + draft.attachment : draft.attach_error ?? "还没有简历，附件要自己加"}</p>
+      {sent && <p className="jb-mail-sent" role="status"><Pill tone="green">已发送</Pill>{when(sent.sent_at!)} 发给 {sent.to}</p>}
+      {pending ? (
+        <MailConfirm doc={pending} from={(mail as { address: string }).address} missing={draft?.doc_id === pending.id ? draft.missing : []} onRewrite={() => void run()} busy={busy} />
+      ) : (
+        <>
           <div className="jb-actions">
-            <a href={mailto} className="jb-text"><Send size={14} aria-hidden="true" />在邮件客户端打开（附件要自己拖进去，确认后再发）</a>
+            <button type="button" disabled={busy || mail === null} className="jb-text" onClick={() => void run()}>{busy ? "正在写…" : draft || sent ? "重写草稿" : "写投递邮件"}</button>
+            {mail === "disconnected" && <Link href="/settings?section=mail" className="jb-text">连上邮箱后可直接存草稿、确认后发出</Link>}
           </div>
-        </div>
+          {draft && !connected && (
+            <div className="jb-block">
+              <dl className="jb-kv">
+                <div><dt>收件人</dt><dd>{[draft.to, ...draft.cc].join("，")}</dd></div>
+                <div><dt>标题</dt><dd>{draft.subject}</dd></div>
+              </dl>
+              {draft.rules.length > 0 && (
+                <ul className="jb-list">{draft.rules.map((rule) => <li key={rule}>JD 要求：{rule}</li>)}</ul>
+              )}
+              <div className="jb-paper">{draft.body}</div>
+              <p>{draft.attachment ? "附件：" + draft.attachment : draft.attach_error ?? "还没有简历，附件要自己加"}</p>
+              <div className="jb-actions">
+                <a href={mailto} className="jb-text"><Send size={14} aria-hidden="true" />在邮件客户端打开（附件要自己拖进去，确认后再发）</a>
+              </div>
+            </div>
+          )}
+        </>
       )}
+      {err && <span role="alert" className="jb-error">{err}</span>}
     </div>
   );
 }
@@ -230,7 +325,7 @@ function useTailor(job: Job) {
   return { state, busy, run };
 }
 
-type NextStep = { key: string; label: string; hint?: string; href?: string; run?: () => void; disabled?: boolean };
+type NextStep = { key: string; label: string; hint?: string; href?: string; run?: () => void; disabled?: boolean; quiet?: boolean };
 
 function JobDetailBody({ data, mode, onBack }: { data: Detail; mode: "page" | "pane" | "push"; onBack?: () => void }) {
   const router = useRouter();
@@ -238,6 +333,8 @@ function JobDetailBody({ data, mode, onBack }: { data: Detail; mode: "page" | "p
   const evaluation = data.docs.find((d) => d.kind === "evaluation");
   const research = data.docs.filter((d) => d.kind === "research");
   const resumes = data.docs.filter((d) => d.kind === "resume");
+  const emailDoc = data.docs.find((d) => d.kind === "email") as EmailDoc | undefined;
+  const mailPending = Boolean(emailDoc?.draft && !emailDoc.sent_at);
   const hasJd = Boolean(job.jd?.trim());
   const posting = postingParts(job);
   const evaluate = useEvaluate(job);
@@ -265,7 +362,10 @@ function JobDetailBody({ data, mode, onBack }: { data: Detail; mode: "page" | "p
       ? { key: "evaluate", label: evaluate.label || "评估这个岗位", hint: "看匹配度、风险和要补的证据", run: () => void evaluate.run(), disabled: evaluate.busy }
       : !resumes.length
         ? { key: "tailor", label: tailor.state || "按 JD 定制简历", hint: "复制主简历，按这份 JD 改写", run: () => void tailor.run(), disabled: tailor.busy }
-        : job.status === "saved"
+        : job.status === "saved" && mailPending
+          // 确认卡里的「确认发送」是这一屏唯一的墨黑按钮，这里只带路。
+          ? { key: "mail-send", label: "核对投递邮件", hint: "草稿在邮箱草稿箱里，你点「确认发送」才会发出", run: () => reveal("assist"), quiet: true }
+          : job.status === "saved"
           ? job.url
             ? { key: "apply", label: "去官网投递", hint: "投完把阶段改成「已投递」", href: job.url }
             : { key: "mail", label: "写投递邮件", hint: "发送前会先给你看草稿", run: () => reveal("assist", () => setMailKick((n) => n + 1)) }
@@ -331,7 +431,7 @@ function JobDetailBody({ data, mode, onBack }: { data: Detail; mode: "page" | "p
           <div className="jb-hero-actions">
             {next && (next.href
               ? <a href={next.href} target="_blank" rel="noreferrer" className="jb-primary" data-testid="job-next-step">{next.label}<ExternalLink size={15} aria-hidden="true" /></a>
-              : <button type="button" className="jb-primary" onClick={next.run} disabled={next.disabled} data-testid="job-next-step">{next.label}</button>)}
+              : <button type="button" className={next.quiet ? "jb-text" : "jb-primary"} onClick={next.run} disabled={next.disabled} data-testid="job-next-step">{next.label}</button>)}
             {next?.hint && <span className="jb-hero-hint">{next.hint}</span>}
             {evaluate.err && <span role="alert" className="jb-error">{evaluate.err}</span>}
           </div>
@@ -411,7 +511,7 @@ function JobDetailBody({ data, mode, onBack }: { data: Detail; mode: "page" | "p
           <div ref={sectionRef("assist")}>
             <Section id="assist" icon={<MessageSquareText size={16} />} title="投递助手" summary="网申问答 · 投递邮件" open={open.includes("assist")} onToggle={toggle} testId="job-section-assist">
               <ApplyChat job={job} />
-              <EmailDraft job={job} autoStart={mailKick} />
+              <EmailDraft job={job} doc={emailDoc} autoStart={mailKick} />
             </Section>
           </div>
           <Section id="notes" icon={<NotebookPen size={16} />} title="备注" summary={job.notes?.trim() ? job.notes.trim().split("\n")[0] : "内推人、薪资…"} open={open.includes("notes")} onToggle={toggle} testId="job-section-notes">

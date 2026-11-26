@@ -1,12 +1,12 @@
 ---
 name: offeru
 description: OfferU 本机求职工作台：岗位、简历、档案、日程、网申和邮件草稿都存在用户电脑上。用户谈求职、实习、JD、简历、网申、笔试面试、offer 时用。
-version: 2026-11-24
+version: 2026-11-26
 ---
 
 # OfferU
 
-工作台、内置助手和命令行用的是同一张工具表。外置 Agent 只走命令行，不用注册 MCP。写入直接生效，用户可在「最近改动」撤销，不用先问。对外的事（网申、邮件、联系 HR）只写草稿，用户自己发。
+工作台、内置助手和命令行用的是同一张工具表。外置 Agent 只走命令行，不用注册 MCP。写入直接生效，用户可在「最近改动」撤销，不用先问。对外的事（网申、邮件、联系 HR）只写草稿，发出去永远要用户本人确认。
 
 ## 调用
 
@@ -40,7 +40,11 @@ profile 档案；memory 职业记忆（一条一件事）；job 岗位；event �
 3. 用户贴链接、JD 或「公司 岗位」：add_job；贴的是文字又知道出处，把出处链接传 source_url（只记录不抓取）。抓不到（要登录、在图片里）就让用户贴正文或用插件存，不存空壳。add_job 会自动打标签（招聘类型、城市、方向、公司属性），用户要加或去标签就 save 改 tags。
 4. 存完马上 evaluate_jobs：分数、三句理由、打招呼语。打招呼语里每个事实都要在档案里找得到。
 5. 改简历：tailor_resume。asks 逐句问用户；用户确认的回答 save 成 memory（带原话和日期），再 review_only=true 改一次。导出 export_resume_pdf。
-6. 网申 apply_answer；邮件 draft_email。邮箱同步还没实现：用户贴来回执或邀约邮件时，按公司 search 找到岗位，save 改 status（test / interview），再 save 一条 event（kind=test / interview，at 写时间，url 写笔试或面试链接，job_id 挂岗位）。
+6. 网申 apply_answer；邮件 draft_email。用户在桌面版「设置 → 邮箱」用授权码连了邮箱时：
+   - 读邀约：`mail` 的 list（最近几天或上次的 cursor 之后，query 按公司或「笔试 面试」筛）、read（正文和链接）。没连邮箱就让用户把回执或邀约邮件贴进来。
+   - 回写看板：按公司 search 找到岗位，save 改 status（applied / test / interview，只前进），再 save 一条 event（kind=test / interview，at 写时间，url 写笔试或面试链接，job_id 挂岗位）；改期就改已有事项。
+   - 存草稿：`mail` 的 draft（doc_id 给 draft_email 写好的文档，或直接给 to / subject / body）存进邮箱草稿箱。
+   - 发送：`mail` 的 send 不会替你发出，只会返回待确认；告诉用户去岗位详情「投递邮件」卡片核对后点「确认发送」。不要说「已发送」。
 
 ## 面试准备（每步存 doc，挂到岗位）
 

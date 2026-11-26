@@ -7,6 +7,7 @@ import type { SyncController } from "./routes/sync";
 import type { BossLoginService } from "./routes/companion/boss-login";
 import type { ConfigRuntime } from "./routes/config";
 import type { RuntimeInfo } from "./routes/agent-extras";
+import type { MailRuntime } from "./routes/mail";
 import { TOOL_NAMES, type ToolRuntime } from "./tools";
 
 /**
@@ -67,6 +68,8 @@ export interface AppDeps {
   approvalToken?: (() => string) | null;
   /** S3/R2 sync (companion: config + state next to the SQLite file). Absent = /api/sync answers 501. */
   sync?: SyncController;
+  /** Companion only: the user's mailbox over IMAP / SMTP (account in <data>/offeru-mail.json). Absent = /api/mail answers 501, the mail tool unsupported. */
+  mail?: MailRuntime | null;
 }
 
 export type AppEnv = { Variables: { deps: AppDeps; actor: string } };
