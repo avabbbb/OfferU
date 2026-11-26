@@ -65,7 +65,7 @@ frontend/src/lib/demo/    展示站 demo 的 BrowserDemoStore（网页版复用�
 | BOSS 扫码登录 | ❌ 501 | ❌ | ✅ 需本机自装 boss CLI | 安装包不再附带 boss 可执行文件 |
 | Agent 看板（外置 Agent） | ❌ 501 | ❌ | ✅ | |
 | 外置 Agent 命令行（`offeru tool`） | ❌ | ❌ | ✅ | MCP 已于 2026-11-24 移除 |
-| 邮箱同步（IMAP） | ❌ | ❌ | ❌ 未迁 | Python 版有，删除时未迁移 |
+| 邮箱同步（IMAP） | ❌ | ❌ | ❌ 未迁 | 邀约邮件改为贴给 Agent 处理 |
 
 ## 5. 加工具 / 加路由
 

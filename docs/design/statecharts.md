@@ -56,7 +56,7 @@ stateDiagram-v2
 - 邮件直接新建为 test / interview / offer 的岗位没有 applied_at，只有经过 applied 才有。
 - draft-email#1 草稿发出后没有 sent -> applied，只能等回执或手动改。
 - mail_id 撤销后不重放（有意，有测试）。
-- 旧服务的 triage_status、application_progress 还是同一概念的平行状态；email_sync 已只写 core mail.apply，但 ops 仍暴露 triage_status。
+- 旧服务的 triage_status、application_progress 还是同一概念的平行状态；邮箱同步已移除，ops 仍暴露 triage_status。
 
 ## 3. 内置 Agent 运行
 

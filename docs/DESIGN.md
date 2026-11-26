@@ -92,7 +92,6 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | ask | 交给内置 Agent 处理一句话（Ctrl+K） | PR3 |
 | handoff | 把长任务交给后台 Codex，返回任务 id | PR5 |
 | handoff_status | 看后台任务进度 | PR5 |
-| email_sync | 邮箱状态 / 同步：拉新邮件，识别回执和邀约，直接回写岗位状态和事项（可撤销） | ✓ |
 | tailor_resume | 按岗位 JD 改写简历（参考岗位评估）：岗位简历原地改；主简历写进该岗位的定制简历（没有就新建），主简历不动（一条 change，可撤销）。流程：起草（流式，JD 原文进 prompt，噪声由模型忽略）→ 审稿（独立一次模型调用，只读 JD、档案、原简历、初稿和 Playwright 按导出 HTML 量的页数，输出 {old, new, reason, category} 修改和四类意见）→ 按 old 精确替换（找不到 / 不唯一就跳过，改坏格式整轮作废），审 1 轮（2026-11-05 由 2 轮砍到 1 轮，省一次模型调用），最后写一次库。判断都交给模型，代码只量页数、做替换。返回 pages、rounds、notes、grounding（因找不到出处被改掉的内容，前端可一键存进档案）、asks（第 1 轮审稿挑出只写了动作、没写结果的句子，最多 3 条，存进 doc.pending_asks；先出一版再问用户）。review_only=true 不起草，只对已有定制简历跑审稿（档案补了新成果后再改一下）。用户的回答整理成记忆草稿走工作台专用路由 POST /api/resume/impact（只出草稿不写库；不是工具；外部 agent 自己整理后 save memory，带 quote 和 said_at），用户点「存进档案」才写入 | ✓ |
 | split_resume | 把旧简历原文拆成一条条 memory 写进档案（可整次撤销） | ✓ |
 | add_job | 贴岗位链接或 JD：抓正文、拆公司 / 岗位 / 城市 / JD，截止日另存 deadline 事项；抓不到正文就报错不存 | ✓ |
@@ -157,16 +156,12 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 进度只看两样：进程是否还在、它写了哪些 change。完成后今天页的最近改动里出现「codex：……」。
 - 同时只跑一个后台任务。
 
-## 10. 邮箱同步
+## 10. 邀约邮件
 
-- 工具只加一个 email_sync(action: status | sync, account?)。status 返回已连账号、上次同步时间和结果，不含凭据；sync 拉新邮件并回写，返回处理了哪几封、各写了哪些 change。
-- 凭据和模型设置一样存在本机配置文件（Gmail 存 refresh token，IMAP 存 host / user / 授权码），不进 offeru.db、不进 changes、不出现在任何工具返回里。连接和断开在设置页完成。
-- 拉取仍在 services/email_sync.py（账号、凭据、游标）；每封新信交给 core/mail.classify 和 core/mail.apply。不再写 application_progress 的候选进展和阶段事件，旧表只作历史数据保留。
-- 识别：core/mail.classify 先跑关键词规则（rejected / offer / interview_hr / interview_2 / interview_1 / written_test / assessment / applied），配了模型时再调一次只给发件人、主题和正文前 6000 字的模型抽取机构和岗位；模型置信度 ≥0.7 时阶段以模型为准，规则永远保底。模型失败只降级为规则，不阻断同步。
-- 回写在 core/mail.py 的 apply()，全部走 save()，actor=邮箱，直接写入、不进待确认，误判靠撤销：岗位按公司 + 岗位名匹配（没抽出公司时按唯一的同名岗位兜底），匹配不到新建并带上阶段；status 只前进不后退；时间写成 event（kind=test / interview / deadline，job_id 指向岗位，带 mail_stage），同一岗位同一阶段还没到的事项再来一封信就改期而不是重复新建。notes 存发件人、主题、链接。每条写入的 data 带 mail_id（Message-ID）。
-- 去重：同步前查 records 和 changes（before / after）里出现过的 mail_id，处理过的跳过，所以撤销后下次同步不会写回来。
+- 没有邮箱同步工具，也不读邮箱。`email_sync` 只在 Python 版存在过，已从工具表移除。
+- 用户把回执、笔试或面试邀约贴给 Agent（内置或外置 CLI）。Agent 用现有工具：`search` 找岗位；`save` 岗位，status 改成 test / interview，只前进不后退；`save` 一条 event（kind=test / interview / deadline，`at` 为时间，`url` 为测评或面试链接，`job_id` 指向岗位）。
+- event 的 `url` 只接受 http(s)，事项列表显示「打开链接」。改期邮件由 Agent 改已有事项，不自动合并。
 - 不做：发信、标已读、删信、保存原始邮件。
-- services/email_sync.py 只管账号、凭据和游标，每封新信交给 core/mail.classify / apply 写入。旧 Operation Registry 里的候选进展操作（ingest_application_signal、list / review_application_progress 等）已下线，不再暴露给外置 Agent；旧候选表 application_progress_candidates 只剩历史数据，没有写入方，前端不展示，随 legacy 清理一起删表。邮箱同步已不再调用 ingest_application_signal。
 
 ### 10.1 云同步（S3 / R2）
 

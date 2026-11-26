@@ -13,7 +13,7 @@
 ## 伴侣（backend-ts Node）
 
 - 模型 Key 存在 `<data>/offeru-ts-config.json`（0600），不接系统钥匙串。从 Python 桌面版升级的用户：首次启动会从旧 `<data>/config.json` 导入模型列表，但 Key 在系统钥匙串里，**需要重填一次**。
-- 邮箱同步（IMAP）未迁，Python 版删除后暂时没有。`/api/bridge/proposals/*`、`/api/agent/runtime/skill`、`/api/research/*` 按决定不迁（见 [route-coverage](./route-coverage.md)）。
+- 不能自动读邮箱（IMAP 未迁）：邀约邮件需贴给 Agent，由它更新岗位状态并记带链接的事项。`/api/bridge/proposals/*`、`/api/agent/runtime/skill`、`/api/research/*` 按决定不迁（见 [route-coverage](./route-coverage.md)）。
 - BOSS 扫码登录要本机自装 boss CLI；安装包不再附带。
 - `node:sqlite` 在 Node 24 上仍是 experimental。
 

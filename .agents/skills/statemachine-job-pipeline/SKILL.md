@@ -16,7 +16,6 @@ description: 改 job.status、mail.apply、applied_at、投递阶段或 draft_em
 | 新建 | 用户、Agent、邮件 | 无 -> saved（默认），也可直接带任意 status | tools.save 331；默认 saved 在 357-358；校验在 tools._check 161-167；mail.apply 165 |
 | save status | 用户（工作台） | 任意 -> 任意，只校验 one_of | tools._check 161-167、tools.save |
 | save status | Agent（save 工具） | 只按 JOB_ORDER 前进；非冻结态 -> rejected / closed；JOB_FROZEN 冻结 | tools._check_status_forward 326-328、tools.status_move_error 313-324；调用点 tools.py:355-356 |
-| mail.apply | 邮件同步（后台服务或 Agent email_sync） | 和 Agent 同一套规则；mail.ORDER 就是 tools.JOB_ORDER | mail.py:26；新建 177-181；_forward 148-150,182-183 |
 | 重复存同一 URL | 用户、Agent | 只补空字段，JD 更长才换，tags / auto_tags 整对替换；不动 status、applied_at | tools.merge_saved_job 271-284；去重分支 tools.py:335-338 |
 | 撤销 | 用户、Agent undo | 回到改动前（见 statemachine-change-undo） | store.undo 172-200 |
 
@@ -38,7 +37,7 @@ description: 改 job.status、mail.apply、applied_at、投递阶段或 draft_em
 2. job-pipeline#2 部分修：Agent 和邮件都不能回退了（tools.py:309-324）；用户仍可任意改（有意为之，用来纠错）。剩下的问题：状态检查在 store._lock 外读（tools.py:356 读，store.save 111 才加锁），并发写仍有 TOCTOU。
 3. 用户路径没有终态：rejected / closed 也能被用户改回 saved。
 4. draft_email 不推进状态（见 statemachine-draft-email）。
-5. 旧服务里还有平行状态：jobs 表的 triage_status inbox/picked（backend/app/models/models.py:64；ops.py:2764-2770 仍暴露），application_progress 服务和候选表（models.py:874-877）。email_sync 现在只走 core mail.apply（backend/app/services/email_sync.py:1098），不再另写一份。属 legacy，只修 bug 或删。
+5. 旧服务里还有平行状态：jobs 表的 triage_status inbox/picked（backend/app/models/models.py:64；ops.py:2764-2770 仍暴露），application_progress 服务和候选表（models.py:874-877）。邮箱同步已移除。属 legacy，只修 bug 或删。
 6. overview 的阶段被 profile.stage 自由文本覆盖，不校验（tools.py:556；profile 的字段不在 _check 里校验）。
 
 ## 验证
