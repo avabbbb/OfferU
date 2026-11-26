@@ -1,6 +1,6 @@
 // 设置 › 邮箱 和岗位详情的「确认发送」只通过这里连邮箱。
 // 邮箱（IMAP / SMTP + 授权码）只在桌面版：账号存在本机伴侣的配置文件里，浏览器拿不到授权码；
-// 网页版的 /api/mail/* 回 501 unsupported，界面显示「仅桌面版」。读信、存草稿、发信走 mail 工具（lib/core.ts）。
+// 网页版的 /api/mail/* 回 501 unsupported，界面改走浏览器插件（lib/local/extensionMail.ts）。读信、存草稿、发信走 mail 工具（lib/core.ts）。
 
 import { request } from "@/lib/api";
 

@@ -179,7 +179,7 @@ progress is modeled as **events** rather than independent UI state, so OfferU ca
 across the product instead of asking you to maintain several trackers.
 
 Paste an application receipt or a test / interview invitation into the Agent and it moves the job forward
-and records the event with its time and assessment or meeting link. On desktop you can connect a QQ / 163 / Gmail mailbox in Settings → 邮箱 with an app password (授权码): the Agent reads invitations to update the board, application emails go to your Drafts folder with the tailored resume attached, and nothing is sent until you click 确认发送 (not available in the web version).
+and records the event with its time and assessment or meeting link. On desktop you can connect a QQ / 163 / Gmail mailbox in Settings → 邮箱 with an app password (授权码): the Agent reads invitations to update the board, application emails go to your Drafts folder with the tailored resume attached, and nothing is sent until you click 确认发送. In the web version, the OfferU browser extension fills the compose page of your already-signed-in Gmail / QQ / 163 webmail instead (recipient, subject, body, resume PDF) and you click Send there yourself; on an open message, 「交给 OfferU」 hands that one mail to the Agent. No mail API or OAuth is used, and the extension never clicks Send.
 
 ### Targeted interview practice
 

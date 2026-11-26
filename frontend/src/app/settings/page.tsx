@@ -71,7 +71,7 @@ type SectionKey = "agent" | "models" | "mail" | "accounts" | "collect" | "data" 
 const SECTIONS: Array<{ key: SectionKey; title: string; group: string; icon: ReactNode; description: string }> = [
   { key: "agent", title: "我的 Agent", group: "连接", icon: <Bot size={16} />, description: "连接你已有的 Agent，让它读写 OfferU 的岗位、简历和待办。" },
   { key: "models", title: "模型服务", group: "连接", icon: <Cpu size={16} />, description: "内置 Agent 使用的模型服务、并发上限和兜底方式。" },
-  { key: "mail", title: "邮箱", group: "连接", icon: <Mail size={16} />, description: "用授权码连上自己的邮箱：读邀约邮件更新看板，投递邮件存进草稿箱，你确认后再发。" },
+  { key: "mail", title: "邮箱", group: "连接", icon: <Mail size={16} />, description: "读邀约邮件更新看板，投递邮件写好草稿，你确认后自己发出。桌面版用授权码直连，网页版用浏览器插件。" },
   { key: "accounts", title: "账号与来源", group: "连接", icon: <UserRound size={16} />, description: "求职平台登录，以及 OfferU 读取岗位的数据来源。" },
   { key: "collect", title: "登录态采集", group: "连接", icon: <ShieldAlert size={16} />, description: "BOSS / 小红书等登录态采集的风险说明与同意。" },
   { key: "data", title: "数据", group: "数据与隐私", icon: <Database size={16} />, description: "本机存储、云同步、备份恢复与导出。" },
@@ -111,7 +111,7 @@ function useMailSummary() {
     mailApi.status().then((status) => {
       if (!cancelled) setSummary(status.account ? status.account.address : "未连接");
     }).catch((cause) => {
-      if (!cancelled && isMailUnsupported(cause)) setSummary("仅桌面版");
+      if (!cancelled && isMailUnsupported(cause)) setSummary("网页版 · 浏览器插件");
     });
     return () => { cancelled = true; };
   }, []);

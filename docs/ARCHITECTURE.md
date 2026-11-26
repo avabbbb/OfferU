@@ -66,6 +66,7 @@ frontend/src/lib/demo/    展示站 demo 的 BrowserDemoStore（网页版复用�
 | Agent 看板（外置 Agent） | ❌ 501 | ❌ | ✅ | |
 | 外置 Agent 命令行（`offeru tool`） | ❌ | ❌ | ✅ | MCP 已于 2026-11-24 移除 |
 | 邮箱 IMAP / SMTP（`mail` 工具、`/api/mail/*`） | ❌ 501 | ❌ 501 | ✅ 授权码存 `<data>/offeru-mail.json`（0600） | 读收件箱、存草稿箱、发信；发信只由用户在界面点「确认发送」，Agent 调用只回 needs_confirmation。没连邮箱时邀约邮件照样贴给 Agent |
+| 邮箱 via 浏览器插件（只填写写信页） | ✅ 装了插件：Gmail / QQ / 163 网页 | ❌ | — | 不用邮件 API / OAuth / 授权码：插件在用户已登录的邮箱网页里填收件人、标题、正文并附上用户选的简历 PDF，发送由用户在邮箱里点；读信只读用户点「交给 OfferU」的那一封，交给内置 Agent。选择器可能随邮箱改版失效，退回复制。见 DESIGN §10.2 |
 
 ## 5. 加工具 / 加路由
 

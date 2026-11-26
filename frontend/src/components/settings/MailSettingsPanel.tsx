@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, ExternalLink, Eye, EyeOff, Mail } from "lucide-react";
+import { ChevronRight, ExternalLink, Eye, EyeOff, Mail, Monitor, Puzzle } from "lucide-react";
 
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { Button, Field, Input, Pill, Select, Switch } from "@/components/ui";
+import { extensionInstallUrl } from "@/lib/local/extensionPrompt";
+import { useExtensionMail, WEBMAIL_OPTIONS, type WebmailId } from "@/lib/local/extensionMail";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
   isMailUnsupported, mailApi, providerFor,
@@ -12,9 +14,9 @@ import {
 } from "@/lib/mailClient";
 import { DisclosurePanel, SettingsGroup } from "./SettingsLayout";
 
-// 设置 › 连接 › 邮箱：用授权码连上自己的邮箱（只在桌面版）。
+// 设置 › 连接 › 邮箱：桌面版用授权码连上自己的邮箱（IMAP / SMTP）；网页版用浏览器插件在你已登录的邮箱网页里填写草稿。
 // 任务：连上邮箱，让 Agent 读邀约邮件、投递邮件存进草稿箱并由你确认后发出。
-// 状态：仅桌面版 / 未连接 / 已连接。主操作：未连接时「连接」（先登录 IMAP 和 SMTP，两边都通才保存）。
+// 状态：网页版（插件已就绪 / 没检测到插件）/ 未连接 / 已连接。主操作：未连接时「连接」（先登录 IMAP 和 SMTP，两边都通才保存）。
 // 表单默认收起；服务器地址只有「其他邮箱」默认展开，预设邮箱放在「服务器设置」里。
 
 const EMPTY_SERVER: MailServer = { host: "", port: 993, secure: true };
@@ -43,6 +45,86 @@ function ServerFields({ label, value, onChange }: { label: string; value: MailSe
         <Switch checked={value.secure} onCheckedChange={(secure) => onChange({ ...value, secure })} aria-label={`${label} 用 SSL / TLS 直连`} />
       </label>
     </div>
+  );
+}
+
+/**
+ * 网页版：不连 IMAP / SMTP，也不用任何邮件 API / OAuth。浏览器插件在你已经登录的 Gmail / QQ / 163 网页里
+ * 打开写信页、填好收件人、标题、正文并附上简历，发送由你自己在邮箱里点；读信只读你点「交给 OfferU」的那一封。
+ * 主操作：没插件时「安装插件」；有插件时选默认邮箱（选一次）。桌面版的说明收在披露行里。
+ */
+function WebMailViaExtension() {
+  const [ext, choose] = useExtensionMail();
+  const [desktop, setDesktop] = useState(false);
+  const [error, setError] = useState("");
+  const ready = ext.status === "ready";
+  const provider = ready ? ext.caps.provider : null;
+  const pill = ext.status === "checking"
+    ? <Pill tone="gray">检测插件中</Pill>
+    : ready ? <Pill tone="green">用浏览器插件</Pill> : <Pill tone="gray">没检测到插件</Pill>;
+  const pick = (value: string) => {
+    setError("");
+    choose(value as WebmailId).catch((cause) => setError(safeClientErrorMessage(cause, "没保存上")));
+  };
+  return (
+    <SettingsGroup
+      label="邮箱"
+      testId="mail-settings"
+      note="插件不会替你点发送，也不扫描收件箱；只在你点「交给 OfferU」时读当前打开的这一封。邮箱网页改版时可能填不上，会退回复制内容。"
+    >
+      <div className="ou-settings-item">
+        <span className="ou-tile" aria-hidden="true"><Puzzle size={16} /></span>
+        <div className="ou-settings-item-text">
+          <span className="ou-settings-item-label flex flex-wrap items-center gap-2">邮箱 {pill}</span>
+          <span className="ou-settings-item-desc">
+            {ready
+              ? "写投递邮件时，在你已登录的邮箱网页里打开草稿：收件人、标题、正文和简历附件都填好，你检查后自己点发送。"
+              : "装上 OfferU 浏览器插件，投递邮件就能在你已登录的 Gmail / QQ / 163 网页里自动填好草稿；不用授权码，也不需要邮箱授权。"}
+          </span>
+        </div>
+        <div className="ou-settings-item-control">
+          {ready ? (
+            <Select
+              aria-label="默认邮箱"
+              value={provider ?? undefined}
+              placeholder="选默认邮箱"
+              onValueChange={pick}
+              options={WEBMAIL_OPTIONS}
+            />
+          ) : ext.status === "missing" ? (
+            <ExternalUrlLink href={extensionInstallUrl()} className="ou-text-button" data-testid="mail-install-extension">
+              安装插件<ExternalLink size={13} aria-hidden="true" />
+            </ExternalUrlLink>
+          ) : null}
+        </div>
+      </div>
+      {ready && !provider && <p className="ou-settings-hint px-4 pb-3" role="status">先选一次默认邮箱，之后「写投递邮件」会直接打开它。</p>}
+      {error && <p className="ou-settings-error px-4 pb-3" role="alert">{error}</p>}
+      <div className="ou-settings-item">
+        <span className="ou-tile" aria-hidden="true"><Monitor size={16} /></span>
+        <div className="ou-settings-item-text">
+          <span className="ou-settings-item-label">桌面版直连邮箱</span>
+          <span className="ou-settings-item-desc">让 Agent 自己读收件箱、在 OfferU 里确认发送，要用桌面版。</span>
+        </div>
+        <div className="ou-settings-item-control">
+          <button
+            type="button"
+            className="ou-text-button ou-disclosure-trigger"
+            aria-expanded={desktop}
+            aria-controls="mail-desktop-note"
+            onClick={() => setDesktop((value) => !value)}
+          >
+            了解
+            <ChevronRight size={14} aria-hidden="true" className="ou-disclosure-chevron" />
+          </button>
+        </div>
+      </div>
+      <DisclosurePanel open={desktop} id="mail-desktop-note">
+        <p className="ou-settings-callout mx-4 mb-3" data-tone="gray">
+          桌面版用邮箱授权码直连 IMAP / SMTP：Agent 能直接读邀约邮件更新看板，投递邮件存进草稿箱，你在岗位详情点「确认发送」才发出。授权码只该留在本机，所以网页版不做这条路。
+        </p>
+      </DisclosurePanel>
+    </SettingsGroup>
   );
 }
 
@@ -83,19 +165,7 @@ export function MailSettingsPanel() {
     });
   }, []);
 
-  if (unsupported) {
-    return (
-      <SettingsGroup label="邮箱" testId="mail-settings" note="网页版照样能写投递邮件草稿，在你自己的邮件客户端里发。">
-        <div className="ou-settings-item">
-          <span className="ou-tile" aria-hidden="true"><Mail size={16} /></span>
-          <div className="ou-settings-item-text">
-            <span className="ou-settings-item-label flex flex-wrap items-center gap-2">邮箱 <Pill tone="gray">仅桌面版</Pill></span>
-            <span className="ou-settings-item-desc">读邀约邮件、把投递邮件存进草稿箱并在你确认后发出，要用 OfferU 桌面版：网页版不能连 IMAP / SMTP，授权码也不该放进浏览器。</span>
-          </div>
-        </div>
-      </SettingsGroup>
-    );
-  }
+  if (unsupported) return <WebMailViaExtension />;
 
   const providers = status?.providers ?? [];
   const provider = providers.find((item) => item.id === form.provider);

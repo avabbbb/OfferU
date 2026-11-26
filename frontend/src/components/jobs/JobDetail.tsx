@@ -13,10 +13,12 @@ import { AddEvent, EventRow } from "@/components/core/EventList";
 import { ResearchCard } from "@/components/core/ResearchCard";
 import { PageError, PageLoading } from "@/components/layout/PageState";
 import { DisclosurePanel } from "@/components/settings/SettingsLayout";
-import { Button, Pill } from "@/components/ui";
+import { Button, Pill, Select } from "@/components/ui";
 import { type Doc, type Event, JOB_STATUS, type Job, refreshAll, tool, useTool, when, write } from "@/lib/core";
 import { evaluateJobs } from "@/lib/evaluate";
+import { fileToAttachment, useExtensionMail, WEBMAIL_LABEL, WEBMAIL_OPTIONS, type ExtensionMailCapabilities, type WebmailId, getExtensionMail } from "@/lib/local/extensionMail";
 import { isMailUnsupported, mailApi } from "@/lib/mailClient";
+import { exportResume } from "@/lib/resumeExport";
 
 import { JobTag, StatusPicker } from "./JobPickers";
 import { STAGE_TONE } from "./stage";
@@ -102,7 +104,7 @@ function ApplyChat({ job }: { job: Job }) {
 
 type Draft = { doc_id: number; to: string; cc: string[]; subject: string; body: string; attachment?: string | null; attach_error?: string | null; rules: string[]; missing: string[] };
 /** 岗位下的 email 文档（draft_email 写的；mail draft 存进邮箱草稿箱后带 draft，确认发送后带 sent_at）。 */
-type EmailDoc = Doc & { to?: string; cc?: string[]; subject?: string; attachment?: string | null; files?: string[]; draft?: { folder: string; message_id: string } | null; sent_at?: string | null; updated_at?: string };
+type EmailDoc = Doc & { to?: string; cc?: string[]; subject?: string; attachment?: string | null; resume_id?: number | null; files?: string[]; draft?: { folder: string; message_id: string } | null; sent_at?: string | null; updated_at?: string };
 type MailState = "unsupported" | "disconnected" | { address: string } | null;
 
 /** 桌面版连了邮箱吗：网页版回 501 → unsupported。 */
@@ -169,6 +171,118 @@ function MailConfirm({ doc, from, missing, onRewrite, busy }: { doc: EmailDoc; f
   );
 }
 
+/**
+ * 网页版 + 浏览器插件：插件在你已登录的邮箱网页里打开写信页，填好收件人、标题、正文并附上你选的简历 PDF。
+ * 墨黑「在 Gmail 中打开草稿」是唯一主操作；发送永远由你在邮箱里点，OfferU 不知道你发没发，所以给一个「已发出？标为已投递」。
+ */
+function ExtensionCompose({ job, doc, caps, onChoose, missing, onRewrite, mailto, busy }: {
+  job: Job;
+  doc: EmailDoc;
+  caps: ExtensionMailCapabilities;
+  onChoose: (provider: WebmailId) => Promise<void>;
+  missing: string[];
+  onRewrite: () => void;
+  mailto: string;
+  busy: boolean;
+}) {
+  const [subject, setSubject] = useState(doc.subject ?? "");
+  const [body, setBody] = useState(doc.body ?? "");
+  const [file, setFile] = useState<File | null>(null);
+  const [opening, setOpening] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const [marked, setMarked] = useState(false);
+  const [err, setErr] = useState("");
+  const picker = useRef<HTMLInputElement>(null);
+  useEffect(() => { setSubject(doc.subject ?? ""); setBody(doc.body ?? ""); }, [doc.id, doc.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
+  const keep = (field: "subject" | "body", value: string) => {
+    if (value !== (doc[field] ?? "")) void write("save", { type: "doc", id: doc.id, data: { [field]: value } });
+  };
+  const provider = caps.provider;
+  const label = provider ? WEBMAIL_LABEL[provider] : "邮箱";
+  // 网页版导不出 PDF 文件（只能打印另存为），附件缺项由下面的「选择简历 PDF」接手，这里不重复列。
+  const todo = missing.filter((item) => !item.startsWith("附件："));
+  const open = async () => {
+    if (!provider || !doc.to) return;
+    setOpening(true); setErr("");
+    try {
+      keep("subject", subject); keep("body", body);
+      await getExtensionMail()!.compose({
+        provider, to: doc.to, cc: doc.cc ?? [], subject: subject.trim(), body,
+        attachment: file ? await fileToAttachment(file) : null,
+      });
+      setOpened(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "插件没打开邮箱，再试一次");
+    } finally {
+      setOpening(false);
+    }
+  };
+  const markApplied = async () => {
+    try {
+      await write("save", { type: "job", id: job.id, data: { status: "applied" } });
+      setMarked(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "没改成已投递");
+    }
+  };
+  const exportPdf = () => {
+    if (doc.resume_id) exportResume(doc.resume_id, "pdf").catch((e) => setErr(e instanceof Error ? e.message : "导出失败"));
+  };
+  return (
+    <section className="jb-mail-confirm" aria-label={`在${label}中打开投递邮件草稿`} data-testid="mail-ext-confirm">
+      <div className="jb-mail-confirm-head">
+        <Pill tone="yellow">待你发送</Pill>
+        <span>OfferU 用浏览器插件在{label}网页里填好草稿，你检查后自己点发送</span>
+      </div>
+      <dl className="jb-kv jb-kv-rows">
+        <div>
+          <dt>邮箱</dt>
+          <dd className="jb-mail-provider">
+            <Select size="sm" aria-label="用哪个邮箱打开" value={provider ?? undefined} placeholder="选邮箱" onValueChange={(value) => void onChoose(value as WebmailId)} options={WEBMAIL_OPTIONS} />
+          </dd>
+        </div>
+        <div><dt>收件人</dt><dd>{[doc.to, ...(doc.cc ?? [])].filter(Boolean).join("，")}</dd></div>
+        <div>
+          <dt>附件</dt>
+          <dd className="jb-mail-attach">
+            <span>{file ? file.name : "还没选简历 PDF"}</span>
+            <button type="button" className="jb-text" onClick={() => picker.current?.click()}>{file ? "换一个" : "选择简历 PDF"}</button>
+            <input ref={picker} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => { setFile(e.target.files?.[0] ?? null); setErr(""); }} />
+          </dd>
+        </div>
+      </dl>
+      {!file && (
+        <p className="jb-hero-hint">
+          网页版不能直接生成 PDF 文件：先{doc.resume_id ? <button type="button" className="jb-text jb-inline" onClick={exportPdf}>导出简历 PDF</button> : "导出简历 PDF"}（打印时选「另存为 PDF」），再选它；不选也行，到邮箱里自己加附件。
+        </p>
+      )}
+      <label className="jb-subhead" htmlFor={`mail-subject-${doc.id}`}>标题</label>
+      <input id={`mail-subject-${doc.id}`} className="jb-field" value={subject} onChange={(e) => setSubject(e.target.value)} onBlur={() => keep("subject", subject)} />
+      <label className="jb-subhead" htmlFor={`mail-body-${doc.id}`}>正文</label>
+      <textarea id={`mail-body-${doc.id}`} className="jb-textarea" rows={8} value={body} onChange={(e) => setBody(e.target.value)} onBlur={() => keep("body", body)} />
+      {todo.length > 0 && <ul className="jb-list">{todo.map((item) => <li key={item}>{item}</li>)}</ul>}
+      {opened ? (
+        <p className="jb-mail-sent" role="status">
+          <Pill tone="blue">已打开</Pill>
+          草稿在{label}的新标签页里。检查收件人和附件后，在{label}里点发送。
+          {job.status === "saved" && !marked && <button type="button" className="jb-text" onClick={() => void markApplied()}>已发出？标为已投递</button>}
+          {marked && <span>已标为已投递</span>}
+        </p>
+      ) : (
+        <p className="jb-hero-hint">插件只填写、不发送；邮箱网页改版填不上时，会在邮箱页给你复制内容。</p>
+      )}
+      <div className="jb-actions jb-mail-confirm-actions">
+        <button type="button" className="jb-text" disabled={busy || opening} onClick={onRewrite}>重写草稿</button>
+        <a href={mailto} className="jb-text">改用邮件客户端</a>
+        <Button variant="primary" disabled={opening || busy || !provider || !subject.trim() || !doc.to} onClick={() => void open()} data-testid="mail-ext-open">
+          <ExternalLink size={14} aria-hidden="true" />{opening ? "正在打开…" : opened ? `再次在 ${label} 中打开` : `在 ${label} 中打开草稿`}
+        </Button>
+      </div>
+      {err && <p role="alert" className="jb-error">{err}</p>}
+    </section>
+  );
+}
+
 function EmailDraft({ job, doc: brief, autoStart }: { job: Job; doc?: EmailDoc; autoStart?: number }) {
   const mail = useMailState();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -176,16 +290,21 @@ function EmailDraft({ job, doc: brief, autoStart }: { job: Job; doc?: EmailDoc; 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const connected = typeof mail === "object" && mail !== null;
+  // 网页版（没有桌面邮箱）：装了插件就走「在邮箱网页里打开草稿」。
+  const [ext, chooseWebmail] = useExtensionMail(mail === "unsupported");
+  const viaExtension = mail === "unsupported" && ext.status === "ready";
+  const docId = draft?.doc_id ?? brief?.id;
   // 列表里的文档是摘要（正文截断）：确认卡要全文，文档一变就重读。
   useEffect(() => {
-    if (!brief?.id || !connected) { setDoc(null); return; }
+    if (!docId || !(connected || viaExtension)) { setDoc(null); return; }
     let cancelled = false;
-    tool<{ record: EmailDoc }>("get", { type: "doc", id: brief.id }).then(({ record }) => { if (!cancelled) setDoc(record); }).catch(() => undefined);
+    tool<{ record: EmailDoc }>("get", { type: "doc", id: docId }).then(({ record }) => { if (!cancelled) setDoc(record); }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [brief?.id, brief?.updated_at, connected]);
-  const mailto = draft
-    ? "mailto:" + draft.to + "?subject=" + encodeURIComponent(draft.subject) + "&body=" + encodeURIComponent(draft.body)
-      + (draft.cc.length ? "&cc=" + encodeURIComponent(draft.cc.join(",")) : "")
+  }, [docId, brief?.updated_at, draft, connected, viaExtension]);
+  const source = draft ?? (doc ? { to: doc.to ?? "", cc: doc.cc ?? [], subject: doc.subject ?? "", body: doc.body ?? "" } : null);
+  const mailto = source
+    ? "mailto:" + source.to + "?subject=" + encodeURIComponent(source.subject) + "&body=" + encodeURIComponent(source.body)
+      + (source.cc.length ? "&cc=" + encodeURIComponent(source.cc.join(",")) : "")
     : "";
   const run = async () => {
     setBusy(true); setErr("");
@@ -203,6 +322,7 @@ function EmailDraft({ job, doc: brief, autoStart }: { job: Job; doc?: EmailDoc; 
   // 焦点卡的「写投递邮件」：打开这一节并直接开写。
   useEffect(() => { if (autoStart && mail !== null) void run(); }, [autoStart, mail === null]); // eslint-disable-line react-hooks/exhaustive-deps
   const pending = connected && doc && doc.draft && !doc.sent_at ? doc : null;
+  const extDoc = viaExtension && doc && !doc.sent_at && doc.to ? doc : null;
   const sent = brief?.sent_at ? brief : null;
   return (
     <div className="jb-block">
@@ -210,13 +330,24 @@ function EmailDraft({ job, doc: brief, autoStart }: { job: Job; doc?: EmailDoc; 
       {sent && <p className="jb-mail-sent" role="status"><Pill tone="green">已发送</Pill>{when(sent.sent_at!)} 发给 {sent.to}</p>}
       {pending ? (
         <MailConfirm doc={pending} from={(mail as { address: string }).address} missing={draft?.doc_id === pending.id ? draft.missing : []} onRewrite={() => void run()} busy={busy} />
+      ) : extDoc && ext.status === "ready" ? (
+        <ExtensionCompose
+          job={job}
+          doc={extDoc}
+          caps={ext.caps}
+          onChoose={chooseWebmail}
+          missing={draft?.doc_id === extDoc.id ? draft.missing : []}
+          onRewrite={() => void run()}
+          mailto={mailto}
+          busy={busy}
+        />
       ) : (
         <>
           <div className="jb-actions">
             <button type="button" disabled={busy || mail === null} className="jb-text" onClick={() => void run()}>{busy ? "正在写…" : draft || sent ? "重写草稿" : "写投递邮件"}</button>
             {mail === "disconnected" && <Link href="/settings?section=mail" className="jb-text">连上邮箱后可直接存草稿、确认后发出</Link>}
           </div>
-          {draft && !connected && (
+          {draft && !connected && !viaExtension && (
             <div className="jb-block">
               <dl className="jb-kv">
                 <div><dt>收件人</dt><dd>{[draft.to, ...draft.cc].join("，")}</dd></div>

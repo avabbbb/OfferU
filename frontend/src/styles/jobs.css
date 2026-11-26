@@ -233,3 +233,9 @@
 .jb-mail-confirm-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
 .jb-mail-confirm-actions { justify-content: flex-end; margin-left: 0; }
 .jb-mail-sent { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); font-size: var(--ou-type-sm); color: var(--ou-text-secondary); }
+.jb-mail-provider, .jb-mail-attach { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ou-space-2); min-width: 0; }
+.jb-mail-attach > span { min-width: 0; overflow-wrap: anywhere; }
+.jb-kv-rows { grid-template-columns: 1fr; gap: var(--ou-space-2); }
+.jb-kv-rows > div { display: grid; grid-template-columns: 4rem minmax(0, 1fr); align-items: center; gap: var(--ou-space-3); min-height: 2rem; }
+.jb-kv-rows dd { margin-top: 0; }
+.jb-inline { display: inline; min-height: 0; padding: 0; vertical-align: baseline; color: var(--ou-text-primary); text-decoration: underline; text-underline-offset: 2px; }

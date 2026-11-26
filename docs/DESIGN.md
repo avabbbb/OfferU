@@ -156,9 +156,9 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 进度只看两样：进程是否还在、它写了哪些 change。完成后今天页的最近改动里出现「codex：……」。
 - 同时只跑一个后台任务。
 
-## 10. 邮箱（桌面版）
+## 10. 邮箱（桌面版 IMAP / SMTP；网页版插件见 10.2）
 
-- **只在桌面版**：伴侣用 IMAP（imapflow）读信、写草稿箱，用 SMTP（nodemailer）发信，适配器在 `backend-ts/src/routes/companion/mail.ts`，规则在 `packages/core/src/mail/`。网页版和 Worker 没有 `AppDeps.mail`：`/api/mail/*` 回 501 `unsupported`，`mail` 工具同样回 `unsupported`，设置页显示「仅桌面版」。
+- **IMAP / SMTP 只在桌面版**：伴侣用 IMAP（imapflow）读信、写草稿箱，用 SMTP（nodemailer）发信，适配器在 `backend-ts/src/routes/companion/mail.ts`，规则在 `packages/core/src/mail/`。网页版和 Worker 没有 `AppDeps.mail`：`/api/mail/*` 回 501 `unsupported`，`mail` 工具同样回 `unsupported`。网页版的邮箱走浏览器插件（§10.2），设置页显示插件状态，桌面版说明收在「了解」里。
 - **账号**：设置 › 连接 › 邮箱。服务商预设 QQ（imap.qq.com:993 / smtp.qq.com:465）、网易 163（imap.163.com:993 / smtp.163.com:465）、Gmail（imap.gmail.com:993 / smtp.gmail.com:465，应用专用密码）、Outlook（outlook.office365.com:993 / smtp-mail.outlook.com:587 STARTTLS，微软要求 OAuth，多半连不上，界面标黄）和「其他邮箱」（自填服务器）。每个预设带官方「怎么获取授权码」链接。保存前先登录 IMAP 和 SMTP，两边都通才写进 `<data>/offeru-mail.json`（0600）；授权码不进 offeru.db、改动记录、工具输出、日志和浏览器，`/api/mail/status` 只回地址和服务器。断开即删文件。163 要求先发 IMAP ID 才能 SELECT，imapflow 在服务器声明 ID 能力时自动发（客户端名 OfferU）。
 - **`mail` 工具**（一个工具四个 action，HTTP / CLI / 内置 Agent 都能用）：
   - `list`：收件箱最近 `days` 天（默认 7）或上次 `cursor`（UIDVALIDITY:UID）之后的邮件，返回 id、发件人、主题、时间、约 140 字摘要、是否已读；`query` 按发件人 / 主题 / 摘要筛（空格分开都要命中）。只读，用 PEEK，不改已读状态。
@@ -176,6 +176,18 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 远端是 dejavu 式的内容寻址快照：objects（加密块，id = HMAC）、indexes（快照索引）、refs/latest（If-Match 比较交换）、lock（带过期）。只上传桶里没有的块。
 - 合并以本机上次同步的快照为 base，逐条记录三方合并、字段级合并；真冲突按 updated_at 后写赢，输的版本存成一篇冲突文档；修改赢过并发删除。结果在一个事务里写回，每条一行 change（actor「同步」），可撤销。
 - companion 路由 `GET /api/sync/status`、`POST /api/sync/{configure,now}`；设置 › 数据 › 云同步。凭据和口令只存在本机。
+
+### 10.2 网页版：邮箱 via 浏览器插件（只填写，不发送）
+
+Gmail API 的读写权限是受限 scope（未审核的 OAuth 应用只能加 100 个测试用户），授权码又不该放进浏览器，所以网页版不碰任何邮件 API / OAuth：浏览器插件在用户**已经登录**的邮箱网页里操作写信页。
+
+- **写投递邮件**（主路径）：网页版没有桌面邮箱（`/api/mail/status` 501）且检测到插件时，岗位详情 › 邮件投递的「写投递邮件」照旧 `draft_email`，下面出插件确认卡：邮箱（默认邮箱，卡里可换）、收件人、附件（「选择简历 PDF」）、可改的标题和正文、缺项。墨黑「在 Gmail 中打开草稿」是唯一主操作；次要操作是「重写草稿」和「改用邮件客户端」（mailto）。插件新开一个标签：Gmail 用 `https://mail.google.com/mail/?view=cm&fs=1&to=&su=&body=`（URL 预填，插件补附件和漏填的），QQ / 163 打开首页再点「写信」（写信页要登录后的 sid）。插件填收件人 / 抄送 / 标题 / 正文，把 PDF 用 `DataTransfer` 放进写信页的 `<input type=file>`（没有文件框就拖进写信区），右下角浮层逐项显示「已填 / 没填上 / 请确认」，写明「请你自己点发送」。**插件永远不点发送**（每个适配器的夹具测试都断言发送按钮没被点）。打开后卡里给「已发出？标为已投递」（OfferU 不知道你发没发）。
+- **附件**：网页版没有 PDF 文件导出（`/api/resume/:id/pdf` 501，只能浏览器打印另存为），`draft_email` 的 `attachment` 为 null。所以确认卡让用户选一个 PDF 文件（卡里有「导出简历 PDF」入口，打印时另存为），网页把文件读成 base64 交给插件；≤ 5 MB。不选也能打开草稿，到邮箱里自己加附件。
+- **填不上时**：每个邮箱一个适配器文件（`extension/src/mail/providers/{gmail,qq,netease}.ts`），选择器先试稳定属性（name / aria-label / id 后缀），再按「收件人 / 主题」标签文字找。哪项没找到就记进报告，浮层主按钮变成「复制没填上的内容」，附件没放进去给「下载简历 PDF」让用户拖进去。没找到写信页（多半没登录）时草稿留在插件会话存储里 15 分钟，用户登录后页面重载会接着填。
+- **默认邮箱**：设置 › 连接 › 邮箱 选一次（Gmail / QQ 邮箱 / 网易 163 邮箱），存在插件的 `chrome.storage.local`，握手时带回网页。
+- **读邀约**（次要）：在邮箱网页打开一封邮件时右下角出「交给 OfferU」胶囊；用户点了才读这一封的发件人、主题、时间、正文文字（≤ 8000 字）和 http(s) 链接（≤ 30 条），后台放进会话存储的小队列，通知已打开的 OfferU 网页（没有就打开它）；网页取走后用 `composeToAgent` 交给内置 Agent，和手动贴邀约邮件同一条流程（`search` 岗位 → 推进状态 → `save` 带 url 的事项）。不扫描收件箱、不后台读信、不存原始邮件。
+- **通道**：和模型直连共用页面 ⇄ 内容脚本的 `window.postMessage` 通道（`frontend/src/lib/local/extensionMail.ts` ⇄ `extension/src/content/mail-bridge.ts` ⇄ `extension/src/background/mail.ts`），契约在 `extension/src/mail/contract.ts`。后台只接受 OfferU 网页 origin 的握手 / 写信 / 取件，只接受适配器域名顶层页面的取草稿 / 交邮件；草稿只交给打开它的那个标签页。邮箱页的内容脚本是单独的入口 `entrypoints/mail.content.ts`，只匹配 `mail.google.com`、`mail.qq.com`、`wx.mail.qq.com`、`mail.163.com`。
+- 不做：点发送、读收件箱列表、标已读、任何邮件 API / OAuth、Outlook 网页版。
 
 ## 11. 前端
 
