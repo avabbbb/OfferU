@@ -77,6 +77,13 @@ frontend/src/lib/demo/    展示站 demo 的 BrowserDemoStore（网页版复用�
 6. **契约用例**：每个工具 / 路由至少一条契约用例（`backend-ts/test/*.contract.test.ts`；`fixtures/` 里已有的期望由旧 Python 版生成，改行为时直接更新夹具），新行为至少一条走真实 HTTP（`app.request`）的测试。新增前端 `/api` 调用必须有 TS 路由，`test/route-coverage.test.ts` 会拦。
 7. **浏览器包检查**：`npm run build:web` 末尾的 `scripts/check-browser-bundle.mjs` 会拦住进了浏览器包的 Node 内置模块。
 
+### 5.1 工具错误与 CLI 输出
+
+- CLI 失败时输出 `{"error", "code"}`，退出码非 0。常用 code：`not_found`、`invalid`、`not_configured`（501，缺密钥或缺模型配置，例如 web_search 没有 `BOCHA_API_KEY` / `TAVILY_API_KEY` / `SERPER_API_KEY`）、`upstream`（502，上游 429 / 5xx / 超时）。内置 Agent 侧 `upstream` 显示为 `upstream_unavailable`。
+- 没配模型时，CLI 不报错退出，而是把任务交还给调用它的外置 Agent（handoff），由那个 Agent 用自己的模型完成。
+- `add_job` 可带 `source_url`（只收 http/https），存进岗位的 `url`，不抓取、不触发联网搜索。
+- 事项（event）可带 `url`（只收 http/https），用于笔试测评或面试链接。邀约邮件由用户贴给 Agent，Agent 用 `search` + `save` 推进岗位状态并记事项；没有邮箱同步工具。
+
 ## 6. Python 后端（已删除）
 
 `backend/`（FastAPI）和只给它用的 `agent-runtime/`（外置 Claude 执行器）已删除，最后一版在 tag `python-backend-final`。157 条旧路由中 135 条由 TS 提供，其余 22 条（`/api/research/*`、`/api/bridge/proposals/*`、`/api/agent/runtime/skill`）按决定不迁，见 [route-coverage](./route-coverage.md)。没迁的能力：邮箱同步（IMAP）、系统钥匙串。MCP 已于 2026-11-24 移除，外置 Agent 只走 CLI。
