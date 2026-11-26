@@ -51,4 +51,4 @@ npm run deploy                    # build:web + wrangler deploy
 
 ## 还没迁的
 
-Python 后端已删除（tag `python-backend-final`）。没迁的：邮箱同步（IMAP）、模型设置的系统钥匙串与一键导入。按决定不迁的路由见 [docs/route-coverage.md](../docs/route-coverage.md)。
+Python 后端已删除（tag `python-backend-final`）。没迁的：邮箱同步（IMAP，邀约邮件改为贴给 Agent）、模型设置的系统钥匙串与一键导入。按决定不迁的路由见 [docs/route-coverage.md](../docs/route-coverage.md)。

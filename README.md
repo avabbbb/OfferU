@@ -178,6 +178,9 @@ Today, Pipeline, Job Detail and Timeline all read from the same underlying caree
 progress is modeled as **events** rather than independent UI state, so OfferU can project one truth
 across the product instead of asking you to maintain several trackers.
 
+Paste an application receipt or a test / interview invitation into the Agent and it moves the job forward
+and records the event with its time and assessment or meeting link. OfferU does not read your mailbox yet.
+
 ### Targeted interview practice
 
 Interview preparation is grounded in the intersection of role delta, career evidence gap and previous
@@ -410,9 +413,9 @@ These commands only validate their own scope; they do not mean "ready to release
 
 Current priorities are productization, not more top-level features:
 
-1. **Zero-Setup onboarding** — native install, local-Agent auto-discovery, Profile bootstrap, first Job, inbox, useful Today.
+1. **Zero-Setup onboarding** — native install, local-Agent auto-discovery, Profile bootstrap, first Job, useful Today.
 2. **Real external-Agent Eval** — validate autonomous tool discovery and complete user journeys before further tool compression.
-3. **Browser + inbox productization** — one-click job capture and beginner-friendly read-only progress sync.
+3. **Browser + inbox productization** — one-click job capture; invitations are pasted to the Agent today, automatic read-only mailbox sync is not built yet.
 4. **Public desktop release** — signed installer, clean-machine setup, migration, backup, restore and upgrade.
 5. **Privacy, security and real-user iteration** — keep trust gates hard while reducing user effort.
 
