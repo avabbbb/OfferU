@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, ChevronRight, XCircle } from "lucide-react";
 import type { ToolExecutionState } from "@/lib/embeddedAgentStream";
+import { formatToolStep } from "@/lib/agentToolPresentation";
 import { AgentOrbIcon } from "./AgentWorkingOrb";
 import { AgentToolError } from "./AgentToolErrorCard";
 
@@ -16,12 +17,13 @@ export function toolGroupSeconds(rows: ToolExecutionState[], now: number): numbe
   return Math.max(0, Math.round((Math.max(...ends) - Math.min(...starts)) / 1000));
 }
 
-// Notion 式：一组工具折成一行摘要，点开才看逐条。title 可截断，meta 始终完整显示。
+// Notion / Hark 式：一组工具折成一行中文进度摘要，点开看逐条可视化步骤与参数详情。
 export function toolGroupSummary(rows: ToolExecutionState[], now: number): { title: string; meta: string } {
   const current = rows.find((tool) => tool.status === "running");
   const seconds = toolGroupSeconds(rows, now);
   if (current) {
-    return { title: current.toolName, meta: "第 " + rows.length + " 步" + (seconds > 0 ? " · " + seconds + " 秒" : "") };
+    const step = formatToolStep(current.toolName, current.args, "running", current.result);
+    return { title: step.title, meta: "第 " + rows.length + " 步" + (seconds > 0 ? " · " + seconds + " 秒" : "") };
   }
   const failed = rows.filter((tool) => tool.status === "error").length;
   return {
@@ -44,7 +46,6 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
   }, [running]);
   if (rows.length === 0) return null;
   const summary = toolGroupSummary(rows, now);
-  // Tool payloads are LLM-facing: no raw result/summary body is rendered.
   return (
     <div className="agent-tool-group">
       <button
@@ -81,6 +82,7 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
         <div className="agent-tool-list" role="list" aria-label="工具调用">
           {rows.map((tool) => {
             const label = tool.status === "running" ? "运行中" : tool.status === "error" ? "出错" : "完成";
+            const step = formatToolStep(tool.toolName, tool.args, tool.status, tool.result);
             return (
               <div key={tool.id} role="listitem" data-status={tool.status} className="agent-tool-row">
                 {tool.status === "running" ? (
@@ -90,8 +92,11 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
                 ) : (
                   <CheckCircle2 size={12} className="shrink-0 text-[var(--primary-green)]" />
                 )}
-                <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--agent-fs-xs)] text-[var(--foreground)]" title={tool.toolName}>
-                  {tool.toolName}
+                <span className="min-w-0 flex-1 truncate text-[length:var(--agent-fs-xs)] text-[var(--foreground)]" title={tool.toolName}>
+                  {step.title}
+                  {step.detail && (
+                    <span className="ml-1.5 text-[var(--foreground-muted)]">· {step.detail}</span>
+                  )}
                 </span>
                 <span className="shrink-0 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">{label}</span>
               </div>

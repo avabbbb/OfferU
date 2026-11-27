@@ -1,5 +1,5 @@
 /**
- * 页面把一段意图交给 OfferU Agent 的唯一通道（例如简历画布上攒好的修改意见）。
+ * 页面把一段意图交给 OfferU Agent 的唯一通道（例如简历画布上攒好的修改意见、今天页的 Hark 式一键动作按钮）。
  *
  * Agent 面板是按需挂载的：事件发出时它可能还不存在。所以消息先进邮箱，
  * 面板挂载时取走，已挂载的面板通过事件立即收到。面板按 D-1 规则发送：
@@ -8,6 +8,8 @@
 
 export interface AgentComposeRequest {
   message: string;
+  /** Optional Job Project id: AgentPanel scopes the run into a dedicated project thread when set. */
+  jobId?: number | null;
 }
 
 export const AGENT_COMPOSE_EVENT = "offeru-agent-compose";

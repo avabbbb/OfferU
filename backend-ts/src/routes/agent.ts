@@ -17,6 +17,7 @@ import {
   type AttachmentDeps,
   agentActionUndoPreview,
   agentActions,
+  buildProactiveActions,
   canonicalAgentRunEvent,
   agentContextWindow,
   isReasoningEffort,
@@ -251,6 +252,12 @@ export function registerAgent(app: Hono<AppEnv>): void {
     skills: skillCatalog(),
     sandbox: { modes: SANDBOX_MODES, default: "workspace_write", read_only_tools: [...READ_ONLY_TOOLS] },
   }));
+
+  // Hark-style Proactive Action Buttons: deterministic prioritized actions derived from real records.
+  app.get("/api/agent/proactive", async (c) => {
+    const ctx = { actor: c.get("actor"), now: nowIso(), today: todayIso() };
+    return c.json(await buildProactiveActions(c.get("deps").store, ctx));
+  });
 
   // Hosted CLI providers (codex / claude) are a companion feature not ported yet.
   // Composer uploads (Python POST/GET /api/agent/runtime/attachments): multipart field "file".

@@ -16,6 +16,7 @@ import { Button, Textarea } from "@heroui/react";
 import {
   Activity,
   AlertTriangle,
+  Brain,
   Briefcase,
   ClipboardCheck,
   ChevronDown,
@@ -41,7 +42,11 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { Menu } from "@/components/ui";
+import { Menu, Pill } from "@/components/ui";
+import { useTool, type Job } from "@/lib/core";
+import { AgentMemoryDialog } from "./AgentMemoryDialog";
+import { AgentOutputPanels } from "./AgentOutputPanels";
+import { ProactiveActionStrip } from "./ProactiveActionStrip";
 import {
   agentSupportApi,
   hostedExecutorApi,
@@ -307,7 +312,20 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const [composerOptions, setComposerOptions] = useComposerOptions();
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [skillHubOpen, setSkillHubOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const modelCatalog = useModelCatalog(modelMenuOpen);
+  const { data: jobsList } = useTool<{ items: Job[] }>("list", { type: "job" });
+  const jobLabels = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const job of jobsList?.items ?? []) {
+      map[job.id] = [job.company, job.title].filter(Boolean).join(" · ") || `岗位 #${job.id}`;
+    }
+    return map;
+  }, [jobsList]);
+  const activeProjectJobId = useMemo(() => {
+    const match = /^conv_job_(\d+)_/i.exec(conversationId || "");
+    return match ? Number(match[1]) : null;
+  }, [conversationId]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [hostedOpen, setHostedOpen] = useState(false);
@@ -389,6 +407,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
     { id: "ask", label: "模式 · 询问", description: "每一步写入都先问你", group: "输入", hint: "/ask", keywords: ["mode", "模式"], icon: <Hand size={15} />, run: () => setComposerOptions({ approvalMode: "ask" }) },
     { id: "auto", label: "模式 · 自动", description: "可撤销的直接做，不可撤销的才问你", group: "输入", hint: "/auto", keywords: ["mode", "模式"], icon: <Zap size={15} />, run: () => setComposerOptions({ approvalMode: "auto" }) },
     { id: "skills", label: "Skill Hub", description: "看 OfferU 的技能和沙箱设置", group: "输入", hint: "/skills", keywords: ["skill", "技能", "方法", "hub", "沙箱", "sandbox"], icon: <Library size={15} />, run: () => setSkillHubOpen(true) },
+    { id: "memory", label: "记忆与偏好", description: "查看、确认或忘记 Agent 的长期记忆与偏好", group: "输入", hint: "/memory", keywords: ["memory", "记忆", "偏好", "确认", "忘记"], icon: <Brain size={15} />, run: () => setMemoryOpen(true) },
     { id: "readonly", label: "沙箱 · 只读", description: "只查、只给建议，写入一律拦下", group: "输入", hint: "/readonly", keywords: ["sandbox", "沙箱", "只读", "read"], icon: <Lock size={15} />, run: () => setComposerOptions({ sandbox: "read_only" }) },
     { id: "write", label: "沙箱 · 可写", description: "可以改档案、岗位和文档（可撤销）", group: "输入", hint: "/write", keywords: ["sandbox", "沙箱", "可写", "write"], icon: <PenLine size={15} />, run: () => setComposerOptions({ sandbox: "workspace_write" }) },
     { id: "attach", label: "添加附件", description: "图片、PDF 或 PPT", group: "输入", hint: "/attach", keywords: ["file", "image", "附件", "图片", "文件"], icon: <Paperclip size={15} />, run: () => attachmentInputRef.current?.click() },
@@ -622,7 +641,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
     window.requestAnimationFrame(() => composerInputRef.current?.focus());
   };
 
-  const sendMessage = async (text?: string) => {
+  const sendMessage = async (text?: string, jobId?: number | null) => {
     const typed = (text ?? input).trim();
     const fromComposer = text === undefined;
     if (busyRef.current) {
@@ -648,7 +667,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
     const attachments = withAttachments ? composerAttachments.takeForSend() : [];
     const quoted = fromComposer ? quote : null;
     if (fromComposer) { setInput(""); setQuote(null); }
-    await startTurn(withQuote(typed || ATTACHMENT_ONLY_MESSAGE, quoted), attachments);
+    await startTurn(withQuote(typed || ATTACHMENT_ONLY_MESSAGE, quoted), attachments, { jobId });
   };
 
   const patchTurn = (turnId: string, patch: (turn: InFlightTurn) => InFlightTurn) => {
@@ -658,7 +677,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
   const startTurn = async (
     content: string,
     attachments: ComposerAttachment[] = [],
-    options: { fromQueue?: boolean } = {},
+    options: { fromQueue?: boolean; jobId?: number | null } = {},
   ) => {
     if (!content) return;
     // 双击 / 连按回车防重：同一段文字 800ms 内只开一轮（队列里的不算重复）。
@@ -670,7 +689,13 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
     }
     lastSendRef.current = { content, at: now };
     parkActiveRun();
-    const currentConversationId = conversationId;
+    let currentConversationId = conversationId;
+    if (options.jobId && (!currentConversationId || !currentConversationId.startsWith(`conv_job_${options.jobId}_`))) {
+      const existing = conversations.find((item) => item.job_id === options.jobId);
+      currentConversationId = existing?.id || `conv_job_${options.jobId}_${Math.random().toString(16).slice(2, 14)}`;
+      setConversationId(currentConversationId);
+      if (jobLabels[options.jobId]) setConversationTitle(jobLabels[options.jobId]);
+    }
     suppressResumePromptRef.current = true;
     setResumeCandidate(null);
     currentConvRef.current = currentConversationId;
@@ -819,7 +844,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
       for (const request of drainAgentCompose()) {
         // 同一时间只跑一个 Run：在跑就排队，这一轮结束后自动发。
         if (busyRef.current) setQueue((current) => enqueue(current, request.message, currentConvRef.current));
-        else void startTurnRef.current(request.message);
+        else void startTurnRef.current(request.message, [], { jobId: request.jobId });
       }
     };
     take();
@@ -1171,9 +1196,19 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
           <ChevronDown size={13} className={"agent-head-chevron" + (historyOpen ? " is-open" : "")} />
         </button>
         <div className="agent-head-actions">
+          <button
+            type="button"
+            className="agent-head-button"
+            aria-label="记忆与偏好"
+            title="记忆与偏好（/memory）"
+            onClick={() => setMemoryOpen(true)}
+          >
+            <Brain size={15} strokeWidth={2} />
+          </button>
           <Menu align="end" label="对话操作" items={[
             { label: "新对话", icon: <Plus size={15} />, onSelect: startNewConversation },
             { label: "历史对话", icon: <History size={15} />, onSelect: () => { void refreshConversations(); setHistoryOpen(true); } },
+            { label: "记忆与偏好", icon: <Brain size={15} />, onSelect: () => setMemoryOpen(true) },
             ...(hostedSessions.length > 0 ? [{ label: "外部执行器会话", icon: <Activity size={15} />, onSelect: () => setHostedOpen((value) => !value) }] : []),
           ]} trigger={
             <button type="button" className="agent-head-button" aria-label="更多" title="更多">
@@ -1188,12 +1223,21 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
         </div>
       </div>
 
+      {activeProjectJobId && (
+        <div className="flex items-center justify-between gap-2 px-3.5 pb-1" data-testid="agent-project-bar">
+          <Link href={`/jobs/${activeProjectJobId}`} className="inline-flex items-center gap-1.5 hover:opacity-85">
+            <Pill tone="purple">项目：{jobLabels[activeProjectJobId] || `岗位 #${activeProjectJobId}`}</Pill>
+          </Link>
+        </div>
+      )}
+
       {historyOpen && (
         <>
         <div className="fixed inset-0 z-20" aria-hidden onClick={() => setHistoryOpen(false)} />
         <AgentHistoryList
           conversations={conversations}
           currentId={conversationId}
+          jobLabels={jobLabels}
           onOpen={(id) => { void loadConversation(id); }}
           onDelete={(id) => { void removeConversation(id); }}
           onNew={startNewConversation}
@@ -1426,7 +1470,15 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
               />
             </div>
           ))}
-          {inFlightTurns.length === 0 && <ToolExecutionList executions={toolStream.toolExecutions} />}
+          {inFlightTurns.length === 0 && (
+            <>
+              <ToolExecutionList executions={toolStream.toolExecutions} />
+              <AgentOutputPanels
+                executions={toolStream.toolExecutions}
+                onPrompt={(prompt, jobId) => { void sendMessage(prompt, jobId); }}
+              />
+            </>
+          )}
           {runActionPending && (
             <AgentRunPill text={progressText} />
           )}
@@ -1439,6 +1491,7 @@ function BackendAgentPanel({ onClose }: { onClose?: () => void }) {
         sandbox={composerOptions.sandbox === "read_only" ? "read_only" : "workspace_write"}
         onSandboxChange={(mode) => setComposerOptions({ sandbox: mode })}
         onTry={fillComposer} />
+      <AgentMemoryDialog open={memoryOpen} onOpenChange={setMemoryOpen} />
       </div>
 
       {interruptedRunId && (
@@ -1712,7 +1765,7 @@ function PanelMessageBubble({
 }: {
   message: PanelMessage;
   showGuidance: boolean;
-  onSuggestion: (prompt: string) => void;
+  onSuggestion: (prompt: string, jobId?: number | null) => void;
   /** 用户消息是第几轮的开头（刻度条定位用）。 */
   turnIndex?: number;
   /** 引用到输入框：有选中文字且选区在这条消息里就引用选中的部分，否则引用整条。 */
@@ -1800,18 +1853,19 @@ function PixelLoader() {
 
 // 空状态：一句问候 + 几颗和 OfferU 主线相关的建议胶囊，点一下就发出去（参考 Inspora「composer mockup」）。
 const EMPTY_SUGGESTIONS: Array<{ icon: typeof Sparkles; label: string; prompt: string }> = [
-  { icon: PenLine, label: "把字节那段实习写得更量化", prompt: "把我简历里字节跳动那段实习改写得更量化：每条要点都带上数字和结果，先给我看改前改后" },
+  { icon: PenLine, label: "帮我检查简历里值得量化的经历", prompt: "先看我的档案和简历，挑出最值得补数据和结果的 3 条经历，逐条问我细节再帮我改写" },
   { icon: ListTodo, label: "今天有哪些要做的事", prompt: "按截止时间帮我列出今天要做的事，每件说明为什么现在做" },
   { icon: Mail, label: "帮我整理最近的面试邀约", prompt: "帮我整理最近收到的笔试和面试邀约：时间、岗位、要准备什么，并把还没记的加进日程" },
   { icon: Briefcase, label: "我收藏的岗位先投哪个", prompt: "对比我收藏但还没投的岗位，按匹配度排个先后，说明理由" },
 ];
 
-function AgentEmptyState({ note, onSuggestion }: { note: string; onSuggestion: (prompt: string) => void }) {
+function AgentEmptyState({ note, onSuggestion }: { note: string; onSuggestion: (prompt: string, jobId?: number | null) => void }) {
   return (
     <div className="agent-empty" data-testid="agent-empty">
       <span className="agent-empty-mark" aria-hidden><Sparkles size={18} strokeWidth={1.9} /></span>
       <p className="agent-empty-title">今天想让 OfferU 帮你做什么？</p>
       <p className="agent-empty-note">{note}</p>
+      <ProactiveActionStrip variant="compact" maxItems={3} onRunPrompt={onSuggestion} />
       <div className="agent-empty-chips" role="list" aria-label="试试这些">
         {EMPTY_SUGGESTIONS.map(({ icon: Icon, label, prompt }, i) => (
           <button key={label} type="button" role="listitem" className="agent-chip ou-enter" style={{ ["--i" as string]: i }} onClick={() => onSuggestion(prompt)}>

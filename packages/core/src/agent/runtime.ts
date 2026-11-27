@@ -26,7 +26,7 @@ import { CoreError, type CoreContext, type CoreStore, type Json } from "../types
 import { AgentHost, type AgentHostDeps, type PreparedAttachments, type ResolvedLlm, type RunOptions } from "./host";
 import type { AgentTool } from "./loop";
 import { AGENT_ACTOR, agentSystemPrompt, type MemoryArm } from "./prompt";
-import { AgentConversations, AgentRunState, type AgentRunStore } from "./run-state";
+import { AgentConversations, AgentRunState, jobIdFromConversationId, type AgentRunStore } from "./run-state";
 import { CORE_TOOL_SPECS, coreToolSpecs, registrySpecs } from "./tool-specs";
 import { skillReadTool, toolManualTool } from "./discovery";
 import { TOOL_MANUAL_NAME, preflightTool, toolSpec, type ToolSpec } from "../tools";
@@ -127,7 +127,13 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
       const op = toolOpKey(runId, callId);
       return (await deps.store.changes(1000)).filter((row) => row.op === op).map((row) => row.id).sort((a, b) => a - b);
     },
-    systemPrompt: ({ maxSteps, texts }) => agentSystemPrompt(deps.store, agentContext(), { maxSteps, memoryArm: deps.memoryArm, tools: toolNames(), skillTexts: texts }),
+    systemPrompt: ({ maxSteps, texts, conversationId }) => agentSystemPrompt(deps.store, agentContext(), {
+      maxSteps,
+      memoryArm: deps.memoryArm,
+      tools: toolNames(),
+      skillTexts: texts,
+      activeJobId: jobIdFromConversationId(conversationId),
+    }),
     prepareAttachments: deps.prepareAttachments,
     maxConcurrentRuns: deps.maxConcurrentRuns,
     streamGuard: deps.streamGuard,

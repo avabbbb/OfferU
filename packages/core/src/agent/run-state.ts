@@ -112,6 +112,26 @@ export interface Conversation {
   created_at: string;
   updated_at: string;
   messages: ConversationMessage[];
+  /** Optional job project id encoded in `conv_job_<id>_<hex>` (zero DB migration). */
+  job_id?: number | null;
+}
+
+const PROJECT_CONV_ID = /^conv_job_(\d+)_[a-z0-9_-]+$/i;
+
+/** Create a job-scoped Project conversation id without requiring a schema migration. */
+export function projectConversationId(jobId: number): string {
+  const id = Math.trunc(Number(jobId));
+  if (!Number.isInteger(id) || id <= 0) throw new CoreError("job_id 要是正整数", "invalid");
+  return `conv_job_${id}_${randomHex(12)}`;
+}
+
+/** Extract the job_id from a Project conversation id, or null for general threads. */
+export function jobIdFromConversationId(conversationId: string | null | undefined): number | null {
+  if (!conversationId) return null;
+  const match = PROJECT_CONV_ID.exec(String(conversationId));
+  if (!match) return null;
+  const id = Number(match[1]);
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 /** Row storage for Agent state. Implementations keep JSON blobs; no rules. */
@@ -546,7 +566,7 @@ function titleFromMessages(messages: ConversationMessage[]): string {
 export class AgentConversations {
   constructor(private readonly store: AgentRunStore, private readonly now: () => string = nowUtc) {}
 
-  async list(): Promise<Array<{ id: string; title: string; created_at: string; updated_at: string; message_count: number; last_message: string }>> {
+  async list(): Promise<Array<{ id: string; title: string; created_at: string; updated_at: string; message_count: number; last_message: string; job_id: number | null }>> {
     return (await this.store.listConversations())
       .filter((item) => item.id)
       .map((item) => {
@@ -558,6 +578,7 @@ export class AgentConversations {
           updated_at: item.updated_at || "",
           message_count: messages.length,
           last_message: messages.length ? messages[messages.length - 1].content.slice(0, 120) : "",
+          job_id: item.job_id ?? jobIdFromConversationId(item.id),
         };
       })
       .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
@@ -566,7 +587,14 @@ export class AgentConversations {
   async get(id: string): Promise<Conversation | null> {
     const item = await this.store.getConversation(String(id));
     if (!item) return null;
-    return { id: item.id, title: item.title || "新对话", created_at: item.created_at || "", updated_at: item.updated_at || "", messages: cleanConversationMessages(item.messages) };
+    return {
+      id: item.id,
+      title: item.title || "新对话",
+      created_at: item.created_at || "",
+      updated_at: item.updated_at || "",
+      messages: cleanConversationMessages(item.messages),
+      job_id: item.job_id ?? jobIdFromConversationId(item.id),
+    };
   }
 
   /** save_conversation_messages: replace the message list; the title is set once from the first user message. */
@@ -634,7 +662,9 @@ export class AgentConversations {
     const kept = messages.slice(0, end);
     const now = this.now();
     const title = `${(source.title || "新对话").slice(0, MAX_TITLE_LENGTH - 5)} · 分叉`;
-    const next: Conversation = { id: `conv_${randomHex(12)}`, title, created_at: now, updated_at: now, messages: kept };
+    const jobId = source.job_id ?? jobIdFromConversationId(source.id);
+    const nextId = jobId ? projectConversationId(jobId) : `conv_${randomHex(12)}`;
+    const next: Conversation = { id: nextId, title, created_at: now, updated_at: now, messages: kept, job_id: jobId };
     await this.store.transaction(() => this.store.putConversation(next));
     return { ...next, message_count: kept.length, branched_from: source.id };
   }

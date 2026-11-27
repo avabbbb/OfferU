@@ -6,26 +6,34 @@
 // 外观沿用 OfferU 原有的 .agent-history / .agent-history-row。
 
 import { useMemo, useState } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Briefcase, Plus, Search, Trash2 } from "lucide-react";
 import type { AgentConversationSummary } from "@/lib/api";
 import { useListboxKeyboard } from "@/lib/useListboxKeyboard";
 
-export function filterConversations(conversations: AgentConversationSummary[], query: string): AgentConversationSummary[] {
+export function filterConversations(
+  conversations: AgentConversationSummary[],
+  query: string,
+  scope: "all" | "projects" = "all",
+): AgentConversationSummary[] {
+  const scoped = scope === "projects" ? conversations.filter((item) => Boolean(item.job_id)) : conversations;
   const q = query.trim().toLowerCase();
-  if (!q) return conversations;
-  return conversations.filter((item) => `${item.title || ""}\n${item.last_message || ""}`.toLowerCase().includes(q));
+  if (!q) return scoped;
+  return scoped.filter((item) => `${item.title || ""}\n${item.last_message || ""}`.toLowerCase().includes(q));
 }
 
-export function AgentHistoryList({ conversations, currentId, onOpen, onDelete, onNew, onClose }: {
+export function AgentHistoryList({ conversations, currentId, jobLabels, onOpen, onDelete, onNew, onClose }: {
   conversations: AgentConversationSummary[];
   currentId: string | null;
+  jobLabels?: Record<number, string>;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
   onNew: () => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const items = useMemo(() => filterConversations(conversations, query), [conversations, query]);
+  const [scope, setScope] = useState<"all" | "projects">("all");
+  const projectCount = useMemo(() => conversations.filter((item) => Boolean(item.job_id)).length, [conversations]);
+  const items = useMemo(() => filterConversations(conversations, query, scope), [conversations, query, scope]);
   const listbox = useListboxKeyboard<AgentConversationSummary>({
     items,
     query,
@@ -48,8 +56,30 @@ export function AgentHistoryList({ conversations, currentId, onOpen, onDelete, o
         onDelete(target.id);
       },
     })}>
-      <div className="mb-2 flex items-center justify-between">
-        <p className="px-1 text-[length:var(--agent-fs-xs)] font-medium text-[var(--foreground-muted)]">历史对话</p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1" role="tablist" aria-label="对话范围">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === "all"}
+            onClick={() => setScope("all")}
+            className={`ou-button ou-button-sm ${scope === "all" ? "ou-button-secondary" : "ou-button-ghost"}`}
+          >
+            全部
+          </button>
+          {projectCount > 0 && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scope === "projects"}
+              onClick={() => setScope("projects")}
+              className={`ou-button ou-button-sm ${scope === "projects" ? "ou-button-secondary" : "ou-button-ghost"}`}
+            >
+              <Briefcase size={12} aria-hidden />
+              岗位项目 ({projectCount})
+            </button>
+          )}
+        </div>
         <button type="button" onClick={onNew} className="ou-button ou-button-secondary ou-button-sm">
           <Plus size={12} />
           新建
@@ -63,32 +93,42 @@ export function AgentHistoryList({ conversations, currentId, onOpen, onDelete, o
         {items.length === 0 && (
           <p className="rounded-md px-2 py-1.5 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">{conversations.length ? "没有匹配的对话" : "暂无历史对话"}</p>
         )}
-        {items.map((conversation, index) => (
-          <div
-            key={conversation.id}
-            {...listbox.getOptionProps(index, { className: "agent-history-row", onClick: () => onOpen(conversation.id) })}
-            aria-selected={conversation.id === currentId}
-            data-current={conversation.id === currentId || undefined}
-          >
-            <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[length:var(--agent-fs-sm)] font-medium text-[var(--foreground)]">
-                {conversation.title || "历史对话"}
-              </span>
-              <span className="mt-0.5 block truncate text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">
-                {conversation.message_count} 条 / {conversation.last_message}
-              </span>
-            </span>
-            <button
-              type="button"
-              tabIndex={-1}
-              aria-label="删除历史对话"
-              onClick={(event) => { event.stopPropagation(); onDelete(conversation.id); }}
-              className="agent-history-delete"
+        {items.map((conversation, index) => {
+          const projectName = conversation.job_id ? (jobLabels?.[conversation.job_id] || `岗位 #${conversation.job_id}`) : "";
+          return (
+            <div
+              key={conversation.id}
+              {...listbox.getOptionProps(index, { className: "agent-history-row", onClick: () => onOpen(conversation.id) })}
+              aria-selected={conversation.id === currentId}
+              data-current={conversation.id === currentId || undefined}
             >
-              <Trash2 size={13} />
-            </button>
-          </div>
-        ))}
+              <span className="min-w-0 flex-1 text-left">
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate text-[length:var(--agent-fs-sm)] font-medium text-[var(--foreground)]">
+                    {conversation.title || "历史对话"}
+                  </span>
+                  {projectName && (
+                    <span className="ou-pill ou-tone-purple shrink-0">
+                      <span className="truncate">{projectName}</span>
+                    </span>
+                  )}
+                </span>
+                <span className="mt-0.5 block truncate text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">
+                  {conversation.message_count} 条 / {conversation.last_message}
+                </span>
+              </span>
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label="删除历史对话"
+                onClick={(event) => { event.stopPropagation(); onDelete(conversation.id); }}
+                className="agent-history-delete"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

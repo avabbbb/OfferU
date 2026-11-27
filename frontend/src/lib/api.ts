@@ -627,6 +627,7 @@ export interface AgentConversationSummary {
   updated_at: string;
   message_count: number;
   last_message: string;
+  job_id?: number | null;
 }
 
 export interface AgentConversationDetail {
@@ -635,6 +636,32 @@ export interface AgentConversationDetail {
   created_at: string;
   updated_at: string;
   messages: AgentConversationMessage[];
+  job_id?: number | null;
+}
+
+export interface ProactiveAction {
+  id: string;
+  kind: string;
+  priority: "urgent" | "high" | "normal";
+  title: string;
+  reason: string;
+  button_label: string;
+  prompt: string;
+  route?: string;
+  job_id?: number | null;
+  record_ids?: number[];
+  direct_action?: "confirm_memories" | "open_route";
+}
+
+export interface ProactiveSnapshot {
+  today: string;
+  actions: ProactiveAction[];
+  counts: {
+    unconfirmed_memories: number;
+    unevaluated_jobs: number;
+    overdue_events: number;
+    upcoming_events: number;
+  };
 }
 
 export interface AgentResponse {
@@ -1572,6 +1599,8 @@ export interface AgentSkillCatalog {
 export const agentSupportApi = {
   /** Skill Hub：技能目录 + 沙箱说明（只读）。 */
   skills: () => request<AgentSkillCatalog>("/api/agent/skills"),
+  /** Hark 式主动建议与一键动作按钮。 */
+  proactive: () => request<ProactiveSnapshot>("/api/agent/proactive"),
   conversations: () =>
     request<{ conversations: AgentConversationSummary[] }>("/api/agent/conversations"),
   conversation: (id: string) =>

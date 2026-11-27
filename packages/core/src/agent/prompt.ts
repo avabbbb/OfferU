@@ -3,14 +3,14 @@
 // the host suffix from services/embedded_agent_host.py _system_prompt.
 // The rule text is copied verbatim from Python.
 
-import { MEMORY_KIND } from "../labels";
+import { DOC_KIND, JOB_STATUS, MEMORY_KIND, label } from "../labels";
 import { overview } from "../operations";
 import { capabilityIndex } from "../tools/catalog";
 import { CORE_RULES, matchSkills, skillPrompt } from "./skills";
 import { MAX_STEPS } from "./limits";
 
 export { MAX_STEPS } from "./limits";
-import type { CoreContext, CoreStore, MemoryKind, StoredRecord } from "../types";
+import type { CoreContext, CoreStore, DocKind, JobStatus, MemoryKind, StoredRecord } from "../types";
 
 export const AGENT_ACTOR = "助手";
 const INDEX_LINES = 60;
@@ -77,6 +77,33 @@ export interface PromptOptions {
   tools?: readonly string[];
   /** The user's message and recent conversation: skills whose triggers match are loaded up front. */
   skillTexts?: readonly string[];
+  /** Active job project id for job-scoped conversations (conv_job_<id>_*). */
+  activeJobId?: number | null;
+}
+
+async function projectContextBlock(store: CoreStore, jobId: number | null | undefined): Promise<string> {
+  if (!jobId) return "";
+  const job = await store.get("job", jobId);
+  if (!job) return "";
+  const [docs, events] = await Promise.all([
+    store.all("doc"),
+    store.all("event"),
+  ]);
+  const jobDocs = docs.filter((doc) => doc.job_id === jobId);
+  const jobEvents = events.filter((event) => event.job_id === jobId && !event.done);
+  const docSummary = jobDocs.length
+    ? jobDocs.map((doc) => `#${doc.id} [${DOC_KIND[doc.kind as DocKind] ?? String(doc.kind ?? "文档")}] ${String(doc.title ?? "未命名")}`).join("；")
+    : "暂无";
+  const eventSummary = jobEvents.length
+    ? jobEvents.map((event) => `${String(event.title ?? "事项")}${event.at ? `（${String(event.at).replace("T", " ")}）` : ""}`).join("；")
+    : "暂无";
+  const status = JOB_STATUS[job.status as JobStatus] ?? String(job.status ?? "");
+  const score = typeof job.score === "number" ? ` · 匹配分 ${job.score}` : "";
+  const city = job.city ? ` · ${String(job.city)}` : "";
+  return `当前项目空间（本对话专属岗位，默认围绕它展开，需要看 JD 全文请 get job #${job.id}）：\n`
+    + `- 岗位：#${job.id} ${label(job)}（${status}${score}${city}）\n`
+    + `- 关联文档：${docSummary}\n`
+    + `- 未完成日程：${eventSummary}\n`;
 }
 
 export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, options: PromptOptions = {}): Promise<string> {
@@ -97,8 +124,10 @@ export async function agentSystemPrompt(store: CoreStore, ctx: CoreContext, opti
   } else if (arm === "full") {
     memory = `用户的记忆（全文，新的在前；标「待确认」的还不能当事实）：\n${await memoryFull(store)}\n`;
   }
+  const project = await projectContextBlock(store, options.activeJobId);
   return `你是 OfferU 里的求职助手。今天是 ${view.today}。\n`
     + `用户现在的情况（overview 摘要）：${pyJson(summary)}\n`
+    + project
     + memory
     + (options.tools?.length ? capabilityIndex(options.tools) : "")
     + CORE_RULES
