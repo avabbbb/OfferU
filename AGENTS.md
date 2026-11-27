@@ -4,7 +4,7 @@
 
 ## 产品
 
-OfferU 是本地优先的求职工具，用户是国内校招生和实习生。主线只有：今天待办、岗位和投递状态、邀约邮件处理（用户把投递回执、笔试和面试邀约贴给 Agent，回写投递状态和带链接的事项；暂不自动读邮箱）、档案和简历、官网投递助手、面试复盘。邮箱发送之前需要得到用户的确认，凭据留在本机。
+OfferU 是本地优先的求职工具，用户是国内校招生和实习生。主线只有：今天待办、岗位和投递状态、邀约邮件处理（用户把投递回执、笔试和面试邀约贴给 Agent，或桌面版连了邮箱由 Agent 用 `mail` 读，回写投递状态和带链接的事项）、档案和简历、官网投递助手、面试复盘。邮箱发送之前需要得到用户的确认，凭据留在本机。
 
 ## 架构（TypeScript 后端是主线）
 
@@ -14,7 +14,7 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
   - 网页版（`VITE_OFFERU_MODE=local-web`）：`frontend/src/lib/local/backend.ts` 在页面里跑 `createApp`，数据在 IndexedDB；
   - Cloudflare Worker（`backend-ts/src/worker.ts`）：只发静态文件和转发模型请求（`/llm-proxy`，主机白名单），**不存任何用户数据**，不加 D1 / KV / DO / R2；
   - 桌面伴侣（`backend-ts/src/server.ts`，Node，SQLite `records / changes` 表）：唯一有本机能力的地方。
-- **本机专属（companion-only）**：本机文件、Playwright PDF、poppler、BOSS 登录、Agent 看板、配置文件等只放 `backend-ts/src/routes/companion/`，在 `server.ts` 注入。浏览器和 Worker 永远不 import 它们；那里缺的能力回 501，不假装成功。
+- **本机专属（companion-only）**：本机文件、Playwright PDF、poppler、BOSS 登录、Agent 看板、配置文件、邮箱 IMAP/SMTP 等只放 `backend-ts/src/routes/companion/`，在 `server.ts` 注入。浏览器和 Worker 永远不 import 它们；那里缺的能力回 501，不假装成功。
 - **加工具 / 路由**：core 写规则 → 工具表登记（HTTP / CLI / 内置 Agent 自动可用）或 `routes/` 加模块并在 `routes/index.ts` 加一行 → 新依赖加到 `AppDeps` 并在 `server.ts` 和 `lib/local/backend.ts` 各自接上或明确不接 → **每个工具 / 路由一条契约用例** + 一条走 HTTP 的测试；`backend-ts/test/fixtures/` 里已有的夹具是旧 Python 版生成的期望值，改行为时直接更新夹具并在 PR 里说明。步骤见 `docs/ARCHITECTURE.md` §5。
 - 数据只有 5 种 type：profile / memory / job / event / doc。新功能优先用它们和现有工具表达。
 - 写操作直接生效，记一条 change，可以撤销。不加确认流程；只有对外发送和批量删除需要用户点头。

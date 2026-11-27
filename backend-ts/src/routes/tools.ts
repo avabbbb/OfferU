@@ -14,6 +14,7 @@ export function toolRuntime(deps: AppDeps): ToolRuntime {
     files: deps.files ?? null,
     measure: deps.renderer ? (html) => deps.renderer!.pageCount(html) : null,
     exportResumePdf: deps.exportResumePdf,
+    mail: deps.mail ? () => deps.mail!.client() : undefined,
   };
 }
 

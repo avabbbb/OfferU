@@ -12,6 +12,8 @@ import { getBridgeState, subscribeBridge } from "@/lib/bridge";
 import { LOCAL_WEB } from "@/lib/local/mode";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
+import { Pill } from "@/components/ui";
+import { offeruWebAgentConnectPrompt } from "@/lib/agentConnectionPrompt";
 import { isLiteRuntime } from "@/lib/liteSession";
 import { updateConfig, useConfig } from "@/lib/hooks";
 
@@ -69,6 +71,7 @@ function agentStatusLabel(item: AgentConnectionItem): string {
 
 export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean }) {
   const state = useAgentConnection();
+  const bridge = useSyncExternalStore(subscribeBridge, getBridgeState, getBridgeState);
   const [connections, setConnections] = useState<AgentConnectionsSnapshot | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -156,14 +159,30 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
         <span className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[var(--foreground-muted)]"><Plug size={14} /> 你的 Agent</span>
         <h3 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">把 OfferU 交给你正在使用的 Agent。</h3>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--foreground-muted)]">
-          OfferU 为你已有的 Agent 提供职业档案、岗位工具和审核工作区。准备接入后，在你的 Agent 中使用 OfferU，连接结果会自动回读。你也可以先用内置 Agent 操作 OfferU、准备岗位简历。
+          {LOCAL_WEB
+            ? "网页版的数据只在这个浏览器里。把下面的提示词交给你的 Agent：它会用你自己的存储桶接好加密同步，再发你一条链接；你打开链接、输入它告诉你的口令，它就能读写这里的岗位和档案。"
+            : "OfferU 为你已有的 Agent 提供职业档案、岗位工具和审核工作区。准备接入后，在你的 Agent 中使用 OfferU，连接结果会自动回读。你也可以先用内置 Agent 操作 OfferU、准备岗位简历。"}
         </p>
       </div>
 
       {SHOWCASE ? <div role="status" className="space-y-2 p-6 text-sm leading-relaxed text-[var(--foreground-muted)]"><p>展示模式默认使用浏览器里的虚构数据，不会自动连接本机；右上角 OfferU 面板里的内置 Agent 用你自己填的 Key。</p><p>在页面顶部点「连接本机 OfferU」，配对后外置 Agent 通过本机 <code>offeru</code> 命令行读写同一份 <code>offeru.db</code>。</p></div> : <div className="space-y-5 p-5 sm:p-7">
-        {LOCAL_WEB && <LocalBridgeCard />}
-        <AgentConnectPrompt />
-        <AgentBoard />
+        {LOCAL_WEB ? <>
+          <LocalBridgeCard />
+          <AgentConnectPrompt prompt={offeruWebAgentConnectPrompt(window.location.origin)}
+            description="粘贴到 Claude Code、Codex、WorkBuddy 等任意 Agent。它会装好命令行、把你的存储桶接成加密同步，最后发你一条链接；你只需要登录确认和输入口令。" />
+          {bridge.active ? <AgentBoard /> : (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border)] p-4" data-testid="agent-board-desktop-only">
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">Agent 看板</span>
+                <span className="mt-1 block text-xs text-[var(--foreground-muted)]">连接本机 OfferU（127.0.0.1:8766）或在桌面版里可用：检测本机 Agent、一键装 Skill、打开对话。</span>
+              </span>
+              <Pill tone="gray">需连接本机</Pill>
+            </div>
+          )}
+        </> : <>
+          <AgentConnectPrompt />
+          <AgentBoard />
+        </>}
         {desktop ? <div className="space-y-3">
           <Button size="sm" onPress={() => void discover()} isDisabled={busy} startContent={busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}>
             {connections ? "重新检查本机 Agent" : "发现本机 Agent"}

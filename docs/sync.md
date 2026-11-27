@@ -5,6 +5,8 @@ OfferU 的数据可以同步到**用户自己的** S3 兼容存储桶（Cloudfla
 - 引擎：`packages/sync/src`（只用 `fetch` + WebCrypto + `CompressionStream`，没有 `node:*`）
 - companion：`backend-ts/src/sync.ts`（配置、状态文件）+ `backend-ts/src/routes/sync.ts`（HTTP）
 - 前端：设置 › 数据 › 云同步（`frontend/src/components/settings/SyncSettingsPanel.tsx`，`frontend/src/lib/syncClient.ts`）
+- 网页版（local-web）：页面内后端接 `frontend/src/lib/local/sync.ts`（同一个引擎，设置和状态存 IndexedDB）；配对页 `#/sync/pair`（`frontend/src/vite/SyncPairPage.tsx`、`frontend/src/lib/syncPair.ts`）
+- 配对链接：`packages/sync/src/pair.ts`（CLI 封、网页解，同一个函数）
 
 ## 怎么用
 
@@ -14,6 +16,34 @@ OfferU 的数据可以同步到**用户自己的** S3 兼容存储桶（Cloudfla
 3. 点「立即同步」。其他设备填同一个桶、同一个前缀、同一个口令即可。
 
 **口令丢了数据就解不开**，OfferU 和存储服务商都找不回。
+
+## 网页版连外置 Agent：`offeru sync pair`
+
+网页版（https://offeru.avabbbb.com）的数据在浏览器 IndexedDB 里，Worker 什么都不存；Agent 在本机跑 `offeru start` 只会得到一份空数据。两边的桥就是这套同步。为了让用户（包括操作不了浏览器的用户）只做「输入口令」一步，由 Agent 准备好一切再发一条链接：
+
+1. Agent 准备存储桶（没有就自己操作浏览器建 R2 桶 + 只限这个桶的读写令牌 + 允许网页版来源的 CORS，只请用户做登录 / 两步验证）。
+2. Agent 生成强口令，只告诉用户一次，然后非交互地设置：
+
+   ```bash
+   OFFERU_SYNC_SECRET_ACCESS_KEY=… OFFERU_SYNC_PASSPHRASE=… \
+     offeru sync configure --endpoint https://<ACCOUNT_ID>.r2.cloudflarestorage.com --bucket offeru-sync --region auto --access-key-id … --path-style
+   # 或：echo '{…全部字段…}' | offeru sync configure -
+   ```
+
+   Secret 和口令没有命令行参数（会出现在 `ps` 和 shell 历史里），只走环境变量或标准输入；输出是状态，Access Key 打码，不回显 Secret 和口令。
+3. `offeru sync pair [--web-origin https://offeru.avabbbb.com] [--json]`：打印 `<origin>/#/sync/pair?c=<配对码>`（`--json` 给 `{url, expires_at}`），30 分钟有效。没设置同步时回 `{"error", "code":"not_configured", "hint"}`，退出 1。
+4. 用户打开链接，在唯一的输入框里填同步口令 → 页面解开配对码 → 和设置页一样保存同步设置（会校验口令和桶）→ 立刻同步一次 → 显示「拉取 N 条」和「去看岗位」。成功后用 `history.replaceState` 把配对码从地址栏去掉。错误只有三种说法：口令不对 / 链接已过期 / 链接不完整（连不上桶时提示 CORS）。
+5. Agent `offeru sync now` + `offeru tool overview`。之后 Agent 每次改完数据跑一次 `offeru sync now`；网页版在打开和切回页面时自动同步一次（最多每分钟一次），设置页也能手动「立即同步」。
+
+配对码格式（`packages/sync/src/pair.ts`）：
+
+```
+code = base64url( "OUP1" | iterations(u32 BE) | salt(16) | seal(key, json, aad = "offeru-pair/v1/" + base64(header)) )
+key  = PBKDF2-SHA256(同步口令, salt, iterations = 600 000) → HKDF → AES-256-GCM   （和仓库同一套 deriveKeys / seal）
+json = { v:1, endpoint, bucket, region, prefix, pathStyle, accessKeyId, secretAccessKey, expires_at }
+```
+
+每条链接用新的盐，所以解开只需要链接 + 口令，不用先读桶。过期时间在密文里，改不了；头部（次数、盐）是 AAD，换了就解不开。
 
 HTTP（backend-ts）：
 
@@ -82,7 +112,15 @@ master ──HKDF-SHA256 "offeru-sync/v1/mac"──> HMAC-SHA256 密钥（内容
 
 口令强度：拿到 `offeru-sync.json` 就可以离线猜口令（每次猜测 60 万次 PBKDF2）。用长口令；界面要求至少 8 位。
 
-本机：companion 把 Secret 和口令明文存在数据目录的 `sync.json`（权限 600，Windows 依赖目录 ACL），和 SQLite 数据库本身同一信任级别；`sync-state.json` 存同步 base（含记录内容）。展示站（浏览器模式）只把非机密设置存 IndexedDB，Secret 和口令只在内存里，刷新后要重填。
+本机：companion 把 Secret 和口令明文存在数据目录的 `sync.json`（权限 600，Windows 依赖目录 ACL），和 SQLite 数据库本身同一信任级别；`sync-state.json` 存同步 base（含记录内容）。网页版（local-web）同理：设置（含 Secret 和口令）和同步状态存在这个浏览器的 IndexedDB（`offeru-local-sync`），和记录本身同一信任级别，这样刷新后不用重填、能自动拉到 Agent 推的改动；能读这个浏览器 IndexedDB 的人本来就能读全部记录。展示站（`VITE_SHOWCASE`，演示数据）仍只把非机密设置存 IndexedDB，Secret 和口令只在内存里。
+
+配对链接（`offeru sync pair`）：
+
+- 链接里有存储桶的 Access Key 和 Secret，但被同步口令加密：**只有链接没有口令，什么都拿不到**；离线猜口令要对每个猜测做 60 万次 PBKDF2（和拿到 `offeru-sync.json` 一样难）。所以口令和链接最好分两条消息发，口令要长（Agent 生成至少 20 位随机字符）。
+- 配对码只在 URL 的 `#` 片段里，浏览器不会把片段发给服务器（Worker 日志、CDN 都看不到）；页面成功后把它从地址栏和当前历史条目里去掉。仍会留在：用户收到链接的聊天记录、浏览器里成功之前的历史（如果在别的标签页打开过）。
+- 30 分钟过期：过期时间在密文里，拿到链接的人改不了；但过期只限制「用这条链接配对」，链接里的密钥本身不会失效，真泄露了（链接 + 口令）要去 R2 里吊销令牌、换口令。
+- 伪造链接：别人用自己的桶做一条链接，用户输入自己的口令也解不开（AES-GCM 认证失败 → 口令不对），所以不能把用户骗去同步到别人的桶。
+- 链接 + 口令 = 对这个桶的完全读写，等于这份数据本身。
 
 ## 存储桶 CORS（只有浏览器里同步才需要）
 
@@ -139,7 +177,8 @@ MinIO：`mc anonymous` 不用开；CORS 用 `mc admin config set <alias> api cor
 
 ```bash
 cd packages/sync && npm install && npm test && npm run typecheck    # 引擎：加密、错口令、增量计数、分块、并发合并、删改冲突、锁、CAS 重试、首次认领、撤销
-cd backend-ts && npm test                                            # 真实 HTTP：configure/now/status，浏览器引擎 <-> companion 共用一个桶
+cd backend-ts && npm test                                            # 真实 HTTP：configure/now/status，浏览器引擎 <-> companion 共用一个桶；CLI sync configure（参数 + 环境变量）/ sync pair 端到端
+cd frontend && npx vitest run src/lib/syncPair.test.ts src/lib/local/sync.test.ts   # 配对页逻辑、网页版同步控制器
 ```
 
 `MemoryS3`（`packages/sync/src/memory-s3.ts`）是测试用的内存 S3：解析 path-style URL，校验签名头和 `x-amz-content-sha256`，实现 ETag 和条件 PUT，可以注入请求钩子模拟竞态。签名器另有 AWS 官方 SigV4 示例做向量测试。开发时也用 moto（`moto_server`）跑过真实 HTTP 的条件写和两设备同步。
@@ -147,7 +186,7 @@ cd backend-ts && npm test                                            # 真实 HT
 ## 未完成
 
 - 没有垃圾回收：旧索引和不再引用的块不会删；墓碑永久保留。
-- 没有自动 / 定时同步，只有「立即同步」。
+- 没有定时同步：桌面版只有「立即同步」；网页版只在打开和切回页面时自动同步一次。
 - 回滚检测：`refs/latest` 被换成旧快照时不会发现（可以在本机记下见过的最新索引链来检测）。
 - 只同步 records（5 种 type）；上传文件、附件目录、change 历史本身不同步。
 - companion 的 Secret / 口令存在文件里，没有接系统钥匙串。

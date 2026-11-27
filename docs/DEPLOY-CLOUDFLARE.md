@@ -42,7 +42,7 @@ npx wrangler deploy        # 上传；或 npm run deploy（构建 + 部署）
 
 - 数据只在当前浏览器：换浏览器、清站点数据就没了。设置里的「备份、恢复」在浏览器内建命名备份；跨浏览器 / 跨设备搬数据靠 `GET /api/data/export` → `POST /api/data/import` 的 JSON 快照（设置页的「导出」按钮还连着旧的 `/api/agent/data/export`，见 [KNOWN_ISSUES](./KNOWN_ISSUES.md)）。
 - 模型 Key 在设置 → 模型里填写，加密后存在浏览器里。
-- 网页版做不了的事（本机文件、PDF 导出、BOSS 登录、外置 Agent 看板）需要桌面版；自动读邮箱目前所有版本都没有，界面上会提示「不支持」而不是假装成功。
+- 网页版做不了的事（本机文件、PDF 导出、BOSS 登录、外置 Agent 看板、连邮箱读信 / 存草稿 / 发信）需要桌面版，界面上会提示「仅桌面版」或「不支持」而不是假装成功。
 
 ## 不要做的
 

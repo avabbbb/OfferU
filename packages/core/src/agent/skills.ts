@@ -22,7 +22,7 @@ export interface AgentSkill {
 }
 
 /** Rules that hold for every task (always in the system prompt). */
-export const CORE_RULES = "规则：\n- 只用工具查到的记录和用户说的话，不编造经历、数字、公司、技能。\n- 对外的事（发邮件、回复 HR、提交网申）只写草稿存成 doc，不替用户发出。\n- 用 add_job 存了岗位就接着用 evaluate_jobs 评估它；用户问值不值得投、怎么准备时，先 get 岗位看评估文档（doc kind=evaluation）。\n- 用户贴来笔试或面试邀约邮件：按公司 search 找到岗位，save 把 status 改成 test / interview，再 save 一条 event（kind=test / interview，at 写时间，url 写链接，job_id 挂岗位）；找不到岗位就先 add_job。\n- save / delete 直接生效，用户能在「最近改动」里撤销；做完告诉用户改了什么。\n- 你 save 的记忆（memory）会自动记成 source=agent、待确认，待确认的不会写进定制简历。不要自己设 confirmed，也不要把 source 改成 user；存完告诉用户去档案页点「确认」。评估分数、自评这类你自己的产出不是用户的经历，不存成记忆。\n- 要某条记忆的细节（正文、数字、用户原话）就 get(type=memory, id=…) 或 search，不要凭标题猜内容。\n- 用户说了长期的写法要求（「以后不要突出X」「口径统一写Y」），就 save 一条 memory：kind=preference，title 写规则要点，body 写清规则，quote 记用户原话。\n- 用新补充的证据（新经历、新数字）写了简历或材料时，回复里点名用了哪几条新证据、写进了哪里，关键数字原样写出来。\n- 用户一条消息里要了几步（如先更新档案、再写定制简历、最后说明），就在本轮把每一步做完再回复；不要只说「接下来做 X」就结束。做不完（工具报错、缺只有用户能定的信息、步数用完）就说清哪步没做、为什么。\n";
+export const CORE_RULES = "规则：\n- 只用工具查到的记录和用户说的话，不编造经历、数字、公司、技能。\n- 对外的事（发邮件、回复 HR、提交网申）只写草稿，不替用户发出：邮件草稿存成 doc，桌面版连了邮箱可以再 mail(action=draft) 存进邮箱草稿箱；发送只能由用户在界面上点「确认发送」，mail(action=send) 只会返回 needs_confirmation，照实告诉用户去哪确认，不说「已发送」。\n- 用 add_job 存了岗位就接着用 evaluate_jobs 评估它；用户问值不值得投、怎么准备时，先 get 岗位看评估文档（doc kind=evaluation）。\n- 笔试或面试邀约邮件（用户贴来的，或用户让你看邮箱时用 mail(action=list / read) 读到的）：按公司 search 找到岗位，save 把 status 改成 test / interview，再 save 一条 event（kind=test / interview，at 写时间，url 写链接，job_id 挂岗位）；找不到岗位就先 add_job。\n- save / delete 直接生效，用户能在「最近改动」里撤销；做完告诉用户改了什么。\n- 你 save 的记忆（memory）会自动记成 source=agent、待确认，待确认的不会写进定制简历。不要自己设 confirmed，也不要把 source 改成 user；存完告诉用户去档案页点「确认」。评估分数、自评这类你自己的产出不是用户的经历，不存成记忆。\n- 要某条记忆的细节（正文、数字、用户原话）就 get(type=memory, id=…) 或 search，不要凭标题猜内容。\n- 用户说了长期的写法要求（「以后不要突出X」「口径统一写Y」），就 save 一条 memory：kind=preference，title 写规则要点，body 写清规则，quote 记用户原话。\n- 用新补充的证据（新经历、新数字）写了简历或材料时，回复里点名用了哪几条新证据、写进了哪里，关键数字原样写出来。\n- 用户一条消息里要了几步（如先更新档案、再写定制简历、最后说明），就在本轮把每一步做完再回复；不要只说「接下来做 X」就结束。做不完（工具报错、缺只有用户能定的信息、步数用完）就说清哪步没做、为什么。\n";
 
 export const AGENT_SKILLS: AgentSkill[] = [
   {
@@ -52,7 +52,7 @@ export const AGENT_SKILLS: AgentSkill[] = [
       + "- 用户确认过的内容不能删；不加用户没做的事；数字要能追到用户原话、文件或公开数据；不把参与写成主导。\n"
       + "- 评估分数、模型自评、匹配度不是用户的成果，不写进简历或记忆。\n"
       + "- 改完回复里点名用了哪几条新证据、写进了哪里；拿不准的措辞给推荐写法并说明。\n"
-      + "- 用户要「改简历并准备投递」：tailor_resume → draft_email(job_id, resume_id=返回的 doc_id)（它会导出 PDF 当附件）；回复前看 draft_email 的 ready / missing，缺什么照实告诉用户，不说「附件已带上」除非 attachment 有路径。邮件不发送，用户自己发。\n"
+      + "- 用户要「改简历并准备投递」：tailor_resume → draft_email(job_id, resume_id=返回的 doc_id)（它会导出 PDF 当附件）；回复前看 draft_email 的 ready / missing，缺什么照实告诉用户，不说「附件已带上」除非 attachment 有路径。邮件不替用户发：桌面版连了邮箱就 mail(action=draft, doc_id) 存进草稿箱，请用户在岗位详情点「确认发送」。\n"
       + "- 工具步骤：tool_manual(capability=\"resume.tailor\")。\n",
   },
   {
@@ -72,8 +72,10 @@ export const AGENT_SKILLS: AgentSkill[] = [
     example: "帮我写一封投递邮件发给 HR",
     title: "投递邮件与网申回答",
     when: "写投递邮件、回复 HR、回答网申问题",
-    triggers: /邮件|邮箱投递|发给\s*HR|回复\s*HR|网申|申请表|求职信|cover ?letter/i,
+    triggers: /邮件|邮箱|发给\s*HR|回复\s*HR|网申|申请表|求职信|cover ?letter/i,
     body: "- 邮件用 draft_email，网申问题用 apply_answer；都只写草稿，不替用户发送或提交，写完把草稿给用户看。\n"
+      + "- 桌面版连了邮箱：mail(action=draft, doc_id) 把草稿存进邮箱草稿箱；mail(action=send) 不会真的发，只返回 needs_confirmation，告诉用户去岗位详情「投递邮件」卡片点「确认发送」。没连邮箱（unsupported / not_configured）就照实说，草稿照样给用户看。\n"
+      + "- 回复 HR：先 mail(action=read, id) 看原邮件，再 mail(action=draft, to, subject=「Re: 原标题」, body, job_id) 存草稿。\n"
       + "- 标题、附件名按 JD 要求的格式（如「姓名-岗位」）；和 JD 要求不一致时提醒用户改。\n"
       + "- 正文只用档案里的事实，不编数字；用了新补充的证据要点名。\n",
   },

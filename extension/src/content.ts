@@ -24,6 +24,7 @@ import {
   type SavePageResult,
 } from "./background/save-page-job.js";
 import { installLlmBridge } from "./content/llm-bridge.js";
+import { installMailBridge } from "./content/mail-bridge.js";
 
 const OFFERU_TOAST_ID = "offeru-ext-toast";
 const FLOATING_DOCK_ID = "offeru-ext-floating-dock";
@@ -2147,4 +2148,20 @@ try {
   });
 } catch {
   // extension context gone (reloaded); the page keeps using its own fallback
+}
+
+// OfferU web page only: hand application emails to the user's webmail tab (compose-fill, never send)
+// and receive the mails the user hands over with 「交给 OfferU」.
+try {
+  installMailBridge(window, {
+    sendMessage: (message, callback) => chrome.runtime.sendMessage(message, callback),
+    lastError: () => chrome.runtime.lastError,
+    onMessage: (listener) => chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (!listener(message)) return undefined;
+      sendResponse({ ok: true });
+      return undefined;
+    }),
+  });
+} catch {
+  // extension context gone (reloaded)
 }

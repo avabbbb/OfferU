@@ -9,7 +9,7 @@ import { pairingToken } from "./pairing";
 import { dbPath } from "./paths";
 import { createApp, type AppDeps } from "./app";
 import { SqliteAgentRunStore } from "./agent-store";
-import { nodeConfigRuntime, nodeToolRuntime } from "./node-runtime";
+import { mailAccountPath, nodeConfigRuntime, nodeToolRuntime } from "./node-runtime";
 import { agentHost } from "./routes/agent";
 import { registerCompanionRoutes } from "./routes/companion";
 import { nodeAttachmentFiles, popplerPdfText } from "./routes/companion/attachments";
@@ -18,6 +18,7 @@ import { nodeBackupFiles } from "./routes/companion/backups";
 import { nodeBossLogin } from "./routes/companion/boss-cli";
 import { exportResumePdf, filesDirFor, nodeFileStore, nodeSchoolLogos, playwrightRenderer } from "./routes/companion/resume";
 import { nodeConsentFile } from "./routes/companion/consent-file";
+import { nodeMail } from "./routes/companion/mail";
 import { llmFromEnv } from "./llm-env";
 import { openStore } from "./store";
 import { nodeRuntimeInfo } from "./runtime-identity";
@@ -57,6 +58,7 @@ export function createAppServer(store: SqliteCoreStore, overrides: Partial<AppDe
     agentRuns: new SqliteAgentRunStore(store),
     sync: new CompanionSync(store, dirname(dbPath())),
     consent: nodeConsentFile(join(dirname(dbPath()), "platform-consent.json")),
+    mail: nodeMail(mailAccountPath()),
     runtimeInfo: nodeRuntimeInfo(process.env, () => process.env.OFFERU_APPROVAL_TOKEN || pairingToken()),
     approvalToken: process.env.OFFERU_APPROVAL_TOKEN ? () => process.env.OFFERU_APPROVAL_TOKEN! : null,
     ...overrides,

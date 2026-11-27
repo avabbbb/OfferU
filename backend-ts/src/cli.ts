@@ -16,6 +16,8 @@ import { callTool, TOOL_NAMES } from "./tools";
 import { openStore } from "./store";
 import { APP_VERSION } from "./runtime-identity";
 
+const DEFAULT_WEB_ORIGIN = "https://offeru.avabbbb.com";
+
 const HELP = `OfferU TS CLI
 
 usage:
@@ -31,6 +33,13 @@ usage:
   offeru-ts sync [status]                end-to-end encrypted S3 / R2 sync: settings, pending changes, last result
   offeru-ts sync now                     pull + push now (same engine and bucket as the workbench, web version included)
   offeru-ts sync configure [json|@file|-] {endpoint, bucket, region, accessKeyId, secretAccessKey, prefix, pathStyle, passphrase} | {"clear":true}
+      [--endpoint <url>] [--bucket <name>] [--region <r>] [--prefix <p>] [--access-key-id <id>] [--path-style|--no-path-style]
+                                         flags override the JSON; secrets never go on the command line: put them in the
+                                         JSON on stdin (-) or in $OFFERU_SYNC_SECRET_ACCESS_KEY / $OFFERU_SYNC_PASSPHRASE
+  offeru-ts sync pair [--web-origin <url>] [--json]
+                                         a link that connects the web version (default ${DEFAULT_WEB_ORIGIN}) to this
+                                         bucket; it opens only with the sync passphrase and expires in 30 minutes.
+                                         --json: {url, expires_at}. Not set up yet: {"error", "code":"not_configured"}
   offeru-ts serve
   offeru-ts doctor
   offeru-ts start [--web] [--no-browser]
@@ -101,6 +110,27 @@ function toolIndex(): string {
   lines.push("", `常用流程（offeru recipe <id>）：${CAPABILITIES.filter((cap) => cap.steps.length).map((cap) => `${cap.id} ${cap.title}`).join("；")}`);
   lines.push("参数和字段：offeru tool <name> --help。调用：offeru tool <name> '<json>'，中文或 PowerShell 用 @args.json。");
   return lines.join("\n") + "\n";
+}
+
+/**
+ * `sync configure` input: JSON (arg, @file or - for stdin) + flags + secrets from env.
+ * Secrets have no flags on purpose: argv shows up in `ps` and shell history.
+ */
+function syncConfigureInput(args: string[]): Record<string, unknown> {
+  const flags: Array<[string, string]> = [
+    ["--endpoint", "endpoint"], ["--bucket", "bucket"], ["--region", "region"], ["--prefix", "prefix"], ["--access-key-id", "accessKeyId"],
+  ];
+  const fromFlags: Record<string, unknown> = {};
+  for (const [flag, key] of flags) {
+    const value = takeFlag(args, flag);
+    if (value !== undefined) fromFlags[key] = value;
+  }
+  if (takeSwitch(args, "--path-style")) fromFlags.pathStyle = true;
+  if (takeSwitch(args, "--no-path-style")) fromFlags.pathStyle = false;
+  const input = { ...(args[0] ? payloadOf(args[0]) as Record<string, unknown> : {}), ...fromFlags };
+  if (!input.secretAccessKey && process.env.OFFERU_SYNC_SECRET_ACCESS_KEY) input.secretAccessKey = process.env.OFFERU_SYNC_SECRET_ACCESS_KEY;
+  if (!input.passphrase && process.env.OFFERU_SYNC_PASSPHRASE) input.passphrase = process.env.OFFERU_SYNC_PASSPHRASE;
+  return input;
 }
 
 function payloadOf(raw: string | undefined): unknown {
@@ -176,12 +206,34 @@ async function main(): Promise<number> {
       const sub = args.shift() || "status";
       const sync = new CompanionSync(store, dirname(dbPath()));
       try {
+        if (sub === "pair") {
+          const origin = takeFlag(args, "--web-origin") || process.env.OFFERU_WEB_ORIGIN || DEFAULT_WEB_ORIGIN;
+          if (!/^https?:\/\/[^/\s]+\/?$/.test(origin)) {
+            print({ error: `--web-origin 要是网页版的地址（例如 ${DEFAULT_WEB_ORIGIN}），不带路径`, code: "invalid" });
+            return 1;
+          }
+          const link = await sync.pairing(origin);
+          if (!link) {
+            print({
+              error: "还没有设置同步，生成不了配对链接",
+              code: "not_configured",
+              hint: "先运行 offeru sync configure（--endpoint/--bucket/--region/--access-key-id，Secret 和口令放 $OFFERU_SYNC_SECRET_ACCESS_KEY / $OFFERU_SYNC_PASSPHRASE 或标准输入的 JSON）",
+            });
+            return 1;
+          }
+          if (asJson) print(link);
+          else {
+            process.stdout.write(link.url + "\n");
+            process.stderr.write(`把这条链接发给用户：打开后输入同步口令即可连上，${new Date(link.expires_at).toLocaleString("zh-CN", { hour12: false })} 前有效。\n`);
+          }
+          return 0;
+        }
         const result = sub === "status"
           ? await sync.status()
           : sub === "now"
             ? await sync.syncNow()
             : sub === "configure"
-              ? await sync.configure(payloadOf(args[0]) as Record<string, unknown>)
+              ? await sync.configure(syncConfigureInput(args))
               : null;
         if (result === null) {
           process.stderr.write(HELP);

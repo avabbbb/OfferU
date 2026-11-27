@@ -1,4 +1,5 @@
 import type { LlmClient } from "../llm";
+import type { MailClient } from "../mail/tool";
 import type { FileSource } from "../resume/render";
 import type { CoreContext, CoreStore } from "../types";
 import type { HttpFetch, SearchClient } from "./net";
@@ -26,6 +27,11 @@ export type ToolDeps = {
   files?: FileSource | null;
   /** A4 page count of resume HTML (companion Playwright): tailor_resume tells the reviewer the length. */
   measure?: ((html: string) => Promise<number | null>) | null;
+  /**
+   * The connected mailbox (mail tool). undefined = this runtime has no mail (web / Worker → unsupported);
+   * null = desktop, but no account connected yet (not_configured).
+   */
+  mail?: MailClient | null;
   /** Agent tool call id: a stable operation key for the write a tool makes (resume dedupe). */
   callId?: string;
 };

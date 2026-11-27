@@ -88,9 +88,10 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentHost {
   const conversations = new AgentConversations(deps.runs, deps.now);
   const handlers = deps.handlers ?? {};
   // A tool whose capability this runtime lacks stays off the Agent's list instead of costing a call that
-  // answers "unsupported" (the web build has no PDF exporter).
+  // answers "unsupported" (the web build has no PDF exporter and no mailbox).
   const probe = deps.toolDeps?.(agentContext());
-  const capable = (name: string) => name !== "export_resume_pdf" || Boolean(probe?.exportResumePdf) || name in handlers;
+  const capable = (name: string) => name in handlers
+    || (name === "export_resume_pdf" ? Boolean(probe?.exportResumePdf) : name === "mail" ? probe?.mail !== undefined : true);
   const names = deps.toolDeps
     ? CORE_TOOL_SPECS.map((spec) => spec.name).filter((name) => (name in CORE_HANDLERS || name in handlers) && capable(name))
     : [...AGENT_RECORD_TOOLS];

@@ -13,6 +13,7 @@ import Link from "next/link";
 import { SHOWCASE } from "@/lib/showcase";
 import { LOCAL_WEB } from "@/lib/local/mode";
 import { ExtensionInstallPrompt } from "@/components/settings/ExtensionInstallPrompt";
+import { ExtensionMailInbox } from "@/components/workbench/ExtensionMailInbox";
 import { resolveApiBase } from "@/lib/apiBase";
 import {
   getDesktopRuntimeIdentity,
@@ -243,6 +244,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <BackendReadyGate>
           {children}
           <ExtensionInstallPrompt />
+          <ExtensionMailInbox />
         </BackendReadyGate>
       </HeroUIProvider>
     </SWRConfig>

@@ -23,12 +23,16 @@
     "@offeru/sync": "file:../packages/sync",
     "fast-png": "^8.0.0",
     "hono": "^4.13.18",
-    "jpeg-js": "^0.4.4"
+    "imapflow": "^2.12.2",
+    "jpeg-js": "^0.4.4",
+    "mailparser": "^3.15.0",
+    "nodemailer": "^10.6.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261115.1",
     "@types/node": "^24.0.0",
     "esbuild": "^0.28.2",
+    "fast-check": "^4.11.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vitest": "^5.0.5",

@@ -19,6 +19,13 @@ OfferU 浏览器插件用于在招聘网站页面手动采集岗位信息，并�
 - 网页端（`frontend/src/lib/local/extensionLlm.ts`）先握手确认扩展能力；扩展不在、不支持该域名或在首字节前出错时，自动回退 `/llm-proxy`，行为与以前相同。设置 → 模型服务里显示当前通道「直连（扩展）」或「代理」。
 - 网页在需要转发但没检测到扩展时（已知需转发的服务商、即将走 `/llm-proxy`、或代理返回额度用尽的 429）会弹出可关闭的安装提示（可选「不再提醒」）。上架后把商店地址填进 `frontend/src/lib/local/extensionPrompt.ts` 的 `EXTENSION_STORE_URL`；未填时提示指向本 README。
 
+## 网页版邮箱（只填写写信页，不发送）
+网页版没有 IMAP / SMTP，也不用任何邮件 API / OAuth。插件在你已经登录的邮箱网页里操作（设计见 `docs/DESIGN.md` §10.2）：
+- **写投递邮件**：OfferU 网页岗位详情点「在 Gmail 中打开草稿」→ 插件新开 Gmail（`?view=cm` 整页写信）/ QQ 邮箱 / 网易 163 的写信页，填好收件人、标题、正文，把你选的简历 PDF 放进附件框，右下角浮层逐项显示结果。**发送由你自己点，插件从不点发送。**某项没填上时浮层给「复制没填上的内容」/「下载简历 PDF」。
+- **交给 OfferU**：在邮箱网页打开一封邮件，右下角点「交给 OfferU」，这一封的发件人、主题、时间、正文和链接交给 OfferU 网页里的 Agent。不扫描收件箱。
+- 默认邮箱在 OfferU 设置 › 邮箱 选一次，存在插件本地。
+- 代码：契约 `src/mail/contract.ts`；每个邮箱一个适配器 `src/mail/providers/{gmail,qq,netease}.ts`（邮箱改版时只改这里，先更新 `src/mail/__fixtures__/` 夹具）；填写 `src/mail/compose.ts`、浮层 `src/mail/overlay.ts`、邮箱页入口 `entrypoints/mail.content.ts`（只匹配这几个邮箱域名）；网页桥 `src/content/mail-bridge.ts`；后台 `src/background/mail.ts`。
+
 ## 安装（未上架商店前）
 1. 在 `extension` 目录执行 `npm ci && npm run build`（或从 GitHub Release 下载打好的 zip 并解压）。
 2. 打开 `chrome://extensions`（Edge：`edge://extensions`），启用开发者模式，「加载已解压的扩展程序」，选择 `extension` 目录（或解压后的目录）。

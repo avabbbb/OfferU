@@ -1,0 +1,53 @@
+/* #/sync/pair：一屏、一张白纸面、一个墨黑主按钮。画布沿用 body 的渐变（--ou-bg-wash）。 */
+.ou-pair-page {
+  display: flex;
+  height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ou-space-4);
+  overflow-y: auto;
+  padding: var(--ou-space-6) var(--ou-gutter);
+}
+.ou-pair-card {
+  width: 100%;
+  max-width: 26rem;
+  border-radius: var(--ou-radius-panel);
+  background: var(--ou-bg-surface);
+  box-shadow: var(--ou-elev-2);
+  padding: var(--ou-space-8) var(--ou-space-6) var(--ou-space-6);
+  animation: ou-pair-rise var(--ou-motion-slow) var(--ou-ease-emphasized) both;
+}
+.ou-pair-body { display: flex; flex-direction: column; gap: var(--ou-space-4); }
+.ou-pair-mark {
+  display: inline-flex;
+  width: 2.5rem;
+  height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ou-radius-tile);
+  background: var(--ou-tile-bg);
+  box-shadow: var(--ou-tile-shadow);
+  color: var(--ou-text-secondary);
+}
+.ou-pair-mark[data-done] { background: var(--ou-tone-green-bg); color: var(--ou-tone-green-text); }
+.ou-pair-title { margin: 0; font-size: var(--ou-type-page); font-weight: 600; line-height: 1.25; color: var(--ou-text-primary); text-wrap: balance; }
+.ou-pair-phrase { display: inline-block; }
+.ou-pair-lede { margin: calc(var(--ou-space-2) * -1) 0 0; font-size: var(--ou-type-body); line-height: var(--ou-line-body); color: var(--ou-text-secondary); }
+.ou-pair-lede strong { color: var(--ou-text-primary); font-weight: 600; }
+.ou-pair-error { margin: 0; font-size: var(--ou-type-sm); color: var(--ou-tone-red-text); }
+.ou-pair-action { width: 100%; min-height: 2.75rem; justify-content: center; gap: var(--ou-space-2); text-decoration: none; }
+.ou-pair-card .ou-input { min-height: 2.75rem; }
+.ou-pair-spin { animation: ou-pair-spin 0.9s linear infinite; }
+.ou-pair-foot { max-width: 26rem; margin: 0; text-align: center; font-size: var(--ou-type-xs); color: var(--ou-text-tertiary); }
+
+@keyframes ou-pair-rise { from { opacity: 0; transform: translateY(var(--ou-rise)); } }
+@keyframes ou-pair-spin { to { transform: rotate(1turn); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ou-pair-card, .ou-pair-spin { animation: none; }
+}
+@media (max-width: 480px) {
+  .ou-pair-page { justify-content: flex-start; padding-top: 12vh; }
+  .ou-pair-card { padding: var(--ou-space-6) var(--ou-space-4) var(--ou-space-4); }
+}

@@ -34,6 +34,7 @@ export const TOOL_BRIEFS: Record<string, string> = {
   draft_email: "写投递邮件草稿并导出简历 PDF，存成岗位的 email 文档。不会发送，给用户看后用户自己发。",
   reconcile_memory: "只读核对职业记忆的前后矛盾、重复和久未补全；不要自己拿 proposed 去 save，让用户在档案页采纳。",
   export_data: "导出全部数据为一个 JSON 备份。",
+  mail: "用户的邮箱（桌面版）：list 看收件箱、read 读一封（带链接）、draft 存进邮箱草稿箱；send 只会等用户在界面上确认，Agent 发不出去。",
 };
 
 /** Capability index groups, in the order the system prompt lists them. */
@@ -42,7 +43,7 @@ export const TOOL_GROUPS: Array<{ id: string; title: string; tools: string[] }> 
   { id: "jobs", title: "岗位", tools: ["add_job", "evaluate_jobs"] },
   { id: "resume", title: "简历与材料", tools: ["find_files", "read_file", "split_resume", "tailor_resume", "export_resume_pdf"] },
   { id: "research", title: "联网调研", tools: ["web_search", "fetch_page"] },
-  { id: "apply", title: "投递与邮件", tools: ["apply_answer", "draft_email"] },
+  { id: "apply", title: "投递与邮件", tools: ["apply_answer", "draft_email", "mail"] },
   { id: "memory", title: "记忆核对与备份", tools: ["reconcile_memory", "export_data"] },
 ];
 
@@ -101,11 +102,28 @@ export const CAPABILITIES: Capability[] = [
       "tailor_resume(id=返回的 doc_id, review_only=true)",
       "要投递：draft_email(job_id, resume_id=doc_id)，它导出 PDF 当附件；只要 PDF 就 export_resume_pdf(id)",
       "看 draft_email 的 ready / missing，缺什么照实告诉用户",
+      "桌面版连了邮箱：mail(action=draft, doc_id=draft_email 的 doc_id) 存进邮箱草稿箱；发送由用户在岗位详情点「确认发送」",
     ],
     rules: [
       "不加原话里没有的数字，不把参与写成主导",
       "attachment 为 null 时不说附件已带上",
       "回复里点名用了哪几条新证据、写进了哪里",
+    ],
+  },
+  {
+    id: "mail.invites",
+    title: "读邀约邮件更新看板",
+    when: "用户让看邮箱里的投递回执、笔试 / 面试邀约、改期通知（桌面版连了邮箱）。",
+    steps: [
+      "mail(action=list, days=7, query=公司或「笔试 面试 邀请」) 找回执和邀约；没连邮箱就请用户把邮件贴进来",
+      "mail(action=read, id) 读正文、时间和链接",
+      "search 按公司找岗位；找不到就 add_job",
+      "save(type=job, id, data={status}) 推进到 applied / test / interview",
+      "save(type=event, data={kind:\"test\"|\"interview\", title, at, url, job_id})；改期就改已有事项",
+    ],
+    rules: [
+      "status 只前进不后退；时间看不准就问用户，不猜",
+      "只读邮件：不回复、不标已读、不删信；要回信先 mail(action=draft)，发送由用户确认",
     ],
   },
   {

@@ -29,6 +29,14 @@ describe("in-page backend", () => {
   it("companion-only routes are 501, not fake successes", async () => {
     const backend = createLocalBackend(vi.fn() as never);
     expect((await backend.fetch(new Request("http://localhost/api/agent-board"))).status).toBe(501);
+    // 邮箱（IMAP / SMTP）只在桌面伴侣：设置页显示「仅桌面版」，mail 工具回 unsupported。
+    const mail = await backend.fetch(new Request("http://localhost/api/mail/status"));
+    expect(mail.status).toBe(501);
+    expect((await json(mail)).code).toBe("unsupported");
+    const tool = await backend.fetch(new Request("http://localhost/api/tools/mail", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "list" }),
+    }));
+    expect(await json(tool)).toMatchObject({ code: "unsupported" });
   });
 
   it("model settings: saved in the browser, key masked on the way out", async () => {

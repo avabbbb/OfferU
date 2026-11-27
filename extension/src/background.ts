@@ -33,6 +33,7 @@ import {
   normalizeOfferUServerUrl,
 } from "./background/server-url.js";
 import { handleRelayPort, isOfferUOrigin, relayCapabilities, type RelayPort } from "./background/llm-relay.js";
+import { handleMailMessage, isMailMessage, type KeyValueStore, type MailBackgroundDeps } from "./background/mail.js";
 import { safeExtensionDebugPayload, safeExtensionError } from "./lib/safe-error.js";
 import {
   buildSmartFillProfileFieldValues,
@@ -1448,7 +1449,7 @@ chrome.runtime.onMessage.addListener(
 
       default:
         // 模型直连握手由下方单独的监听器回答
-        if ((message as { type?: string }).type === "OFFERU_LLM_HELLO") return false;
+        if ((message as { type?: string }).type === "OFFERU_LLM_HELLO" || isMailMessage(message)) return false;
         sendResponse({ error: "Unknown message type" });
     }
   }
@@ -1494,4 +1495,43 @@ chrome.runtime.onMessage.addListener((message: { type?: string } | null, sender,
   }
   sendResponse({ ok: true, capabilities: relayCapabilities(chrome.runtime.getManifest().version) });
   return undefined;
+});
+
+// ---- 网页版邮箱（插件填写邮箱网页的写信页、接收「交给 OfferU」；不调邮件 API、不发信）----
+const storeOf = (area: chrome.storage.StorageArea): KeyValueStore => ({
+  get: async (key) => (await area.get(key))[key],
+  set: (key, value) => area.set({ [key]: value }),
+  remove: (key) => area.remove(key),
+});
+
+const mailDeps: MailBackgroundDeps = {
+  extensionId: chrome.runtime.id,
+  version: chrome.runtime.getManifest().version,
+  local: storeOf(chrome.storage.local),
+  session: storeOf(chrome.storage.session),
+  openTab: (url) => chrome.tabs.create({ url, active: true }),
+  offeruTabs: async () => {
+    const tabs = await chrome.tabs.query({ url: ["https://offeru.avabbbb.com/*", "http://localhost/*", "http://127.0.0.1/*"] });
+    return tabs.filter((tab) => tab.id !== undefined && tab.url).map((tab) => ({ id: tab.id!, url: tab.url! }));
+  },
+  notifyTab: (tabId, message) =>
+    new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        void chrome.runtime.lastError;
+        resolve(Boolean((response as { ok?: boolean } | undefined)?.ok));
+      });
+    }),
+  focusTab: async (tabId) => {
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (tab?.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+  },
+  now: () => Date.now(),
+};
+
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (!isMailMessage(message)) return undefined;
+  handleMailMessage(message, sender, mailDeps)
+    .then(sendResponse)
+    .catch((error) => sendResponse({ ok: false, error: safeExtensionError(error, "插件出错了") }));
+  return true;
 });

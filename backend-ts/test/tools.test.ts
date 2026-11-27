@@ -61,8 +61,8 @@ async function post(target: ReturnType<typeof app>, name: string, body: unknown,
 describe("tool registry (Python TOOLS)", () => {
   it("GET /api/tools lists the 21 Python tools as {name, description, input}", async () => {
     const listed = await (await app().request("/api/tools")).json() as { tools: Array<{ name: string; description: string; input: Record<string, unknown> }> };
-    // Python's 21 in Python order, then the TS-only backup tools.
-    expect(listed.tools.map((tool) => tool.name)).toEqual([...PYTHON_TOOL_ORDER, "export_data", "import_data"]);
+    // Python's 21 in Python order, then the TS-only tools (backup / restore, mail).
+    expect(listed.tools.map((tool) => tool.name)).toEqual([...PYTHON_TOOL_ORDER, "export_data", "import_data", "mail"]);
     for (const tool of listed.tools.slice(0, PYTHON_TOOL_ORDER.length)) {
       expect(Object.keys(tool)).toEqual(["name", "description", "input"]);
       expect(tool.input).toEqual(TOOL_SPECS.find((spec) => spec.name === tool.name)!.inputSchema);
@@ -304,7 +304,7 @@ describe("CLI surface", () => {
     expect(listed.out).not.toContain("inputSchema");
     expect(listed.out.length).toBeLessThan(ALL_TOOL_SPECS.map((spec) => JSON.stringify(spec)).join("").length / 3);
     const items = JSON.parse(listedJson.out) as Array<{ name: string; agent: boolean }>;
-    expect(items.map((item) => item.name)).toEqual([...PYTHON_TOOL_ORDER, "export_data", "import_data"]);
+    expect(items.map((item) => item.name)).toEqual([...PYTHON_TOOL_ORDER, "export_data", "import_data", "mail"]);
     expect(items.find((item) => item.name === "import_data")?.agent).toBe(false);
     // --help gives the full schema, only for the tools asked about.
     const manual = JSON.parse(help.out);

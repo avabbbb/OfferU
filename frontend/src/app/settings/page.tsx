@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ModelPicker } from "@/components/settings/ModelPicker";
 import { FreshResetPanel } from "@/components/settings/FreshResetPanel";
 import { SyncSettingsPanel } from "@/components/settings/SyncSettingsPanel";
+import { MailSettingsPanel } from "@/components/settings/MailSettingsPanel";
 import BuildIdentityPanel from "@/components/settings/BuildIdentityPanel";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import {
@@ -23,6 +24,7 @@ import {
   FlaskConical,
   Info,
   LifeBuoy,
+  Mail,
   MessageSquare,
   Plus,
   RotateCcw,
@@ -49,6 +51,7 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { syncApi } from "@/lib/syncClient";
+import { isMailUnsupported, mailApi } from "@/lib/mailClient";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 import { DemoBridgeDialog } from "@/components/workbench/DemoBridgeDialog";
 import { DemoDataDialog } from "@/components/workbench/DemoDataDialog";
@@ -64,11 +67,12 @@ import { useAgentConnection } from "@/lib/agentConnection";
 // 容器够宽（≥ 45rem）时左列表、右详情；窄时目录和详情是两屏，详情从右推入、带返回。
 // 选中的分类写进 ?section=，前进后退、外部深链（?section=models）都能直接打开。
 
-type SectionKey = "agent" | "models" | "accounts" | "collect" | "data" | "about" | "feedback";
+type SectionKey = "agent" | "models" | "mail" | "accounts" | "collect" | "data" | "about" | "feedback";
 
 const SECTIONS: Array<{ key: SectionKey; title: string; group: string; icon: ReactNode; description: string }> = [
   { key: "agent", title: "我的 Agent", group: "连接", icon: <Bot size={16} />, description: "连接你已有的 Agent，让它读写 OfferU 的岗位、简历和待办。" },
   { key: "models", title: "模型服务", group: "连接", icon: <Cpu size={16} />, description: "内置 Agent 使用的模型服务、并发上限和兜底方式。" },
+  { key: "mail", title: "邮箱", group: "连接", icon: <Mail size={16} />, description: "读邀约邮件更新看板，投递邮件写好草稿，你确认后自己发出。桌面版用授权码直连，网页版用浏览器插件。" },
   { key: "accounts", title: "账号与来源", group: "连接", icon: <UserRound size={16} />, description: "求职平台登录，以及 OfferU 读取岗位的数据来源。" },
   { key: "collect", title: "登录态采集", group: "连接", icon: <ShieldAlert size={16} />, description: "BOSS / 小红书等登录态采集的风险说明与同意。" },
   { key: "data", title: "数据", group: "数据与隐私", icon: <Database size={16} />, description: "本机存储、云同步、备份恢复与导出。" },
@@ -95,6 +99,21 @@ function useSyncSummary() {
       if (cancelled) return;
       setSummary(status.last_error ? "云同步出错" : status.configured ? "云同步已连接" : "未开启云同步");
     }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+  return summary;
+}
+
+/** 目录里「邮箱」那一行的状态值。 */
+function useMailSummary() {
+  const [summary, setSummary] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    mailApi.status().then((status) => {
+      if (!cancelled) setSummary(status.account ? status.account.address : "未连接");
+    }).catch((cause) => {
+      if (!cancelled && isMailUnsupported(cause)) setSummary("网页版 · 浏览器插件");
+    });
     return () => { cancelled = true; };
   }, []);
   return summary;
@@ -955,6 +974,7 @@ export default function SettingsPage() {
     if (!wide) rootRef.current?.closest("main")?.scrollTo({ top: 0 });
   }, [active, wide]);
   const syncSummary = useSyncSummary();
+  const mailSummary = useMailSummary();
   const agentState = useAgentConnection();
   const bridgeState = useSyncExternalStore(subscribeBridge, getBridgeState, getBridgeState);
   const agentStatus = agentState.connection?.connection_verified && agentState.connection.status === "ready"
@@ -1283,6 +1303,7 @@ export default function SettingsPage() {
   const statusOf: Record<SectionKey, string | undefined> = {
     agent: agentStatus,
     models: modelStatus,
+    mail: mailSummary,
     accounts: SHOWCASE ? "求职来源" : "BOSS 与求职来源",
     collect: "风险说明与同意",
     data: syncSummary,
@@ -1384,6 +1405,8 @@ export default function SettingsPage() {
         return <AgentConnectionPanel embedded />;
       case "models":
         return modelSection;
+      case "mail":
+        return <MailSettingsPanel />;
       case "accounts":
         return (
           <>

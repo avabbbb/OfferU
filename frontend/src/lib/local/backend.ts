@@ -8,6 +8,7 @@
 //   files        IndexedDB file stores (uploads, Agent attachments, named backups)
 //   config       /api/config model settings, keys encrypted at rest (config.ts)
 //   agentRuns    IndexedDB (agentRuns.ts)
+//   sync         S3 / R2 end-to-end encrypted sync, in the page (sync.ts); #/sync/pair connects it
 //   llmFetch     direct to the provider; when the provider sends no CORS headers, through the
 //                OfferU browser extension if it is installed and capable (extensionLlm.ts),
 //                otherwise (or when the extension fails before the first byte) the Worker's
@@ -25,6 +26,7 @@ import { BrowserDemoStore } from "@/lib/demo/store";
 import { LOCAL_BRIDGE_BASE, bridgeActive, bridgeHeaders } from "@/lib/bridge";
 
 import { IndexedDbAgentRunStore } from "./agentRuns";
+import { BrowserSyncController, startAutoSync } from "./sync";
 import { requestPersistentStorage } from "./persist";
 import { indexedDbConfigStore, indexedDbConsentStore } from "./config";
 import { indexedDbBackupFiles, indexedDbFileStore } from "./files";
@@ -99,6 +101,8 @@ export function createLlmFetch(
 
 export interface LocalBackend {
   deps: AppDeps;
+  sync: BrowserSyncController;
+  ready: Promise<void>;
   fetch: (request: Request) => Promise<Response>;
 }
 
@@ -115,6 +119,7 @@ export function createLocalBackend(
   const ready = store.ready().then(() => undefined);
   // All user data lives in this IndexedDB: ask the browser not to evict it (Settings → 数据 shows the answer).
   void requestPersistentStorage();
+  const sync = new BrowserSyncController(store, { fetch: (input, init) => baseFetch(input, init) });
   const deps: AppDeps = {
     store,
     runtime: "browser",
@@ -130,10 +135,13 @@ export function createLocalBackend(
     renderer: null,
     agentRuns: new IndexedDbAgentRunStore(),
     consent: indexedDbConsentStore(),
+    // 邮箱（IMAP / SMTP + 授权码）只在桌面伴侣：浏览器连不了邮件服务器，授权码也不进浏览器。/api/mail/* 回 501，mail 工具回 unsupported。
+    mail: null,
+    sync,
   };
   const app = createApp(deps);
   void ready.then(() => agentHost(deps).state.recoverInterrupted()).catch(() => undefined);
-  return { deps, fetch: async (request) => { await ready; return app.fetch(request); } };
+  return { deps, sync, ready, fetch: async (request) => { await ready; return app.fetch(request); } };
 }
 
 /** Same-origin /api/* only; everything else (assets, /llm-proxy, other sites) passes through. */
@@ -195,5 +203,7 @@ export function installLocalBackend(): LocalBackend {
     return backend.fetch(new Request(url, init));
   }) as Fetch;
   installed = backend;
+  // Pull what the Agent pushed (offeru sync now) when the page opens or comes back into view.
+  void backend.ready.then(() => startAutoSync(backend.sync, () => void import("@/lib/core").then(({ refreshAll }) => refreshAll())));
   return backend;
 }

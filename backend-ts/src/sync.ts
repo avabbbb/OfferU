@@ -8,6 +8,8 @@ import {
   SyncEngine,
   SyncError,
   isSyncError,
+  pairingUrl,
+  sealPairing,
   type FetchLike,
   type S3Config,
   type SyncResult,
@@ -143,6 +145,19 @@ export class CompanionSync implements SyncController {
     this.engine = null;
     this.lastError = null;
     return this.status();
+  }
+
+  /**
+   * `offeru sync pair`: a link for the web version carrying this bucket's settings, sealed with
+   * the sync passphrase (packages/sync/src/pair.ts). Offline: configure already checked the bucket.
+   * null when sync is not set up yet.
+   */
+  async pairing(origin: string, options: { now?: Date; ttlMs?: number } = {}): Promise<{ url: string; expires_at: string } | null> {
+    const config = this.readConfig();
+    if (!config) return null;
+    const { passphrase, sessionToken: _token, ...bucket } = config;
+    const { code, expires_at } = await sealPairing(bucket, passphrase, { ...options, iterations: this.options.kdfIterations });
+    return { url: pairingUrl(origin, code), expires_at };
   }
 
   syncNow(): Promise<{ result: unknown; status: SyncStatusView }> {
